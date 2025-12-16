@@ -1899,6 +1899,28 @@ function main() {
       }
     }
 
+    // FINAL VALIDATION: Ensure improvement_status is either null or a valid enum value
+    const validImprovementStatuses = [
+      "Completed", "InProgress", "Planned", "Permitted", "OnHold", "Cancelled"
+    ];
+
+    if (cleanedImprovement.improvement_status !== null && cleanedImprovement.improvement_status !== undefined) {
+      const statusValue = cleanedImprovement.improvement_status;
+      // Check if it's a string
+      if (typeof statusValue !== "string") {
+        cleanedImprovement.improvement_status = null;
+      } else {
+        // Trim and check if empty or invalid
+        const trimmedStatus = statusValue.trim();
+        if (trimmedStatus === "" || !validImprovementStatuses.includes(trimmedStatus)) {
+          cleanedImprovement.improvement_status = null;
+        } else {
+          // Ensure the stored value is trimmed
+          cleanedImprovement.improvement_status = trimmedStatus;
+        }
+      }
+    }
+
     // Skip if no valid improvement_type and no permit_number
     if (cleanedImprovement.improvement_type === null && !cleanedImprovement.permit_number) {
       return;
