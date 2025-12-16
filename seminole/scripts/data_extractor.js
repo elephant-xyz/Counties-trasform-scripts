@@ -41,8 +41,29 @@ function toCurrencyNumber(n) {
 
 function properCaseName(s) {
   if (!s) return s;
-  const lower = s.toLowerCase();
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
+
+  // Convert to string and trim whitespace
+  const str = String(s).trim();
+  if (!str) return str;
+
+  // Normalize whitespace (replace multiple spaces with single space)
+  const normalized = str.replace(/\s+/g, ' ');
+
+  // Split on word boundaries (spaces, hyphens, apostrophes) while preserving separators
+  const words = normalized.split(/(\s+|[-',.])/);
+
+  // Capitalize each word segment (non-separator parts)
+  const result = words.map((word, index) => {
+    // If it's a separator or empty, keep as-is
+    if (!word || /^[\s\-',.]$/.test(word)) {
+      return word;
+    }
+
+    // Capitalize first letter, lowercase the rest
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }).join('');
+
+  return result;
 }
 
 function normalizeLookupString(value) {
@@ -715,6 +736,10 @@ function cleanupLegacyArtifacts() {
     /^relationship_sales_history_\d+_has_deed_\d+\.json$/i, // Specific for sales history to deed
     // New cleanup for the strict naming convention
     /^relationship_.*_has_.*_\d+\.json$/i, // Catch any relationship file with an index
+    /^layout_data\.json$/i,
+    /^utilities_data\.json$/i,
+    /^utility_data\.json$/i,
+    /^structure_data\.json$/i,
   ]);
 }
 
@@ -2920,7 +2945,7 @@ function main() {
     ? readJSON(structurePath)
     : null;
 
-  const parcelNumber = input.parcelNumber || propSeed.parcel_id;
+  const parcelNumber = propSeed.parcel_id;
   const requestIdentifier =
     (propSeed && propSeed.request_identifier) ||
     (parcelNumber && String(parcelNumber).trim()) ||
@@ -3076,32 +3101,13 @@ function main() {
   );
 
 
+  // Parse mailing address but don't create file yet - will only create if there are owners to link it to
   let mailingAddressFile = null;
   const mailingAddressRaw = input.mailingAddress || "";
   const mailingAddressParsed = parseAddressComponents(
     mailingAddressRaw,
     mailingAddressRaw,
   );
-  if (
-    mailingAddressParsed &&
-    (mailingAddressParsed.streetNumber ||
-      mailingAddressParsed.streetName ||
-      mailingAddressParsed.city ||
-      mailingAddressParsed.state ||
-      mailingAddressParsed.postal_code) // Use postal_code here
-  ) {
-    mailingAddressFile = "mailing_address.json";
-    const mailingAddressObj = {
-      unnormalized_address: normalizeAddressString(mailingAddressRaw) || null,
-      request_identifier: requestIdentifier,
-      latitude : null,
-      longitude : null,
-    };
-    fs.writeFileSync(
-      path.join("data", mailingAddressFile),
-      JSON.stringify(mailingAddressObj, null, 2),
-    );
-  }
   const primaryLand =
     Array.isArray(input.landDetails) && input.landDetails.length
       ? input.landDetails[0]
@@ -3356,7 +3362,28 @@ function main() {
         });
       }
 
-      if (mailingAddressFile) {
+      // Create mailing address file only if there are owners to link it to
+      if (
+        (personEntries.length > 0 || companyEntries.length > 0) &&
+        mailingAddressParsed &&
+        (mailingAddressParsed.streetNumber ||
+          mailingAddressParsed.streetName ||
+          mailingAddressParsed.city ||
+          mailingAddressParsed.state ||
+          mailingAddressParsed.postal_code)
+      ) {
+        mailingAddressFile = "mailing_address.json";
+        const mailingAddressObj = {
+          unnormalized_address: normalizeAddressString(mailingAddressRaw) || null,
+          request_identifier: requestIdentifier,
+          latitude: null,
+          longitude: null,
+        };
+        fs.writeFileSync(
+          path.join("data", mailingAddressFile),
+          JSON.stringify(mailingAddressObj, null, 2),
+        );
+
         personEntries.forEach((entry) => {
           const rel = {
             from: { "/": `./${entry.file}` },
@@ -3784,7 +3811,40 @@ function main() {
           JSON.stringify(relObj, null, 2),
         );
       });
+
+      // Link any unused utilities directly to property
+      utilityOutputs.forEach((entry, idx) => {
+        if (usedUtilityIndexes.has(idx)) return;
+        const relObj = {
+          from: { "/": "./property.json" },
+          to: { "/": `./${entry.fileName}` },
+        };
+        const relationshipFileName = createRelationshipFileName(
+          "property.json",
+          entry.fileName,
+        );
+        fs.writeFileSync(
+          path.join("data", relationshipFileName),
+          JSON.stringify(relObj, null, 2),
+        );
+      });
     }
+  } else {
+    // No layout data - link all utilities directly to property
+    utilityOutputs.forEach((entry) => {
+      const relObj = {
+        from: { "/": "./property.json" },
+        to: { "/": `./${entry.fileName}` },
+      };
+      const relationshipFileName = createRelationshipFileName(
+        "property.json",
+        entry.fileName,
+      );
+      fs.writeFileSync(
+        path.join("data", relationshipFileName),
+        JSON.stringify(relObj, null, 2),
+      );
+    });
   }
 
   structureOutputs.forEach((entry, idx) => {

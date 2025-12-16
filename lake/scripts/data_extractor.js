@@ -57,16 +57,6 @@ function properCaseName(s) {
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
-function cleanName(s) {
-  if (!s) return null;
-  // Remove characters not allowed by pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-  // Keep only: letters, spaces, hyphens, apostrophes, commas, and periods
-  const cleaned = String(s).replace(/[^a-zA-Z\s\-',.]/g, '').trim();
-  if (!cleaned) return null;
-  // Apply proper case
-  return properCaseName(cleaned);
-}
-
 function canonicalDeedKey(str) {
   return String(str || "")
     .toLowerCase()
