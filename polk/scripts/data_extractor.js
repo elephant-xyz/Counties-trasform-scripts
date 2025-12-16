@@ -3606,18 +3606,16 @@ function parseAddressSection($, headingText) {
 }
 
 function attemptWriteAddress(unnorm, siteAddress, mailingAddress) {
-  let hasOwnerMailingAddress = false;
+  let mailingAddressData = null;
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty) {
     inputCounty = (unnorm.county_name || "").trim();
   }
   const county_name = inputCounty || null;
   if (mailingAddress) {
-    const mailingAddressObj = {
+    mailingAddressData = {
       unnormalized_address: mailingAddress,
     };
-    writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
-    hasOwnerMailingAddress = true;
   }
   if (siteAddress) {
     const addressObj = {
@@ -3632,7 +3630,7 @@ function attemptWriteAddress(unnorm, siteAddress, mailingAddress) {
                 from: { "/": `./property.json` },
               });
   }
-  return hasOwnerMailingAddress;
+  return mailingAddressData;
 }
 /**
  * Minimal Geometry model that mirrors the Elephant Geometry class.
@@ -3900,7 +3898,7 @@ function main() {
 
   const addressText = extractAddressText($);
   const mailingAddress = extractOwnerMailingAddress($);
-  const hasOwnerMailingAddress = attemptWriteAddress(unaddr, addressText, mailingAddress);
+  const mailingAddressData = attemptWriteAddress(unaddr, addressText, mailingAddress);
 
   // Lot
   const lot = extractLot($);
@@ -3974,7 +3972,11 @@ function main() {
   const usedCompanyIndices = new Set();
 
   // Mark current owners with mailing address as used
+  // Only write mailing_address.json if there are current owners to link it to
+  const hasCurrentOwners = pc.personCurrentOwners.length > 0 || pc.companyCurrentOwners.length > 0;
+  const hasOwnerMailingAddress = mailingAddressData && hasCurrentOwners;
   if (hasOwnerMailingAddress) {
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddressData);
     pc.personCurrentOwners.forEach((idx) => {
       usedPersonIndices.add(idx);
     });
