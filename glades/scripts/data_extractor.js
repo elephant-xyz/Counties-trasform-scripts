@@ -2303,46 +2303,64 @@ function main() {
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($)
   console.log("MAILING--",mailingAddressRaw);
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
 
-  // Create mailing address relationships with current owners
+  // Only create mailing address and relationships if we have owners to link it to
   const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (owners) {
+  if (owners && parcelId) {
     const key = `property_${parcelId}`;
     const record = owners[key];
     if (record && record.owners_by_date && record.owners_by_date['current']) {
       const currentOwners = record.owners_by_date['current'];
+      let hasValidOwners = false;
+
+      // Check if we have at least one valid owner to create a relationship
       currentOwners.forEach((owner) => {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-          if (pIdx) {
-            usedPersonIdx.add(pIdx);
-            writeJSON(
-              path.join("data", `relationship_person_${pIdx}_has_mailing_address.json`),
-              {
-                from: { "/": `./person_${pIdx}.json` },
-                to: { "/": "./mailing_address.json" },
-              }
-            );
-          }
+          if (pIdx) hasValidOwners = true;
         } else if (owner.type === "company") {
           const cIdx = findCompanyIndexByName(owner.name);
-          if (cIdx) {
-            usedCompanyIdx.add(cIdx);
-            writeJSON(
-              path.join("data", `relationship_company_${cIdx}_has_mailing_address.json`),
-              {
-                from: { "/": `./company_${cIdx}.json` },
-                to: { "/": "./mailing_address.json" }
-              }
-            );
-          }
+          if (cIdx) hasValidOwners = true;
         }
       });
+
+      // Only write mailing_address.json if we have at least one owner to link it to
+      if (hasValidOwners && mailingAddressRaw) {
+        const mailingAddressOutput = {
+          ...appendSourceInfo(seed),
+          unnormalized_address: mailingAddressRaw.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+        };
+        writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+
+        // Create mailing address relationships with current owners
+        currentOwners.forEach((owner) => {
+          if (owner.type === "person") {
+            const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
+            if (pIdx) {
+              usedPersonIdx.add(pIdx);
+              writeJSON(
+                path.join("data", `relationship_person_${pIdx}_has_mailing_address.json`),
+                {
+                  from: { "/": `./person_${pIdx}.json` },
+                  to: { "/": "./mailing_address.json" },
+                }
+              );
+            }
+          } else if (owner.type === "company") {
+            const cIdx = findCompanyIndexByName(owner.name);
+            if (cIdx) {
+              usedCompanyIdx.add(cIdx);
+              writeJSON(
+                path.join("data", `relationship_company_${cIdx}_has_mailing_address.json`),
+                {
+                  from: { "/": `./company_${cIdx}.json` },
+                  to: { "/": "./mailing_address.json" }
+                }
+              );
+            }
+          }
+        });
+      }
     }
   }
 
