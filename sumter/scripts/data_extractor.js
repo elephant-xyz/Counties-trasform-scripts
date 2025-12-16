@@ -1426,10 +1426,10 @@ function writeSalesDeedsFilesAndRelationships($) {
     const pageValue = bookPageParts[1] ? String(bookPageParts[1]).trim() : null;
 
     if (bookValue && bookValue.length > 0) {
-      deed.book = bookValue;
+      deed.book = String(bookValue);
     }
     if (pageValue && pageValue.length > 0) {
-      deed.page = pageValue;
+      deed.page = String(pageValue);
     }
 
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
