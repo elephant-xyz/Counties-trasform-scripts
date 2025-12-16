@@ -835,8 +835,8 @@ function titleCaseName(s) {
   }
   cleaned = cleaned.trim();
 
-  // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  if (!cleaned || !/^[A-Z][a-z]*([\s\-',.][A-Za-z][a-z]*)*$/.test(cleaned)) return null;
+  // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  if (!cleaned || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(cleaned)) return null;
   return cleaned;
 }
 
