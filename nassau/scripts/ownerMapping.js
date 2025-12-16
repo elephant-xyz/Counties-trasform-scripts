@@ -196,7 +196,7 @@ function isCompanyName(name) {
   // More strict matching - require word boundaries for most keywords
   const strictKeywords = [
     "\\binc\\b", "\\bllc\\b", "\\bl\\.l\\.c\\b", "\\bltd\\b", "\\bcorp\\b", "\\bcorporation\\b",
-    "\\bplc\\b", "\\bpc\\b", "\\bp\\.c\\.\\b", "\\bpllc\\b", "\\bllp\\b", "\\blp\\b", "\\bco\\b",
+    "\\bplc\\b", "\\bpc\\b", "\\bp\\.c\\.\\b", "\\bpllc\\b", "\\blllp\\b", "\\bllp\\b", "\\blp\\b", "\\bco\\b",
     "\\btrust\\b", "\\btr\\b", "\\bfoundation\\b", "\\bfund\\b", "\\bpartnership\\b",
     "\\bholdings\\b", "\\bholding\\b", "\\bassociation\\b", "\\bassociates\\b",
     "\\bbank\\b", "\\bn\\.a\\.\\b", "\\bna\\b", "\\bchurch\\b", "\\bschool\\b", "\\bdistrict\\b",
