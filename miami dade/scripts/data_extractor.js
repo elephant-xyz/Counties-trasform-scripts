@@ -2103,13 +2103,6 @@ function main() {
 
   writeJson(path.join("data", "address.json"), address);
 
-  // Create relationship: property has address
-  const relPropertyAddress = {
-    from: { "/": "./property.json" },
-    to: { "/": "./address.json" },
-  };
-  writeJson(path.join("data", "relationship_property_has_address.json"), relPropertyAddress);
-
   // LOT
   const lotSizeRaw = pInfo.LotSize;
   let lotSize = null;
