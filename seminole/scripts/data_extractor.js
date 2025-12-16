@@ -94,6 +94,90 @@ function pickFirstString(source, keys) {
   return null;
 }
 
+function normalizeSuffix(suffix) {
+  if (!suffix) return null;
+  const s = String(suffix).trim().toUpperCase();
+  if (!s) return null;
+
+  // Mapping of common variations to allowed enum values
+  const suffixMap = {
+    "JR": "Jr.",
+    "JR.": "Jr.",
+    "JUNIOR": "Jr.",
+    "SR": "Sr.",
+    "SR.": "Sr.",
+    "SENIOR": "Sr.",
+    "II": "II",
+    "2ND": "II",
+    "SECOND": "II",
+    "III": "III",
+    "3RD": "III",
+    "THIRD": "III",
+    "IV": "IV",
+    "4TH": "IV",
+    "FOURTH": "IV",
+    "PHD": "PhD",
+    "PH.D.": "PhD",
+    "PH.D": "PhD",
+    "MD": "MD",
+    "M.D.": "MD",
+    "M.D": "MD",
+    "ESQ": "Esq.",
+    "ESQ.": "Esq.",
+    "ESQUIRE": "Esq.",
+    "JD": "JD",
+    "J.D.": "JD",
+    "J.D": "JD",
+    "LLM": "LLM",
+    "LL.M.": "LLM",
+    "LL.M": "LLM",
+    "MBA": "MBA",
+    "M.B.A.": "MBA",
+    "M.B.A": "MBA",
+    "RN": "RN",
+    "R.N.": "RN",
+    "R.N": "RN",
+    "DDS": "DDS",
+    "D.D.S.": "DDS",
+    "D.D.S": "DDS",
+    "DVM": "DVM",
+    "D.V.M.": "DVM",
+    "D.V.M": "DVM",
+    "CFA": "CFA",
+    "C.F.A.": "CFA",
+    "C.F.A": "CFA",
+    "CPA": "CPA",
+    "C.P.A.": "CPA",
+    "C.P.A": "CPA",
+    "PE": "PE",
+    "P.E.": "PE",
+    "P.E": "PE",
+    "PMP": "PMP",
+    "P.M.P.": "PMP",
+    "P.M.P": "PMP",
+    "EMERITUS": "Emeritus",
+    "RET": "Ret.",
+    "RET.": "Ret.",
+    "RETIRED": "Ret.",
+  };
+
+  const mapped = suffixMap[s];
+  if (mapped) return mapped;
+
+  // If already in correct format, return as-is
+  const allowedValues = [
+    "Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM",
+    "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."
+  ];
+
+  for (const allowed of allowedValues) {
+    if (allowed.toUpperCase() === s) return allowed;
+  }
+
+  // Return null if no match found - validation will catch this
+  return null;
+}
+
 const DEED_TYPE_EXACT_MAP = new Map([
   ["WARRANTY DEED", "Warranty Deed"],
   ["GENERAL WARRANTY DEED", "Warranty Deed"],
@@ -3453,7 +3537,7 @@ function main() {
             last_name: properCaseName(owner.last_name || null),
             middle_name: middleNameValid,
             prefix_name: null,
-            suffix_name: owner.suffix_name || null,
+            suffix_name: normalizeSuffix(owner.suffix_name),
             us_citizenship_status: null,
             veteran_status: null,
             request_identifier: requestIdentifier,
