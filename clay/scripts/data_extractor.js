@@ -1496,20 +1496,25 @@ function writeProperty($, parcelId) {
     return false;
   });
   console.log(">>>",propertyMapping)
-
+  
   const propertyFields = {
-    property_type: propertyMapping?.property_type || "MAPPING NOT AVAILABLE",
+    property_type: propertyMapping?.property_type || null,
     property_usage_type: propertyMapping?.property_usage_type || null,
     ownership_estate_type: propertyMapping?.ownership_estate_type || null,
     structure_form: propertyMapping?.structure_form || null,
-    build_status: propertyMapping?.build_status || "MAPPING NOT AVAILABLE"
+    build_status: propertyMapping?.build_status || null
   };
-
+    
   // const propertyType = mapPropertyTypeFromUseCode(useCode);
   // console.log(propertyType)
 
-  if (!propertyMapping) {
-    console.log("Property type mapping not found. Property type and build_status set to MAPPING NOT AVAILABLE.");
+  if (!propertyFields?.property_type) {
+    console.log("Property type mapping not found.all property new fields would be set to null. ");
+    // throw {
+    //   type: "error",
+    //   message: `Unknown enum value ${useCode}.`,
+    //   path: "property.property_type",
+    // };
   }
 
   const years = extractBuildingYears($);
@@ -2230,10 +2235,13 @@ function attemptWriteAddressAndGeometry($, unnorm, secTwpRng) {
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
   const county_name = inputCounty || "Clay" || null;
 
-  // Use ONLY unnormalized_address (no normalized fields) to comply with oneOf constraint
   const address = {
       ...appendSourceInfo(seed),
-      unnormalized_address: full
+      county_name,
+      unnormalized_address: full,
+      township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
+      range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
+      section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
     };
   writeJSON(path.join("data", "address.json"), address);
 
