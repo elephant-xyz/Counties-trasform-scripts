@@ -297,6 +297,7 @@ function getCurrentOwners() {
   if (ownersField && ownersField.valueHtml) {
     const segments = ownersField.valueHtml
       .replace(/<\/?strong[^>]*>/gi, "")
+      .replace(/<a[^>]*>.*?<\/a>/gi, "")
       .split(/<br\s*\/?\s*>/i)
       .map((seg) => cleanName(cheerio.load(`<div>${seg}</div>`)("div").text()))
       .filter(Boolean);
