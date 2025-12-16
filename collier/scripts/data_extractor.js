@@ -813,12 +813,13 @@ function main() {
           companyFiles.push(filename);
           companyIdx++;
         } else if (owner.type === "person") {
-          const middleNameCap = owner.middle_name ? capitalizeProperName(owner.middle_name) : "";
           const person = {
             birth_date: owner.birth_date || null,
             first_name: capitalizeProperName(owner.first_name) || "",
             last_name: capitalizeProperName(owner.last_name) || "",
-            middle_name: (middleNameCap && /^[A-Z]/.test(middleNameCap)) ? middleNameCap : null,
+            middle_name: owner.middle_name
+              ? capitalizeProperName(owner.middle_name)
+              : null,
             prefix_name: owner.prefix_name || null,
             suffix_name: owner.suffix_name || null,
             us_citizenship_status: owner.us_citizenship_status || null,
