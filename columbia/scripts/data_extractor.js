@@ -1748,6 +1748,10 @@ const specificDocumentTypeMap = {
     number_of_units_type_from_map ??
     getNumberOfUnitsTypeFromStructure(structure_form_mapped);
 
+  const derivedBuildStatus =
+    build_status_mapped ||
+    (livable || effYear ? "Improved" : "VacantLand");
+
   const prop = {
     source_http_request: {
       method: "GET",
@@ -1760,7 +1764,7 @@ const specificDocumentTypeMap = {
     property_structure_built_year: effYear || null,
     property_effective_built_year: effYear || null,
     ownership_estate_type: ownership_estate_type_mapped ?? null,
-    build_status: build_status_mapped ?? null,
+    build_status: derivedBuildStatus,
     property_usage_type: property_usage_type_mapped ?? null,
     structure_form: structure_form_mapped ?? null,
     property_type: property_type_mapped ?? null,
@@ -2729,23 +2733,23 @@ const specificDocumentTypeMap = {
   try {
     if (unnormalizedAddress && unnormalizedAddress.full_address) {
       const full = unnormalizedAddress.full_address.trim();
-      let section = null,
-        township = null,
-        range = null;
-      // Updated selector for S/T/R
+      let section = null;
+      let township = null;
+      let range = null;
+
       const strTxt = $('td:contains("S/T/R")')
         .filter((i, el) => $(el).text().trim().startsWith("S/T/R"))
         .first()
         .next()
         .text()
-        .trim(); // "10-5S-16"
-      if (strTxt && /\d{1,2}-\d{1,2}[A-Z]?-\d{1,2}/.test(strTxt)) { // Updated regex for "10-5S-16" or "10-5-16"
-        const parts2 = strTxt.split("-");
-        section = parts2[0];
-        township = parts2[1]; // e.g., "5S"
-        range = parts2[2]; // e.g., "16"
-      }
+        .trim();
 
+      if (strTxt && /\d{1,2}-\d{1,2}[A-Z]?-\d{1,2}/.test(strTxt)) {
+        const parts2 = strTxt.split("-");
+        section = parts2[0] || null;
+        township = parts2[1] || null;
+        range = parts2[2] || null;
+      }
       const sourceHttp =
         (propertySeed && propertySeed.source_http_request
           ? JSON.parse(JSON.stringify(propertySeed.source_http_request))
@@ -2763,24 +2767,24 @@ const specificDocumentTypeMap = {
         (unnormalizedAddress ? unnormalizedAddress.request_identifier : null) ||
         null;
 
+      const countyName =
+        (unnormalizedAddress &&
+          unnormalizedAddress.county_jurisdiction &&
+          String(unnormalizedAddress.county_jurisdiction).trim()) ||
+        (propertySeed &&
+          propertySeed.county_name &&
+          String(propertySeed.county_name).trim()) ||
+        "Columbia";
+
       writeJson(path.join("data", "address.json"), {
-        unit_identifier: null,
-        city_name: null,
-        state_code: null,
-        postal_code: null,
-        plus_four_postal_code: null,
-        county_name: "Columbia",
-        country_code: "US",
-        route_number: null,
-        township: township || null,
-        range: range || null,
-        section: section || null,
-        lot: null,
-        block: null,
-        municipality_name: null,
         unnormalized_address: full || null,
         source_http_request: sourceHttp,
         request_identifier: requestIdentifier,
+        county_name: countyName || null,
+        country_code: "US",
+        section: section || null,
+        township: township || null,
+        range: range || null,
       });
 
       const latitude =
