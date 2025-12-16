@@ -1727,8 +1727,16 @@ function extractOwnerInfo(ownershipHtml) {
         .replace(/\s+CUSTODIAN.*$/i, '') // Remove "CUSTODIAN" and anything after
         .trim();
 
-      // Split by & to handle multiple owners on same line
-      const namesParts = cleanName.split(/\s*&\s*/);
+      // Check if the original cleanName contains company keywords before splitting
+      // This prevents splitting company names like "E3 LAND & MINERALS LLC" into person names
+      let namesParts;
+      if (companyIndicators.test(cleanName)) {
+        // If the original string is a company, don't split it
+        namesParts = [cleanName];
+      } else {
+        // Split by & to handle multiple owners on same line
+        namesParts = cleanName.split(/\s*&\s*/);
+      }
 
       for (const namePart of namesParts) {
         const trimmedName = namePart.trim();

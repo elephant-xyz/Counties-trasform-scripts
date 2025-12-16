@@ -3,7 +3,9 @@ const path = require("path");
 const cheerio = require("cheerio");
 
 // Read HTML input
-const html = fs.readFileSync("input.html", "utf8");
+const htmlFiles = fs.readdirSync(".").filter(f => f.endsWith(".html"));
+const htmlFile = htmlFiles.length > 0 ? htmlFiles[0] : "input.html";
+const html = fs.readFileSync(htmlFile, "utf8");
 const $ = cheerio.load(html);
 
 // Utility: normalize whitespace
@@ -73,8 +75,12 @@ function formatMiddleName(str) {
   const cleaned = str.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
   if (!cleaned || cleaned.length === 0) return "";
 
+  // Remove leading special characters to ensure it starts with a letter
+  const startsWithLetter = cleaned.replace(/^[\s\-',.]+/, "");
+  if (!startsWithLetter || startsWithLetter.length === 0) return "";
+
   // Normalize spacing: collapse multiple spaces into one
-  const normalizedSpacing = cleaned.replace(/\s+/g, " ").trim();
+  const normalizedSpacing = startsWithLetter.replace(/\s+/g, " ").trim();
   if (!normalizedSpacing) return "";
 
   // Title case each word: capitalize first letter of each word, lowercase the rest
@@ -83,7 +89,16 @@ function formatMiddleName(str) {
   const result = normalizedSpacing
     .toLowerCase()
     .split(/\s+/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map(word => {
+      // Find the first letter in the word and capitalize it
+      const firstLetterIndex = word.search(/[a-z]/);
+      if (firstLetterIndex === -1) return ""; // No letters found, skip this word
+
+      // Skip leading special characters and capitalize first letter
+      const letterPart = word.substring(firstLetterIndex);
+      return letterPart.charAt(0).toUpperCase() + letterPart.slice(1);
+    })
+    .filter(Boolean) // Remove empty strings
     .join(" ");
 
   // Validate against the middle name pattern ^[A-Z][a-zA-Z\s\-',.]*$
@@ -424,13 +439,37 @@ function buildOwnersByDate($) {
   const sales = extractSalesHistory($);
 
   for (const { date, grantee } of sales) {
-    const parts = splitJointOwners(grantee);
+    // Check if the ORIGINAL grantee string contains company keywords before splitting
+    // This prevents splitting company names like "E3 LAND & MINERALS LLC" into person names
+    const cleanedGrantee = normalizeSpace(
+      grantee
+        .replace(/\.$/, "")
+        .replace(/\s*\([^)]*\)\s*$/, "")
+        .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|AS\s+TRUSTEE|CUSTODIAN)\b.*$/i, "")
+    ).trim();
+
+    // If the original string is clearly a company (has LLC, INC, etc.), don't split it
+    let parts;
+    if (isCompanyName(cleanedGrantee) || /\b(revocable|living)\b\s*\btrust\b/i.test(cleanedGrantee)) {
+      parts = [grantee];
+    } else {
+      parts = splitJointOwners(grantee);
+    }
+
     const owners = [];
 
     // Parse each owner independently
 
     for (let idx = 0; idx < parts.length; idx++) {
       const raw = parts[idx];
+
+      // Detect and skip corrupted names with semicolons or other suspicious patterns
+      if (/[;]/.test(raw)) {
+        console.log(`Debug: Skipping corrupted name with semicolon: '${raw}'`);
+        invalid.push({ raw, reason: "corrupted_name_with_semicolon" });
+        continue;
+      }
+
       // Remove legal designations and parenthetical content
       const clean = normalizeSpace(
         raw
@@ -458,7 +497,7 @@ function buildOwnersByDate($) {
         }
         continue;
       }
-      
+
       // Debug: Check if it's a person name that failed looksLikePerson
       console.log(`Debug: '${clean}' failed looksLikePerson check`);
 
