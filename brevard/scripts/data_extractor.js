@@ -4056,7 +4056,7 @@ function main() {
   const property = {
     ...appendSourceInfo(seed),
     number_of_units: bldgDetails.numberOfUnits ?? null,
-    parcel_identifier: parcelId || "",
+    parcel_identifier: parcelId && parcelId.trim() ? parcelId.trim() : "UNKNOWN",
     property_legal_description_text: legalDesc || null,
     property_structure_built_year: bldgDetails.yearBuilt ?? null,
     property_type: property_type, // Always a valid string after validation above
@@ -4553,6 +4553,13 @@ function main() {
   writeJSON(path.join(dataDir, "lot.json"), lotOut);
 
   // ---------- Property Relationships ----------
+  // Create property_has_lot relationship
+  const relPropertyLot = {
+    from: { "/": "./property.json" },
+    to: { "/": "./lot.json" }
+  };
+  writeJSON(path.join(dataDir, "relationship_property_lot.json"), relPropertyLot);
+
   // Create property_has_address relationship
   const relPropertyAddress = {
     from: { "/": "./property.json" },
