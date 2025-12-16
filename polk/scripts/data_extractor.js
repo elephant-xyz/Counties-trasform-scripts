@@ -44,17 +44,106 @@ function extractNumberAsString(text) {
   return cleaned || null; // Return null if no digits are found after cleaning
 }
 
-// Helper function to capitalize the first letter of each word
+// Helper function to capitalize the first letter of each word, handling apostrophes
 function toTitleCase(str) {
   if (!str) return "";
   // Trim the string first to remove leading/trailing spaces
   const trimmed = str.trim();
   if (!trimmed) return "";
+
   return trimmed
     .toLowerCase()
     .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) => {
+      // Handle words with apostrophes (e.g., O'Connor, D'Angelo)
+      if (word.includes("'")) {
+        return word
+          .split("'")
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join("'");
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
     .join(" ");
+}
+
+// Fix names with space before apostrophe (e.g., "O 'CONNOR" -> "O'CONNOR")
+function fixApostropheName(name) {
+  if (!name) return name;
+  // Remove space before apostrophe
+  return name.replace(/\s+'/g, "'");
+}
+
+// Parse grantee name from "LAST FIRST MIDDLE" format
+function parseGranteeName(granteeText) {
+  if (!granteeText) return null;
+
+  // Fix apostrophe spacing issues
+  const fixed = fixApostropheName(granteeText);
+
+  // Split by spaces
+  const parts = fixed.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+
+  let firstName = null;
+  let middleName = null;
+  let lastName = null;
+  let suffixName = null;
+
+  if (parts.length === 1) {
+    // Only one part, treat as last name
+    lastName = toTitleCase(parts[0]);
+  } else if (parts.length === 2) {
+    // LAST FIRST format
+    lastName = toTitleCase(parts[0]);
+    firstName = toTitleCase(parts[1]);
+  } else if (parts.length === 3) {
+    // LAST FIRST MIDDLE format
+    lastName = toTitleCase(parts[0]);
+    firstName = toTitleCase(parts[1]);
+    // Check if third part is a suffix
+    const possibleSuffix = normalizeSuffix(parts[2]);
+    if (possibleSuffix) {
+      suffixName = possibleSuffix;
+    } else {
+      middleName = toTitleCase(parts[2]);
+    }
+  } else {
+    // LAST FIRST MIDDLE SUFFIX or more complex
+    lastName = toTitleCase(parts[0]);
+    firstName = toTitleCase(parts[1]);
+
+    // Check if last part is a suffix
+    const possibleSuffix = normalizeSuffix(parts[parts.length - 1]);
+    if (possibleSuffix) {
+      suffixName = possibleSuffix;
+      // Middle name(s) are everything between first and suffix
+      if (parts.length > 3) {
+        middleName = parts.slice(2, parts.length - 1).map(p => toTitleCase(p)).join(" ");
+      }
+    } else {
+      // No suffix, middle name(s) are everything after first
+      middleName = parts.slice(2).map(p => toTitleCase(p)).join(" ");
+    }
+  }
+
+  // Validate first_name and last_name match the required pattern
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (firstName && !namePattern.test(firstName)) {
+    // If first_name doesn't match, try to fix it
+    firstName = toTitleCase(firstName);
+  }
+  if (lastName && !namePattern.test(lastName)) {
+    // If last_name doesn't match, try to fix it
+    lastName = toTitleCase(lastName);
+  }
+
+  return {
+    first_name: firstName,
+    middle_name: middleName,
+    last_name: lastName,
+    suffix_name: suffixName
+  };
 }
 
 // Valid suffix values according to Elephant schema
@@ -3403,7 +3492,8 @@ function extractSales($) {
       const link = $(tds[0]).find("a").last().attr("href") || null;
       const instTypeRaw = tds.eq(2).text().trim();
       const instrumentType = mapInstrumentToDeedType(instTypeRaw);
-      const grantee = tds.eq(4).text().trim();
+      const granteeRaw = tds.eq(4).text().trim();
+      const parsedGrantee = parseGranteeName(granteeRaw);
       const priceText = tds.eq(5).text().trim();
       const price = parseCurrencyToNumber(priceText);
       let isoDate = null;
@@ -3413,9 +3503,10 @@ function extractSales($) {
         const yyyy = dm[2];
         isoDate = `${yyyy}-${mm}-01`;
       }
-      if (price !== null || grantee || dateText) {
+      if (price !== null || granteeRaw || dateText) {
         sales.push({
-          grantee,
+          grantee: granteeRaw,
+          parsedGrantee,
           dateText,
           ownership_transfer_date: isoDate,
           purchase_price_amount: price,
@@ -3942,6 +4033,11 @@ function main() {
 
   // Sales
   const sales = extractSales($);
+
+  // Collect persons from sales grantees
+  const salesPersons = [];
+  const salesPersonMap = new Map(); // Map from name key to person index
+
   sales.forEach((s, idx) => {
     const saleOut = {
       ownership_transfer_date: s.ownership_transfer_date || null,
@@ -3956,7 +4052,7 @@ function main() {
       deed.page = s.page;
     }
     writeJSON(path.join("data", `deed_${idx + 1}.json`), deed);
-    
+
     let fileName = deed.book && deed.page ? `${deed.book}/${deed.page}` : null;
     const file = {
       document_type: "Title",
@@ -3983,6 +4079,45 @@ function main() {
       path.join("data", `relationship_sales_history_deed_${idx + 1}.json`),
       relSalesDeed,
     );
+
+    // Create person from grantee if available
+    if (s.parsedGrantee && s.parsedGrantee.first_name && s.parsedGrantee.last_name) {
+      const pg = s.parsedGrantee;
+      const personKey = `${pg.first_name}|${pg.middle_name || ""}|${pg.last_name}|${pg.suffix_name || ""}`;
+
+      // Only create person if not already created
+      if (!salesPersonMap.has(personKey)) {
+        const person = {
+          birth_date: null,
+          first_name: pg.first_name,
+          last_name: pg.last_name,
+          middle_name: pg.middle_name || null,
+          prefix_name: null,
+          suffix_name: pg.suffix_name || null,
+          us_citizenship_status: null,
+          veteran_status: null,
+        };
+        salesPersons.push(person);
+        salesPersonMap.set(personKey, salesPersons.length); // 1-based index
+      }
+
+      // Create relationship from sales_history to person
+      const personIdx = salesPersonMap.get(personKey);
+      const relSalesPerson = {
+        from: { "/": `./sales_history_${idx + 1}.json` },
+        to: { "/": `./person_${personIdx}.json` },
+      };
+      writeJSON(
+        path.join("data", `relationship_sales_history_has_person_${idx + 1}.json`),
+        relSalesPerson,
+      );
+    }
+  });
+
+  // Write person files for sales grantees
+  salesPersons.forEach((person, i) => {
+    const personIdx = i + 1;
+    writeJSON(path.join("data", `person_${personIdx}.json`), person);
   });
 
   // Owners (persons/companies)
