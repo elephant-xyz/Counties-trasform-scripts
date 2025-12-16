@@ -566,14 +566,6 @@ const propertyTypeMapping = [
     "structure_form": null,
     "property_usage_type": "WholesaleOutlet",
     "property_type": "Building"
-  },
-  {
-    "property_usecode": "INSURANCE COMP",
-    "ownership_estate_type": "FeeSimple",
-    "build_status": "Improved",
-    "structure_form": null,
-    "property_usage_type": "OfficeBuilding",
-    "property_type": "Building"
   }
 ]
 
@@ -2049,7 +2041,10 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng) {
   const address = {
     ...appendSourceInfo(seed),
     county_name,
-    unnormalized_address: full
+    unnormalized_address: full,
+    township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
+    range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
+    section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
   };
   writeJSON(path.join("data", "address.json"), address);
 
@@ -2133,32 +2128,6 @@ function main() {
   const secTwpRng = extractSecTwpRng($);
   // console.log("secTwpRng",secTwpRng)
   attemptWriteAddressAndGeometry(unnormalized, secTwpRng);
-
-  // Create relationship between property and address
-  const relPropertyAddress = {
-    from: { "/": "./property.json" },
-    to: { "/": "./address.json" }
-  };
-  writeJSON(path.join("data", "relationship_property_has_address.json"), relPropertyAddress);
-
-  // Create relationships between property and layouts
-  if (parcelId) {
-    const layoutsData = readJSON(path.join("owners", "layout_data.json"));
-    if (layoutsData) {
-      const key = `property_${parcelId}`;
-      const layouts = layoutsData[key]?.layouts || [];
-      layouts.forEach((layout, idx) => {
-        const relPropertyLayout = {
-          from: { "/": "./property.json" },
-          to: { "/": `./layout_${idx + 1}.json` }
-        };
-        writeJSON(
-          path.join("data", `relationship_property_has_layout_${idx + 1}.json`),
-          relPropertyLayout
-        );
-      });
-    }
-  }
 
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($)
