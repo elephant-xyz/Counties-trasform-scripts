@@ -4358,7 +4358,70 @@ function main() {
     }
   }
 
+  // Remove unused person and company files
+  removeUnusedOwnerFiles();
+}
 
+function removeUnusedOwnerFiles() {
+  const dataDir = "data";
+  try {
+    const files = fs.readdirSync(dataDir);
+
+    // Track which persons and companies are referenced in relationships
+    const referencedPersons = new Set();
+    const referencedCompanies = new Set();
+
+    // Read all relationship files to find references
+    files.forEach((file) => {
+      if (file.startsWith("relationship_") && file.endsWith(".json")) {
+        try {
+          const relPath = path.join(dataDir, file);
+          const relContent = fs.readFileSync(relPath, "utf8");
+          const rel = JSON.parse(relContent);
+
+          // Check "from" and "to" for person/company references
+          [rel.from, rel.to].forEach((ref) => {
+            if (ref && ref["/"]) {
+              const target = ref["/"];
+              // Match person_X.json or ./person_X.json
+              const personMatch = target.match(/(?:\.\/)?person_(\d+)\.json/);
+              if (personMatch) {
+                referencedPersons.add(parseInt(personMatch[1], 10));
+              }
+              // Match company_X.json or ./company_X.json
+              const companyMatch = target.match(/(?:\.\/)?company_(\d+)\.json/);
+              if (companyMatch) {
+                referencedCompanies.add(parseInt(companyMatch[1], 10));
+              }
+            }
+          });
+        } catch (e) {
+          // Skip files that can't be read or parsed
+        }
+      }
+    });
+
+    // Remove unreferenced person and company files
+    files.forEach((file) => {
+      const personMatch = file.match(/^person_(\d+)\.json$/);
+      if (personMatch) {
+        const idx = parseInt(personMatch[1], 10);
+        if (!referencedPersons.has(idx)) {
+          fs.unlinkSync(path.join(dataDir, file));
+        }
+      }
+
+      const companyMatch = file.match(/^company_(\d+)\.json$/);
+      if (companyMatch) {
+        const idx = parseInt(companyMatch[1], 10);
+        if (!referencedCompanies.has(idx)) {
+          fs.unlinkSync(path.join(dataDir, file));
+        }
+      }
+    });
+  } catch (e) {
+    // If data directory doesn't exist or can't be read, skip cleanup
+  }
 }
 
 if (require.main === module) {
