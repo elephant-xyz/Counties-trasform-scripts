@@ -1785,171 +1785,12 @@ function main() {
     writeJSON(path.join(dataDir, filename), data);
   });
 
+  // Property improvements are not supported in this data group (no valid relationship type)
+  // Commenting out property improvement extraction to avoid validation errors
   const propertyImprovementOutputs = [];
-  const permitEntries = parsePermitTable($);
-  permitEntries.forEach((permit, idx) => {
-    const improvementType = mapPermitImprovementType(permit.type);
-    const improvementStatus = mapPermitImprovementStatus(permit.active);
-    const improvementAction = mapPermitImprovementAction(permit.type);
-    const contractorType = mapPermitContractorType(permit.primary);
-    const permitIssueDate = toISOFromMDY(permit.issueDate);
-    const permitNumber =
-      permit.permitNumber && permit.permitNumber.length
-        ? permit.permitNumber
-        : null;
-    const completionDate =
-      improvementStatus === "Completed" ? permitIssueDate : null;
-
-    const baseRequestId =
-      requestIdentifier || permitNumber || parcelId || propId || "permit";
-    const improvementRequestId = permitNumber
-      ? `${baseRequestId}-${permitNumber}`
-      : `${baseRequestId}-permit-${idx + 1}`;
-
-    const improvement = {
-      improvement_type: improvementType || null,
-      improvement_status: improvementStatus || null,
-      improvement_action: improvementAction,
-      permit_number: permitNumber,
-      permit_issue_date: permitIssueDate,
-      completion_date: completionDate,
-      contractor_type: contractorType || "Unknown",
-      permit_required: permitNumber ? true : null,
-      request_identifier: improvementRequestId,
-    };
-
-    // Ensure improvement_type is always a valid enum value or null
-    const validImprovementTypes = [
-      "GeneralBuilding", "ResidentialConstruction", "CommercialConstruction",
-      "BuildingAddition", "StructureMove", "Demolition", "PoolSpaInstallation",
-      "Electrical", "MechanicalHVAC", "GasInstallation", "Roofing", "Fencing",
-      "DockAndShore", "FireProtectionSystem", "Plumbing", "ExteriorOpeningsAndFinishes",
-      "MobileHomeRV", "LandscapeIrrigation", "ScreenEnclosure", "ShutterAwning",
-      "SiteDevelopment", "CodeViolation", "Complaint", "ContractorLicense",
-      "Sponsorship", "StateLicenseRegistration", "AdministrativeApproval",
-      "AdministrativeAppeal", "BlueSheetHearing", "PlannedDevelopment",
-      "DevelopmentOfRegionalImpact", "Rezoning", "SpecialExceptionZoning",
-      "Variance", "ZoningExtension", "ZoningVerificationLetter", "RequestForRelief",
-      "WaiverRequest", "InformalMeeting", "EnvironmentalMonitoring", "Vacation",
-      "VegetationRemoval", "ComprehensivePlanAmendment", "MinimumUseDetermination",
-      "TransferDevelopmentRightsDetermination", "MapBoundaryDetermination",
-      "TransferDevelopmentRightsCertificate", "UniformCommunityDevelopment",
-      "SpecialCertificateOfAppropriateness", "CertificateToDig", "HistoricDesignation",
-      "PlanningAdministrativeAppeal", "WellPermit", "Solar", "TestBoring",
-      "ExistingWellInspection", "NaturalResourcesComplaint", "NaturalResourcesViolation",
-      "LetterWaterSewer", "UtilitiesConnection", "DrivewayPermit", "RightOfWayPermit"
-    ];
-
-    // Validate and normalize improvement_type BEFORE creating the cleaned object
-    let normalizedImprovementType = improvement.improvement_type;
-
-    // Convert invalid values to null
-    if (normalizedImprovementType === undefined ||
-        normalizedImprovementType === null ||
-        (typeof normalizedImprovementType === "string" && normalizedImprovementType.trim() === "")) {
-      normalizedImprovementType = null;
-    }
-
-    // If not null, ensure it's a valid enum value
-    if (normalizedImprovementType !== null) {
-      // Trim whitespace if it's a string
-      if (typeof normalizedImprovementType === "string") {
-        normalizedImprovementType = normalizedImprovementType.trim();
-      }
-      // If not in valid list, set to null
-      if (!validImprovementTypes.includes(normalizedImprovementType)) {
-        normalizedImprovementType = null;
-      }
-    }
-
-    const cleanedImprovement = {};
-    Object.entries(improvement).forEach(([key, value]) => {
-      if (value === undefined) return;
-      if (value === null) {
-        cleanedImprovement[key] = null;
-        return;
-      }
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        cleanedImprovement[key] = trimmed || null;
-        return;
-      }
-      cleanedImprovement[key] = value;
-    });
-
-    // Apply the normalized improvement_type
-    cleanedImprovement.improvement_type = normalizedImprovementType;
-
-    // FINAL VALIDATION: Ensure improvement_type is either null or a valid enum value
-    // Never allow empty strings, whitespace-only strings, or other invalid values
-    if (cleanedImprovement.improvement_type !== null) {
-      const finalValue = cleanedImprovement.improvement_type;
-      // Check if it's a string
-      if (typeof finalValue !== "string") {
-        cleanedImprovement.improvement_type = null;
-      } else {
-        // Trim and check if empty
-        const trimmedFinal = finalValue.trim();
-        if (trimmedFinal === "" || !validImprovementTypes.includes(trimmedFinal)) {
-          cleanedImprovement.improvement_type = null;
-        } else {
-          // Ensure the stored value is trimmed
-          cleanedImprovement.improvement_type = trimmedFinal;
-        }
-      }
-    }
-
-    // FINAL VALIDATION: Ensure improvement_status is either null or a valid enum value
-    const validImprovementStatuses = [
-      "Completed", "InProgress", "Planned", "Permitted", "OnHold", "Cancelled"
-    ];
-
-    if (cleanedImprovement.improvement_status !== null && cleanedImprovement.improvement_status !== undefined) {
-      const statusValue = cleanedImprovement.improvement_status;
-      // Check if it's a string
-      if (typeof statusValue !== "string") {
-        cleanedImprovement.improvement_status = null;
-      } else {
-        // Trim and check if empty or invalid
-        const trimmedStatus = statusValue.trim();
-        if (trimmedStatus === "" || !validImprovementStatuses.includes(trimmedStatus)) {
-          cleanedImprovement.improvement_status = null;
-        } else {
-          // Ensure the stored value is trimmed
-          cleanedImprovement.improvement_status = trimmedStatus;
-        }
-      }
-    }
-
-    // Skip if no valid improvement_type and no permit_number
-    if (cleanedImprovement.improvement_type === null && !cleanedImprovement.permit_number) {
-      return;
-    }
-
-    // CRITICAL: Ensure improvement_type is NEVER null in the final output
-    // The validator does not accept null even though the schema might show it
-    if (cleanedImprovement.improvement_type === null) {
-      cleanedImprovement.improvement_type = "GeneralBuilding";
-    }
-
-    // FINAL SAFEGUARD: Ensure improvement_type is either null or a valid enum value before writing
-    if (cleanedImprovement.improvement_type !== null) {
-      const finalType = cleanedImprovement.improvement_type;
-      // Check if it's a non-empty string and in the valid list
-      if (typeof finalType !== "string" ||
-          finalType.trim() === "" ||
-          !validImprovementTypes.includes(finalType.trim())) {
-        cleanedImprovement.improvement_type = null;
-      } else {
-        // Ensure no trailing/leading whitespace
-        cleanedImprovement.improvement_type = finalType.trim();
-      }
-    }
-
-    const filename = `property_improvement_${propertyImprovementOutputs.length + 1}.json`;
-    writeJSON(path.join(dataDir, filename), cleanedImprovement);
-    propertyImprovementOutputs.push({ filename, path: `./${filename}` });
-  });
+  // const permitEntries = parsePermitTable($);
+  // Note: Permit data is available in the HTML but not extracted as separate property_improvement files
+  // because the Property_Improvement data group does not support property_has_property_improvement relationships
 
   const createLayoutRecord = (spaceType, overrides = {}) => {
     const base = {
@@ -2417,9 +2258,10 @@ function main() {
     });
   }
 
-  propertyImprovementOutputs.forEach(({ path }) => {
-    writeRelationshipUnique(propertyPath, path);
-  });
+  // Property improvements are not supported - no relationship created
+  // propertyImprovementOutputs.forEach(({ path }) => {
+  //   writeRelationshipUnique(propertyPath, path);
+  // });
 
   // Layout hierarchy relationships (building -> rooms)
   buildingLayoutsInfo.forEach((info) => {
