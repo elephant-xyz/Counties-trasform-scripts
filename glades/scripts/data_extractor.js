@@ -1582,6 +1582,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   });
 
   // Relationships: link sale to owners present on that date (both persons and companies)
+  // Track which persons and companies are actually used in relationships
+  const usedPersonIdx = new Set();
+  const usedCompanyIdx = new Set();
+
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
   sales.forEach((rec, idx) => {
@@ -1593,6 +1597,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       .forEach((o) => {
         const pIdx = findPersonIndexByName(o.first_name, o.last_name);
         if (pIdx) {
+          usedPersonIdx.add(pIdx);
           relPersonCounter++;
           writeJSON(
             path.join(
@@ -1611,6 +1616,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       .forEach((o) => {
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx) {
+          usedCompanyIdx.add(cIdx);
           relCompanyCounter++;
           writeJSON(
             path.join(
@@ -1625,13 +1631,13 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         }
       });
   });
-  
+
   // Create relationship between current owner and first sale (sales_1) if not already created
   if (sales.length > 0) {
     const firstSaleDate = parseDateToISO(sales[0].saleDate);
     const ownersOnFirstSale = ownersByDate[firstSaleDate] || [];
     const currentOwners = ownersByDate["current"] || [];
-    
+
     currentOwners.forEach((owner) => {
       // Check if this owner already has a relationship with sales_1
       const alreadyLinked = ownersOnFirstSale.some(existingOwner => {
@@ -1643,11 +1649,12 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         }
         return false;
       });
-      
+
       if (!alreadyLinked) {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
           if (pIdx) {
+            usedPersonIdx.add(pIdx);
             relPersonCounter++;
             writeJSON(
               path.join(
@@ -1663,6 +1670,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         } else if (owner.type === "company") {
           const cIdx = findCompanyIndexByName(owner.name);
           if (cIdx) {
+            usedCompanyIdx.add(cIdx);
             relCompanyCounter++;
             writeJSON(
               path.join(
@@ -1678,6 +1686,37 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         }
       }
     });
+  }
+
+  // Return the sets of used indexes so they can be tracked further
+  return { usedPersonIdx, usedCompanyIdx };
+}
+
+function removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx) {
+  // Remove person files that are not referenced by any relationship
+  try {
+    const files = fs.readdirSync("data");
+    files.forEach((filename) => {
+      const personMatch = filename.match(/^person_(\d+)\.json$/);
+      if (personMatch) {
+        const idx = parseInt(personMatch[1], 10);
+        if (!usedPersonIdx.has(idx)) {
+          fs.unlinkSync(path.join("data", filename));
+          console.log(`Removed unused person file: ${filename}`);
+        }
+      }
+
+      const companyMatch = filename.match(/^company_(\d+)\.json$/);
+      if (companyMatch) {
+        const idx = parseInt(companyMatch[1], 10);
+        if (!usedCompanyIdx.has(idx)) {
+          fs.unlinkSync(path.join("data", filename));
+          console.log(`Removed unused company file: ${filename}`);
+        }
+      }
+    });
+  } catch (e) {
+    console.error("Error removing unused owner files:", e);
   }
 }
 
@@ -2173,8 +2212,13 @@ function main() {
 
   writeTaxes($, parcelId);
 
+  let usedPersonIdx = new Set();
+  let usedCompanyIdx = new Set();
+
   if (parcelId) {
-    writePersonCompaniesSalesRelationships(parcelId, sales);
+    const { usedPersonIdx: personIdx, usedCompanyIdx: companyIdx } = writePersonCompaniesSalesRelationships(parcelId, sales);
+    usedPersonIdx = personIdx;
+    usedCompanyIdx = companyIdx;
     // writeOwnersCurrentAndRelationships(parcelId);
     // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
     // writeUtility(parcelId);
@@ -2217,6 +2261,7 @@ function main() {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
           if (pIdx) {
+            usedPersonIdx.add(pIdx);
             relCounter++;
             writeJSON(
               path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
@@ -2229,6 +2274,7 @@ function main() {
         } else if (owner.type === "company") {
           const cIdx = findCompanyIndexByName(owner.name);
           if (cIdx) {
+            usedCompanyIdx.add(cIdx);
             relCounter++;
             writeJSON(
               path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
@@ -2241,6 +2287,11 @@ function main() {
         }
       });
     }
+  }
+
+  // Remove unused person and company files
+  if (parcelId) {
+    removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx);
   }
   
   const acreage = extractAcreage($);
