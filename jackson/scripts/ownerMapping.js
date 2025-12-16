@@ -60,11 +60,9 @@ function cleanRawName(raw) {
     /\b%\s*INTEREST\b/gi,
     /\b\d{1,3}%\b/gi,
     /\b\d{1,3}%\s*INTEREST\b/gi,
-    /--TWROS\b/gi,
-    /--JTWROS\b/gi,
-    /\bTWROS\b/gi,
-    /\bJTWROS\b/gi,
-    /\bJT\s+WROS\b/gi,
+    /--[JT]*W\/?ROS\b/gi,
+    /\b[JT]*W\/?ROS\b/gi,
+    /\bJT\s+W\s*\/?ROS\b/gi,
     /\bW\/ROS\b/gi,
   ];
   noisePatterns.forEach((re) => {
