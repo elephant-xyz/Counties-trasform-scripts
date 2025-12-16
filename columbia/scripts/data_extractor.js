@@ -1748,9 +1748,13 @@ const specificDocumentTypeMap = {
     number_of_units_type_from_map ??
     getNumberOfUnitsTypeFromStructure(structure_form_mapped);
 
-  const derivedBuildStatus =
-    build_status_mapped ||
-    (livable || effYear ? "Improved" : "VacantLand");
+  // Ensure build_status is always one of the three allowed values: VacantLand, Improved, UnderConstruction
+  let derivedBuildStatus = build_status_mapped;
+
+  // If build_status_mapped is null or not one of the allowed values, derive it
+  if (!derivedBuildStatus || (derivedBuildStatus !== "VacantLand" && derivedBuildStatus !== "Improved" && derivedBuildStatus !== "UnderConstruction")) {
+    derivedBuildStatus = (livable || effYear) ? "Improved" : "VacantLand";
+  }
 
   const prop = {
     source_http_request: {
@@ -2725,6 +2729,15 @@ const specificDocumentTypeMap = {
       lot_condition_issues: null,
       lot_size_acre: lotSizeAcre || null,
     });
+
+    // Create property_has_lot relationship
+    writeJson(
+      path.join("data", "relationship_property_has_lot.json"),
+      {
+        from: { "/": "./property.json" },
+        to: { "/": "./lot.json" },
+      },
+    );
   } catch (e) {
     console.error("Error processing lot data:", e);
   }
