@@ -715,6 +715,10 @@ function cleanupLegacyArtifacts() {
     /^relationship_sales_history_\d+_has_deed_\d+\.json$/i, // Specific for sales history to deed
     // New cleanup for the strict naming convention
     /^relationship_.*_has_.*_\d+\.json$/i, // Catch any relationship file with an index
+    /^layout_data\.json$/i,
+    /^utilities_data\.json$/i,
+    /^utility_data\.json$/i,
+    /^structure_data\.json$/i,
   ]);
 }
 
@@ -2920,7 +2924,7 @@ function main() {
     ? readJSON(structurePath)
     : null;
 
-  const parcelNumber = input.parcelNumber || propSeed.parcel_id;
+  const parcelNumber = propSeed.parcel_id;
   const requestIdentifier =
     (propSeed && propSeed.request_identifier) ||
     (parcelNumber && String(parcelNumber).trim()) ||
