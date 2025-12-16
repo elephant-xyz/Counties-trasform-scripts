@@ -43,8 +43,11 @@ function cleanPersonText(s) {
 // Helper: Capitalize first letter of each word, lowercase rest
 function toTitleCase(str) {
   if (!str) return "";
+  // Trim the string first to remove leading/trailing spaces
+  const trimmed = str.trim();
+  if (!trimmed) return "";
   // Split by allowed delimiters, keeping them in the result
-  return str
+  return trimmed
     .split(/([ \-',.])/)
     .map((word, index) => {
       if (word.length === 0) return "";
@@ -198,6 +201,13 @@ function parsePersonName(raw) {
     return { invalid: true, reason: "name contains digits" };
   }
 
+  // Remove designations like "- LIFE TENANT", "- TRUSTEE", etc. before parsing
+  // These are not part of the person's name
+  let cleanedName = s.replace(/\s*-\s*(LIFE TENANT|TRUSTEE|EXECUTOR|ADMINISTRATOR|ESTATE|ET AL|ETAL)\s*$/i, "").trim();
+  if (!cleanedName) {
+    return { invalid: true, reason: "empty after removing designation" };
+  }
+
   let firstName = null;
   let lastName = null;
   let middleName = null;
@@ -210,13 +220,13 @@ function parsePersonName(raw) {
   const suffixRegex = new RegExp(`\\b(${suffixes.join("|")})\\b`, "i");
 
   // Check for and extract suffix first
-  let nameWithoutSuffix = s;
-  const suffixMatch = s.match(suffixRegex);
+  let nameWithoutSuffix = cleanedName;
+  const suffixMatch = cleanedName.match(suffixRegex);
   if (suffixMatch) {
     const rawSuffix = toTitleCase(suffixMatch[1]);
     suffixName = suffixFormatMap[rawSuffix] || null; // Apply formatting from map, null if not valid
     // Remove the matched suffix from the name string
-    nameWithoutSuffix = s.replace(suffixMatch[0], "").trim();
+    nameWithoutSuffix = cleanedName.replace(suffixMatch[0], "").trim();
   }
 
   // Handle comma-delimited: LAST, FIRST MIDDLE
@@ -266,7 +276,7 @@ function parsePersonName(raw) {
     type: "person",
     first_name: cleanPersonText(firstName),
     last_name: cleanPersonText(lastName),
-    middle_name: cleanPersonText(middleName),
+    middle_name: middleName ? cleanPersonText(middleName) || null : null,
     suffix_name: suffixName,
   };
 }

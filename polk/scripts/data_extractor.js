@@ -47,7 +47,10 @@ function extractNumberAsString(text) {
 // Helper function to capitalize the first letter of each word
 function toTitleCase(str) {
   if (!str) return "";
-  return str
+  // Trim the string first to remove leading/trailing spaces
+  const trimmed = str.trim();
+  if (!trimmed) return "";
+  return trimmed
     .toLowerCase()
     .split(" ")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -3424,7 +3427,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
   current.forEach((o) => {
     if (o.type === "person") {
       const firstName = toTitleCase(o.first_name); // Apply title case
-      const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
+      const middleName = o.middle_name ? toTitleCase(o.middle_name) || null : null;
       const lastName = toTitleCase(o.last_name); // Apply title case
       const suffixName = normalizeSuffix(o.suffix_name); // Normalize suffix to match schema
       const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
@@ -3458,7 +3461,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
     (owners || []).forEach((o) => {
       if (o.type === "person") {
         const firstName = toTitleCase(o.first_name); // Apply title case
-        const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
+        const middleName = o.middle_name ? toTitleCase(o.middle_name) || null : null;
         const lastName = toTitleCase(o.last_name); // Apply title case
         const suffixName = normalizeSuffix(o.suffix_name); // Normalize suffix to match schema
         const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
