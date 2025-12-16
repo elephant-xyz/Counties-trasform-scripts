@@ -8928,21 +8928,12 @@ const NORMALIZED_OPTIONAL_NULLABLE_FIELDS = new Set([
   "municipality_name",
 ]);
 
-// Keep the raw oneOf branch lean so validation picks the raw branch when only
-// an unnormalized string is available from the source.
+// Keep the raw oneOf branch aligned with the full address schema surface so all
+// required keys remain present (nullable) when we only have an unnormalized
+// string from the source. This prevents oneOf validation from complaining about
+// missing normalized fields.
 const RAW_ONEOF_OUTPUT_FIELDS = Object.freeze([
-  "unnormalized_address",
-  "request_identifier",
-  "source_http_request",
-  "county_name",
-  "country_code",
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
-  "latitude",
-  "longitude",
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 
 const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
