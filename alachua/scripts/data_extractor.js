@@ -1840,6 +1840,32 @@ function main() {
       cleanedImprovement.improvement_type = "GeneralBuilding";
     }
 
+    // Ensure improvement_type is always a valid enum value or null
+    const validImprovementTypes = [
+      "GeneralBuilding", "ResidentialConstruction", "CommercialConstruction",
+      "BuildingAddition", "StructureMove", "Demolition", "PoolSpaInstallation",
+      "Electrical", "MechanicalHVAC", "GasInstallation", "Roofing", "Fencing",
+      "DockAndShore", "FireProtectionSystem", "Plumbing", "ExteriorOpeningsAndFinishes",
+      "MobileHomeRV", "LandscapeIrrigation", "ScreenEnclosure", "ShutterAwning",
+      "SiteDevelopment", "CodeViolation", "Complaint", "ContractorLicense",
+      "Sponsorship", "StateLicenseRegistration", "AdministrativeApproval",
+      "AdministrativeAppeal", "BlueSheetHearing", "PlannedDevelopment",
+      "DevelopmentOfRegionalImpact", "Rezoning", "SpecialExceptionZoning",
+      "Variance", "ZoningExtension", "ZoningVerificationLetter", "RequestForRelief",
+      "WaiverRequest", "InformalMeeting", "EnvironmentalMonitoring", "Vacation",
+      "VegetationRemoval", "ComprehensivePlanAmendment", "MinimumUseDetermination",
+      "TransferDevelopmentRightsDetermination", "MapBoundaryDetermination",
+      "TransferDevelopmentRightsCertificate", "UniformCommunityDevelopment",
+      "SpecialCertificateOfAppropriateness", "CertificateToDig", "HistoricDesignation",
+      "PlanningAdministrativeAppeal", "WellPermit", "Solar", "TestBoring",
+      "ExistingWellInspection", "NaturalResourcesComplaint", "NaturalResourcesViolation",
+      "LetterWaterSewer", "UtilitiesConnection", "DrivewayPermit", "RightOfWayPermit", null
+    ];
+    if (cleanedImprovement.improvement_type !== null &&
+        !validImprovementTypes.includes(cleanedImprovement.improvement_type)) {
+      cleanedImprovement.improvement_type = "GeneralBuilding";
+    }
+
     const filename = `property_improvement_${propertyImprovementOutputs.length + 1}.json`;
     writeJSON(path.join(dataDir, filename), cleanedImprovement);
     propertyImprovementOutputs.push({ filename, path: `./${filename}` });
