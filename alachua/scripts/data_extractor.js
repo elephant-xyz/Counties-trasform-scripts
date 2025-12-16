@@ -1861,6 +1861,12 @@ function main() {
       "ExistingWellInspection", "NaturalResourcesComplaint", "NaturalResourcesViolation",
       "LetterWaterSewer", "UtilitiesConnection", "DrivewayPermit", "RightOfWayPermit", null
     ];
+
+    // Convert empty string to null, then validate
+    if (cleanedImprovement.improvement_type === "") {
+      cleanedImprovement.improvement_type = null;
+    }
+
     if (cleanedImprovement.improvement_type !== null &&
         !validImprovementTypes.includes(cleanedImprovement.improvement_type)) {
       cleanedImprovement.improvement_type = "GeneralBuilding";
