@@ -4028,6 +4028,16 @@ function main() {
     const g = normalizeNameForMatch(s.grantee);
     if (!g) return;
 
+    // First, check if the full grantee matches a company (handles companies with & in their name)
+    if (companyNameToPath.has(g)) {
+      const companyPath = companyNameToPath.get(g);
+      const companyMatch = companyPath.match(/company_(\d+)\.json/);
+      if (companyMatch) {
+        usedCompanyIndices.add(parseInt(companyMatch[1], 10));
+      }
+      return; // Matched as company, done
+    }
+
     // Check if grantee contains ampersand (joint ownership)
     if (g.includes('&')) {
       // Split by ampersand and process each name separately
@@ -4064,34 +4074,25 @@ function main() {
         }
       });
     } else {
-      // Single owner - use original logic
-      if (companyNameToPath.has(g)) {
-        const companyPath = companyNameToPath.get(g);
-        const companyMatch = companyPath.match(/company_(\d+)\.json/);
-        if (companyMatch) {
-          usedCompanyIndices.add(parseInt(companyMatch[1], 10));
-        }
+      // Single owner - try person match
+      let toPath = null;
+      if (personNameToPath.has(g)) {
+        toPath = personNameToPath.get(g);
       } else {
-        // try direct or swapped person match
-        let toPath = null;
-        if (personNameToPath.has(g)) {
-          toPath = personNameToPath.get(g);
-        } else {
-          const parts = g.split(/\s+/);
-          if (parts.length >= 2) {
-            const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
-              .toUpperCase()
-              .trim();
-            if (personNameToPath.has(swapped))
-              toPath = personNameToPath.get(swapped);
-          }
+        const parts = g.split(/\s+/);
+        if (parts.length >= 2) {
+          const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
+            .toUpperCase()
+            .trim();
+          if (personNameToPath.has(swapped))
+            toPath = personNameToPath.get(swapped);
         }
-        if (toPath) {
-          // Extract person index from path (e.g., "./person_1.json" -> 1)
-          const personMatch = toPath.match(/person_(\d+)\.json/);
-          if (personMatch) {
-            usedPersonIndices.add(parseInt(personMatch[1], 10));
-          }
+      }
+      if (toPath) {
+        // Extract person index from path (e.g., "./person_1.json" -> 1)
+        const personMatch = toPath.match(/person_(\d+)\.json/);
+        if (personMatch) {
+          usedPersonIndices.add(parseInt(personMatch[1], 10));
         }
       }
     }
@@ -4181,6 +4182,21 @@ function main() {
     let personCounter = 0;
     let companyCounter = 0;
 
+    // First, check if the full grantee matches a company (handles companies with & in their name)
+    if (companyNameToPath.has(g)) {
+      const companyPath = companyNameToPath.get(g);
+      companyCounter++;
+      const rel = {
+        from: { "/": `./sales_history_${idx + 1}.json` },
+        to: { "/": companyPath },
+      };
+      writeJSON(
+        path.join("data", `relationship_sales_history_${idx + 1}_buyer_company_${companyCounter}.json`),
+        rel,
+      );
+      return; // Matched as company, done
+    }
+
     // Check if grantee contains ampersand (joint ownership)
     if (g.includes('&')) {
       // Split by ampersand and create relationships for each matched person/company
@@ -4227,44 +4243,30 @@ function main() {
         }
       });
     } else {
-      // Single owner - use original logic
-      if (companyNameToPath.has(g)) {
-        const companyPath = companyNameToPath.get(g);
-        companyCounter++;
+      // Single owner - try person match
+      let toPath = null;
+      if (personNameToPath.has(g)) {
+        toPath = personNameToPath.get(g);
+      } else {
+        const parts = g.split(/\s+/);
+        if (parts.length >= 2) {
+          const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
+            .toUpperCase()
+            .trim();
+          if (personNameToPath.has(swapped))
+            toPath = personNameToPath.get(swapped);
+        }
+      }
+      if (toPath) {
+        personCounter++;
         const rel = {
           from: { "/": `./sales_history_${idx + 1}.json` },
-          to: { "/": companyPath },
+          to: { "/": toPath },
         };
         writeJSON(
-          path.join("data", `relationship_sales_history_${idx + 1}_buyer_company_${companyCounter}.json`),
+          path.join("data", `relationship_sales_history_${idx + 1}_buyer_person_${personCounter}.json`),
           rel,
         );
-      } else {
-        // try direct or swapped person match
-        let toPath = null;
-        if (personNameToPath.has(g)) {
-          toPath = personNameToPath.get(g);
-        } else {
-          const parts = g.split(/\s+/);
-          if (parts.length >= 2) {
-            const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
-              .toUpperCase()
-              .trim();
-            if (personNameToPath.has(swapped))
-              toPath = personNameToPath.get(swapped);
-          }
-        }
-        if (toPath) {
-          personCounter++;
-          const rel = {
-            from: { "/": `./sales_history_${idx + 1}.json` },
-            to: { "/": toPath },
-          };
-          writeJSON(
-            path.join("data", `relationship_sales_history_${idx + 1}_buyer_person_${personCounter}.json`),
-            rel,
-          );
-        }
       }
     }
   });
