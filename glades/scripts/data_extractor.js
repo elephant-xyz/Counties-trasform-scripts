@@ -1605,7 +1605,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_person_${relPersonCounter}.json`,
+              `relationship_sales_history_${idx + 1}_buyer_person_${relPersonCounter}.json`,
             ),
             {
               from: { "/": `./sales_${idx + 1}.json` },
@@ -1624,7 +1624,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_company_${relCompanyCounter}.json`,
+              `relationship_sales_history_${idx + 1}_buyer_company_${relCompanyCounter}.json`,
             ),
             {
               from: { "/": `./sales_${idx + 1}.json` },
@@ -1662,7 +1662,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             writeJSON(
               path.join(
                 "data",
-                `relationship_sales_person_${relPersonCounter}.json`,
+                `relationship_sales_history_1_buyer_person_${relPersonCounter}.json`,
               ),
               {
                 from: { "/": "./sales_1.json" },
@@ -1678,7 +1678,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             writeJSON(
               path.join(
                 "data",
-                `relationship_sales_company_${relCompanyCounter}.json`,
+                `relationship_sales_history_1_buyer_company_${relCompanyCounter}.json`,
               ),
               {
                 from: { "/": "./sales_1.json" },
@@ -2259,15 +2259,13 @@ function main() {
     const record = owners[key];
     if (record && record.owners_by_date && record.owners_by_date['current']) {
       const currentOwners = record.owners_by_date['current'];
-      let relCounter = 0;
       currentOwners.forEach((owner) => {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
           if (pIdx) {
             usedPersonIdx.add(pIdx);
-            relCounter++;
             writeJSON(
-              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
+              path.join("data", `relationship_person_${pIdx}_has_mailing_address.json`),
               {
                 from: { "/": `./person_${pIdx}.json` },
                 to: { "/": "./mailing_address.json" },
@@ -2278,9 +2276,8 @@ function main() {
           const cIdx = findCompanyIndexByName(owner.name);
           if (cIdx) {
             usedCompanyIdx.add(cIdx);
-            relCounter++;
             writeJSON(
-              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
+              path.join("data", `relationship_company_${cIdx}_has_mailing_address.json`),
               {
                 from: { "/": `./company_${cIdx}.json` },
                 to: { "/": "./mailing_address.json" }
