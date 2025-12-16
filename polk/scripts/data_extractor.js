@@ -215,6 +215,18 @@ function normalizeSuffix(suffix) {
   return result;
 }
 
+// Validate name components against schema patterns
+function isValidFirstOrLastName(name) {
+  if (!name || typeof name !== 'string') return false;
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  return pattern.test(name);
+}
+
+function isValidMiddleName(name) {
+  if (!name || typeof name !== 'string') return true; // null/empty is valid
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  return pattern.test(name);
+}
 
 const propertyTypeMapping = [
   {
@@ -3543,20 +3555,29 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
       const middleName = o.middle_name ? toTitleCase(o.middle_name) || null : null;
       const lastName = toTitleCase(o.last_name); // Apply title case
       const suffixName = normalizeSuffix(o.suffix_name); // Normalize suffix to match schema
-      const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
-      if (!res.personIndexByKey.has(personKey)) {
-        res.persons.push({
-          birth_date: null,
-          first_name: firstName,
-          last_name: lastName,
-          middle_name: middleName,
-          prefix_name: null,
-          suffix_name: suffixName,
-          us_citizenship_status: null,
-          veteran_status: null,
-        });
-        res.personCurrentOwners.push(res.persons.length); // 1-based
-        res.personIndexByKey.set(personKey, res.persons.length); // 1-based
+
+      // Validate name components before adding
+      const isValid =
+        isValidFirstOrLastName(firstName) &&
+        isValidFirstOrLastName(lastName) &&
+        isValidMiddleName(middleName);
+
+      if (isValid) {
+        const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
+        if (!res.personIndexByKey.has(personKey)) {
+          res.persons.push({
+            birth_date: null,
+            first_name: firstName,
+            last_name: lastName,
+            middle_name: middleName,
+            prefix_name: null,
+            suffix_name: suffixName,
+            us_citizenship_status: null,
+            veteran_status: null,
+          });
+          res.personCurrentOwners.push(res.persons.length); // 1-based
+          res.personIndexByKey.set(personKey, res.persons.length); // 1-based
+        }
       }
     } else if (o.type === "company") {
       const name = (o.name || "").trim();
@@ -3577,19 +3598,28 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
         const middleName = o.middle_name ? toTitleCase(o.middle_name) || null : null;
         const lastName = toTitleCase(o.last_name); // Apply title case
         const suffixName = normalizeSuffix(o.suffix_name); // Normalize suffix to match schema
-        const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
-        if (!res.personIndexByKey.has(personKey)) {
-          res.persons.push({
-            birth_date: null,
-            first_name: firstName,
-            last_name: lastName,
-            middle_name: middleName,
-            prefix_name: null,
-            suffix_name: suffixName,
-            us_citizenship_status: null,
-            veteran_status: null,
-          });
-          res.personIndexByKey.set(personKey, res.persons.length);
+
+        // Validate name components before adding
+        const isValid =
+          isValidFirstOrLastName(firstName) &&
+          isValidFirstOrLastName(lastName) &&
+          isValidMiddleName(middleName);
+
+        if (isValid) {
+          const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
+          if (!res.personIndexByKey.has(personKey)) {
+            res.persons.push({
+              birth_date: null,
+              first_name: firstName,
+              last_name: lastName,
+              middle_name: middleName,
+              prefix_name: null,
+              suffix_name: suffixName,
+              us_citizenship_status: null,
+              veteran_status: null,
+            });
+            res.personIndexByKey.set(personKey, res.persons.length);
+          }
         }
       } else if (o.type === "company") {
         const name = (o.name || "").trim();
@@ -4080,37 +4110,47 @@ function main() {
       relSalesDeed,
     );
 
-    // Create person from grantee if available
+    // Create person from grantee if available and valid
     if (s.parsedGrantee && s.parsedGrantee.first_name && s.parsedGrantee.last_name) {
       const pg = s.parsedGrantee;
-      const personKey = `${pg.first_name}|${pg.middle_name || ""}|${pg.last_name}|${pg.suffix_name || ""}`;
 
-      // Only create person if not already created
-      if (!salesPersonMap.has(personKey)) {
-        const person = {
-          birth_date: null,
-          first_name: pg.first_name,
-          last_name: pg.last_name,
-          middle_name: pg.middle_name || null,
-          prefix_name: null,
-          suffix_name: pg.suffix_name || null,
-          us_citizenship_status: null,
-          veteran_status: null,
+      // Validate all name components against schema patterns
+      const isValid =
+        isValidFirstOrLastName(pg.first_name) &&
+        isValidFirstOrLastName(pg.last_name) &&
+        isValidMiddleName(pg.middle_name || null);
+
+      // Only create person if validation passes
+      if (isValid) {
+        const personKey = `${pg.first_name}|${pg.middle_name || ""}|${pg.last_name}|${pg.suffix_name || ""}`;
+
+        // Only create person if not already created
+        if (!salesPersonMap.has(personKey)) {
+          const person = {
+            birth_date: null,
+            first_name: pg.first_name,
+            last_name: pg.last_name,
+            middle_name: pg.middle_name || null,
+            prefix_name: null,
+            suffix_name: pg.suffix_name || null,
+            us_citizenship_status: null,
+            veteran_status: null,
+          };
+          salesPersons.push(person);
+          salesPersonMap.set(personKey, salesPersons.length); // 1-based index
+        }
+
+        // Create relationship from sales_history to person
+        const personIdx = salesPersonMap.get(personKey);
+        const relSalesPerson = {
+          from: { "/": `./sales_history_${idx + 1}.json` },
+          to: { "/": `./person_${personIdx}.json` },
         };
-        salesPersons.push(person);
-        salesPersonMap.set(personKey, salesPersons.length); // 1-based index
+        writeJSON(
+          path.join("data", `relationship_sales_history_has_person_${idx + 1}.json`),
+          relSalesPerson,
+        );
       }
-
-      // Create relationship from sales_history to person
-      const personIdx = salesPersonMap.get(personKey);
-      const relSalesPerson = {
-        from: { "/": `./sales_history_${idx + 1}.json` },
-        to: { "/": `./person_${personIdx}.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_sales_history_has_person_${idx + 1}.json`),
-        relSalesPerson,
-      );
     }
   });
 
