@@ -1512,10 +1512,10 @@ function titleCaseName(s) {
 
 function writePersonCompaniesSalesRelationships(parcelId, sales) {
   const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (!owners) return;
+  if (!owners) return { usedPersonIdx: new Set(), usedCompanyIdx: new Set() };
   const key = `property_${parcelId}`;
   const record = owners[key];
-  if (!record || !record.owners_by_date) return;
+  if (!record || !record.owners_by_date) return { usedPersonIdx: new Set(), usedCompanyIdx: new Set() };
   const ownersByDate = record.owners_by_date;
   // console.log("ownersByDate",ownersByDate);
 
@@ -1567,7 +1567,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   //Company processing and mapping creation.
   const companyNames = new Set();
   Object.entries(ownersByDate).forEach(([date, arr]) => {
-    // Skip owners with unknown dates as they can't be linked to sales
+    // Skip owners with unknown dates as they can't be linked to sales or other entities
     if (date.startsWith('unknown_date')) return;
 
     (arr || []).forEach((o) => {
