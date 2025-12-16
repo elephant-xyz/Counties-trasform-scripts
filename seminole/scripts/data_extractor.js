@@ -3294,7 +3294,7 @@ function main() {
             birth_date: null,
             first_name: properCaseName(owner.first_name || null),
             last_name: properCaseName(owner.last_name || null),
-            middle_name: properCaseName(owner.middle_name || null),
+            middle_name: owner.middle_name || null,
             prefix_name: null,
             suffix_name: owner.suffix_name || null,
             us_citizenship_status: null,
