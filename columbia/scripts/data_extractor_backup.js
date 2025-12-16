@@ -940,42 +940,33 @@ function formatNameToPattern(name) {
   // Remove any remaining non-letter, non-special-character symbols
   cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, "");
 
-  // Remove leading non-letter characters
-  cleaned = cleaned.replace(/^[^A-Za-z]+/, "");
-
-  if (!cleaned) return null;
-
   // Split by special characters while preserving them
   const parts = cleaned.split(/([ \-',.])/);
 
-  // Format each part: after separator, capitalize the next letter, rest lowercase
-  // Also collapse multiple consecutive separators into one
-  let formatted = "";
-  let lastWasSeparator = false;
+  // Filter out empty strings and format each part
+  const formatted = parts
+    .map((part) => {
+      if (!part) return "";
+      if (part.match(/[ \-',.]/)) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .filter(Boolean)
+    .join("");
 
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if (!part) continue;
-
-    // If it's a separator
-    if (part.match(/^[ \-',.]$/)) {
-      // Only add separator if last wasn't a separator
-      if (!lastWasSeparator) {
-        formatted += part;
-        lastWasSeparator = true;
-      }
-    } else {
-      // It's a word part
-      formatted += part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-      lastWasSeparator = false;
-    }
-  }
-
-  // Trim the result
+  // Trim the result to remove any leading/trailing whitespace
   let result = formatted.trim();
 
-  // Validate against the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  if (!result || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
+  // Remove leading non-letter characters to ensure pattern compliance
+  // Pattern requires: ^[A-Z][a-zA-Z\s\-',.]*$
+  result = result.replace(/^[^A-Za-z]+/, "");
+
+  // Ensure first character is uppercase
+  if (result && result.length > 0) {
+    result = result.charAt(0).toUpperCase() + result.slice(1);
+  }
+
+  // Return null if result is empty or doesn't match the required pattern
+  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
     return null;
   }
 

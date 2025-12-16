@@ -495,8 +495,11 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   // Helper to clean name parts - remove trailing periods and special chars
   const cleanNamePart = (part) => {
     if (!part) return part;
-    // Remove any non-letter characters except internal spaces, hyphens, apostrophes
-    return part.replace(/[^A-Za-z\s\-']/g, "").trim();
+    // Remove any non-letter characters except internal spaces, hyphens, apostrophes, commas, periods
+    let cleaned = part.replace(/[^A-Za-z\s\-',.]/g, "").trim();
+    // Remove trailing delimiters (periods, commas, hyphens, apostrophes) to match pattern
+    cleaned = cleaned.replace(/[ \-',.]+$/, '');
+    return cleaned;
   };
 
   let last = cleanNamePart(tokens[0]);
@@ -2085,16 +2088,24 @@ function main() {
 
   function createPersonRecord(personData) {
     if (!personData) return null;
-    const firstName =
+    // Clean and normalize names: remove extra whitespace and apply titleCase
+    const firstRaw =
       personData.first_name != null
-        ? String(personData.first_name).trim()
+        ? cleanText(String(personData.first_name))
         : "";
-    const lastName =
-      personData.last_name != null ? String(personData.last_name).trim() : "";
+    const lastRaw =
+      personData.last_name != null
+        ? cleanText(String(personData.last_name))
+        : "";
     const middleRaw =
       personData.middle_name != null
-        ? String(personData.middle_name).trim()
+        ? cleanText(String(personData.middle_name))
         : "";
+
+    // Apply titleCase to ensure proper capitalization
+    const firstName = firstRaw ? titleCase(firstRaw) : "";
+    const lastName = lastRaw ? titleCase(lastRaw) : "";
+    const middleFormatted = middleRaw ? titleCase(middleRaw) : "";
 
     // Validate first_name and last_name against required pattern
     const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
@@ -2109,10 +2120,10 @@ function main() {
 
     // Validate middle_name matches pattern ^[A-Z][a-zA-Z\s\-',.]*$ or set to null
     const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-    const middleName = middleRaw && middleNamePattern.test(middleRaw) ? middleRaw : null;
+    const middleName = middleFormatted && middleNamePattern.test(middleFormatted) ? middleFormatted : null;
     const key =
       firstName || lastName
-        ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
+        ? `${firstName.toLowerCase()}|${(middleName || "").toLowerCase()}|${lastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {

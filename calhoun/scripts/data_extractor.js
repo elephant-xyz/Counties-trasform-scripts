@@ -1852,7 +1852,7 @@ function writeLayout(parcelId) {
     out.livable_area_sq_ft = livableArea ?? null;
     out.heated_area_sq_ft = livableArea ?? null;
     out.area_under_air_sq_ft = livableArea ?? null;
-    out.built_year = builtYear ?? null;
+    out.built_year = (builtYear != null && builtYear >= 1) ? builtYear : null;
     out.request_identifier = parcelId;
     out.building_number = buildingNumber;
     out.is_exterior = false;

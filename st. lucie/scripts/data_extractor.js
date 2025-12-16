@@ -2086,6 +2086,31 @@ async function main() {
     if (!currentOwnerRecord && currentOwnerName) {
       currentOwnerRecord = ensureOwnerRecordFromName(currentOwnerName);
       registerPropertyRole(currentOwnerRecord, "current");
+      // Add to currentOwnerRecordsList to ensure relationships are created
+      if (!currentOwnerRecordIds.has(currentOwnerRecord.id)) {
+        currentOwnerRecordIds.add(currentOwnerRecord.id);
+        currentOwnerRecordsList.push(currentOwnerRecord);
+        // Also update the display names and aliases
+        if (currentOwnerRecord.aliases && currentOwnerRecord.aliases.size) {
+          for (const aliasKey of currentOwnerRecord.aliases) {
+            currentOwnerAliasKeys.add(aliasKey);
+          }
+        }
+        if (currentOwnerRecord.displayName) {
+          currentOwnerDisplayNames.push(currentOwnerRecord.displayName);
+        }
+        if (currentOwnerRecord.person) {
+          const display = buildPersonDisplayName(currentOwnerRecord.person);
+          if (display) currentOwnerDisplayNames.push(display);
+        }
+        if (currentOwnerRecord.company?.name) {
+          currentOwnerDisplayNames.push(currentOwnerRecord.company.name);
+        }
+        // Update the uppercase list as well
+        currentOwnerDisplayNamesUpper = currentOwnerDisplayNames
+          .filter((name) => typeof name === "string" && name.trim())
+          .map((name) => name.toUpperCase());
+      }
     } else if (currentOwnerRecord && !currentOwnerName) {
       currentOwnerName = currentOwnerRecord.displayName || null;
     }
