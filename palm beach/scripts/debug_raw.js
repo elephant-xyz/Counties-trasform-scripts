@@ -23406,19 +23406,30 @@ async function main() {
         payload.request_identifier ??
           (normalizedSurface && normalizedSurface.request_identifier),
       );
-      const preparedSource =
-        prepareSourceHttpRequest(
-          payload.source_http_request ??
-            (normalizedSurface && normalizedSurface.source_http_request),
-        ) || null;
+        const preparedSource =
+          prepareSourceHttpRequest(
+            payload.source_http_request ??
+              (normalizedSurface && normalizedSurface.source_http_request),
+          ) || null;
 
-      const rawOut = {
+      const rawSeed = {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...payload,
         unnormalized_address: rawValue,
-        request_identifier: requestId ?? null,
+        request_identifier:
+          requestId === undefined ? payload.request_identifier : requestId,
         source_http_request: preparedSource,
       };
 
-      writeJSON(addressOutputPath, rawOut);
+      const rawOut =
+        ensureAddressOutputCoverage(rawSeed) ||
+        buildRawAddressMinimalSurface(rawSeed, rawValue);
+
+      if (rawOut) {
+        writeJSON(addressOutputPath, rawOut);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
     } else {
       removeFileIfExists(addressOutputPath);
     }
