@@ -8752,6 +8752,7 @@ const NORMALIZED_ADDRESS_FIELDS = [
 ];
 
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
+const NORMALIZED_ADDRESS_FIELD_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 
 const ADDRESS_SCHEMA_FIELDS = [
   ...NORMALIZED_ADDRESS_FIELDS,
@@ -23201,6 +23202,10 @@ async function main() {
       delete finalAddressOut.unnormalized_address;
     }
   } else if (resolvedRaw) {
+    const payload =
+      existingAddress && typeof existingAddress === "object" && !Array.isArray(existingAddress)
+        ? existingAddress
+        : {};
     const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
     RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
       if (field === "unnormalized_address") {
@@ -23304,6 +23309,14 @@ async function main() {
   }
 
   if (finalAddressOut) {
+    const allowedFieldSet = normalizedComplete
+      ? NORMALIZED_ADDRESS_FIELD_SET
+      : RAW_BRANCH_ALLOWED_FIELD_SET;
+    Object.keys(finalAddressOut).forEach((key) => {
+      if (!allowedFieldSet.has(key)) {
+        delete finalAddressOut[key];
+      }
+    });
     if (!finalAddressOut.postal_code) {
       finalAddressOut.plus_four_postal_code = null;
     }
