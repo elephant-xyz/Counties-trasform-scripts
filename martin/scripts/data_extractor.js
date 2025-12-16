@@ -663,6 +663,23 @@ function inferPersonWithFallback(raw, fallbackLast) {
 function classifySingleParty(raw, fallbackLastName = null) {
   const cleaned = normalizePartyName(raw);
   if (!cleaned) return null;
+
+  // Skip placeholder names that are not real entities
+  const cleanedLower = cleaned.toLowerCase();
+  if (
+    cleanedLower.includes("see file") ||
+    cleanedLower.includes("see deed") ||
+    cleanedLower.includes("see document") ||
+    cleanedLower.includes("unknown") ||
+    cleanedLower.includes("not available") ||
+    cleanedLower === "seller" ||
+    cleanedLower === "buyer" ||
+    cleanedLower === "grantor" ||
+    cleanedLower === "grantee"
+  ) {
+    return null;
+  }
+
   if (isCompanyName(cleaned)) {
     return { type: "company", name: cleaned };
   }
