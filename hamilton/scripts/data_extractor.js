@@ -1460,6 +1460,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   veteran_status: null,
   }));
   const validPeople = validateAndFilterPeople(people);
+  people = validPeople; // Update people to point to validPeople so findPersonIndexByName uses correct indices
   validPeople.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
