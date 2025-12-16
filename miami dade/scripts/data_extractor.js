@@ -2543,14 +2543,9 @@ function main() {
         }
 
         const person = {
-          birth_date: null,
           first_name: firstName,
           last_name: lastName,
-          middle_name: middleName,
-          prefix_name: null,
-          suffix_name: null,
-          us_citizenship_status: null,
-          veteran_status: null,
+          ...(middleName ? { middle_name: middleName } : {}),
         };
         writeJson(path.join("data", `person_${personIdx}.json`), person);
         personIdx++;
