@@ -3154,27 +3154,27 @@ function main() {
       initialPersonFiles.push(personFileName);
       }
   });
-  
-  const mailingAddress = {
-    source_http_request: {
-      method: "GET",
-      url: seed.source_http_request.url
-    },
-    request_identifier: parcelIdentifier || seed.parcel_id || "",
-    // county_name: null,
-    unnormalized_address: mailingAddr,
-    longitude: null,
-    latitude: null
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
-  
+
   // Track if relationships were created for initial owners
   let initialRelationshipsCreated = false;
-  
-  // Create relationships between owners and mailing address
+
+  // Create mailing address and relationships only when there are owners
   if (personCounter > 0 || companyCounter > 0) {
     initialRelationshipsCreated = true;
-    
+
+    const mailingAddress = {
+      source_http_request: {
+        method: "GET",
+        url: seed.source_http_request.url
+      },
+      request_identifier: parcelIdentifier || seed.parcel_id || "",
+      // county_name: null,
+      unnormalized_address: mailingAddr,
+      longitude: null,
+      latitude: null
+    };
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
+
     for (let i = 1; i <= personCounter; i++) {
       const rel = {
         from: { "/": `./person_${i}.json` },
@@ -3185,7 +3185,7 @@ function main() {
         rel,
       );
     }
-    
+
     for (let i = 1; i <= companyCounter; i++) {
       const rel = {
         from: { "/": `./company_${i}.json` },
@@ -3564,34 +3564,50 @@ function main() {
     // Create person-mailing address relationships for current owners only if not already created
     if (!initialRelationshipsCreated) {
       const currentOwners = ownersByDate["current"] || [];
-      currentOwners.forEach((owner, j) => {
-        if (owner.type === "person") {
-          const personFile = ensurePerson(owner);
-          // Skip creating relationship if person is invalid (ensurePerson returned null)
-          if (!personFile) {
-            console.log(`Skipping mailing address relationship for invalid person`);
-            return;
+      if (currentOwners.length > 0) {
+        // Create mailing address file if it wasn't created earlier
+        const mailingAddress = {
+          source_http_request: {
+            method: "GET",
+            url: seed.source_http_request.url
+          },
+          request_identifier: parcelIdentifier || seed.parcel_id || "",
+          // county_name: null,
+          unnormalized_address: mailingAddr,
+          longitude: null,
+          latitude: null
+        };
+        writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
+
+        currentOwners.forEach((owner, j) => {
+          if (owner.type === "person") {
+            const personFile = ensurePerson(owner);
+            // Skip creating relationship if person is invalid (ensurePerson returned null)
+            if (!personFile) {
+              console.log(`Skipping mailing address relationship for invalid person`);
+              return;
+            }
+            const rel = {
+              from: { "/": `./${personFile}` },
+              to: { "/": `./mailing_address.json` },
+            };
+            writeJSON(
+              path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
+              rel,
+            );
+          } else if (owner.type === "company") {
+            const companyFile = ensureCompany(owner);
+            const rel = {
+              from: { "/": `./${companyFile}` },
+              to: { "/": `./mailing_address.json` },
+            };
+            writeJSON(
+              path.join("data", `relationship_company_${j + 1}_has_mailing_address.json`),
+              rel,
+            );
           }
-          const rel = {
-            from: { "/": `./${personFile}` },
-            to: { "/": `./mailing_address.json` },
-          };
-          writeJSON(
-            path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
-            rel,
-          );
-        } else if (owner.type === "company") {
-          const companyFile = ensureCompany(owner);
-          const rel = {
-            from: { "/": `./${companyFile}` },
-            to: { "/": `./mailing_address.json` },
-          };
-          writeJSON(
-            path.join("data", `relationship_company_${j + 1}_has_mailing_address.json`),
-            rel,
-          );
-        }
-      });
+        });
+      }
     }
   }
 
