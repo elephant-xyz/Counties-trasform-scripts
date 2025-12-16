@@ -325,7 +325,7 @@ function buildStructureRecord($, buildings, parcelId) {
       else if (secondary === "Stucco") rec.exterior_wall_material_secondary = "Stucco Accent";
       else if (secondary === "Vinyl Siding") rec.exterior_wall_material_secondary = "Vinyl Accent";
       else if (secondary === "Concrete Block") rec.exterior_wall_material_secondary = "Decorative Block";
-      else rec.exterior_wall_material_secondary = null;
+      // Don't set to null - leave it as initialized if no valid mapping
     }
   }
 
@@ -393,7 +393,10 @@ function buildStructureRecord($, buildings, parcelId) {
     rec.number_of_stories = Math.max(...stories);
   }
 
-
+  // Remove exterior_wall_material_secondary if it's null (no valid mapping found)
+  if (rec.exterior_wall_material_secondary === null) {
+    delete rec.exterior_wall_material_secondary;
+  }
 
   return rec;
 }
