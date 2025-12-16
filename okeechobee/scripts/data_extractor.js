@@ -3280,6 +3280,12 @@ function main() {
       for (const layout of layScope.layouts) {
         i += 1;
         writeJson(path.join("data", `layout_${i}.json`), layout);
+
+        // Create relationship between property and layout
+        writeJson(path.join("data", `relationship_property_has_layout_${i}.json`), {
+          from: { "/": "./property.json" },
+          to: { "/": `./layout_${i}.json` }
+        });
       }
     }
   }
