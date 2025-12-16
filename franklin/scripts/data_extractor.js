@@ -2874,7 +2874,7 @@ function main() {
     source_http_request: {
           method: "GET",
           url: seed.source_http_request.url
-        },
+        },    
     // street_number: street_number || null,
     // street_name: street_name || null,
     // street_suffix_type: street_suffix_type || null,
@@ -2896,13 +2896,8 @@ function main() {
     // block: null,
     // lot: lotNumber || null,
     // municipality_name: null,
+    unnormalized_address: situsAddress
   };
-
-  // Only include unnormalized_address if it has a valid non-empty value
-  if (situsAddress && situsAddress.trim() !== "") {
-    address.unnormalized_address = situsAddress;
-  }
-
   writeJSON(path.join("data", "address.json"), address);
   console.log(address)
   
@@ -3176,18 +3171,9 @@ function main() {
     const deedFileName = `deed_${deedIndex}.json`;
     writeJSON(path.join("data", deedFileName), deedObj);
 
-    // Construct file name with fallback for empty values
-    let fileName = (instAbbr ? instAbbr + " " : "") + (bookPage || "");
-    fileName = fileName.trim();
-
-    // If name is empty, use a fallback based on the deed type and index
-    if (!fileName) {
-      fileName = `${deedType} Document ${fileIndex}`;
-    }
-
     const fileObj = {
       file_format: null,
-      name: fileName,
+      name: (instAbbr ? instAbbr + " " : "") + (bookPage || ""),
       original_url: deedUrl,
       ipfs_url: null,
       document_type: mapDocumentType(deedType),
