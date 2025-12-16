@@ -3171,16 +3171,9 @@ function main() {
     const deedFileName = `deed_${deedIndex}.json`;
     writeJSON(path.join("data", deedFileName), deedObj);
 
-    // Compute the name, ensuring it meets minLength requirement of 1 character
-    let fileName = (instAbbr ? instAbbr + " " : "") + (bookPage || "");
-    fileName = fileName.trim();
-    if (fileName.length === 0) {
-      fileName = null; // Set to null if empty, as schema allows null
-    }
-
     const fileObj = {
       file_format: null,
-      name: fileName,
+      name: (instAbbr ? instAbbr + " " : "") + (bookPage || ""),
       original_url: deedUrl,
       ipfs_url: null,
       document_type: mapDocumentType(deedType),
