@@ -2489,6 +2489,8 @@ function main() {
   }
 
   // PERSON/COMPANY (owners)
+  // Only create person/company entities if there are sales to link them to
+  // Otherwise they become orphaned files with no relationships
   const ownersKey = `property_${(pInfo.FolioNumber || "").replace(/[^0-9\-]/g, "")}`; // expect 01-4103-033-0491
   const ownersPkg =
     owners[ownersKey] ||
@@ -2496,7 +2498,20 @@ function main() {
       `property_${(seed.parcel_id || "").replace(/(.{2})(.{4})(.{3})(.{4})/, "$1-$2-$3-$4")}`
     ] ||
     null;
+
+  // Check if there are sales files first before creating owner entities
+  const salesFiles = fs.existsSync("data")
+    ? fs.readdirSync("data")
+        .filter((f) => /^sales_\d+\.json$/.test(f))
+        .sort((a, b) => {
+          const ai = parseInt(a.match(/(\d+)/)[1], 10);
+          const bi = parseInt(b.match(/(\d+)/)[1], 10);
+          return ai - bi;
+        })
+    : [];
+
   if (
+    salesFiles.length > 0 &&
     ownersPkg &&
     ownersPkg.owners_by_date &&
     Array.isArray(ownersPkg.owners_by_date.current)
@@ -2534,49 +2549,39 @@ function main() {
     }
 
     // relationships for sales → owners (use latest sales_1.json if exists)
-    const salesFiles = fs
-      .readdirSync("data")
-      .filter((f) => /^sales_\d+\.json$/.test(f))
-      .sort((a, b) => {
-        const ai = parseInt(a.match(/(\d+)/)[1], 10);
-        const bi = parseInt(b.match(/(\d+)/)[1], 10);
-        return ai - bi;
-      });
-    if (salesFiles.length) {
-      const lastSales = salesFiles[0]; // if only last is desired; spec does not define matching by date; link available sale
-      let relIdx = 1;
-      let p = 1;
-      while (fs.existsSync(path.join("data", `person_${p}.json`))) {
-        const rel = {
-          to: { "/": `./person_${p}.json` },
-          from: { "/": `./${lastSales}` },
-        };
-        writeJson(
-          path.join(
-            "data",
-            `relationship_sales_person${p > 1 ? `_${p}` : ""}.json`,
-          ),
-          rel,
-        );
-        p++;
-        relIdx++;
-      }
-      let c = 1;
-      while (fs.existsSync(path.join("data", `company_${c}.json`))) {
-        const rel = {
-          to: { "/": `./company_${c}.json` },
-          from: { "/": `./${lastSales}` },
-        };
-        writeJson(
-          path.join(
-            "data",
-            `relationship_sales_company${c > 1 ? `_${c}` : ""}.json`,
-          ),
-          rel,
-        );
-        c++;
-        relIdx++;
-      }
+    const lastSales = salesFiles[0]; // if only last is desired; spec does not define matching by date; link available sale
+    let relIdx = 1;
+    let p = 1;
+    while (fs.existsSync(path.join("data", `person_${p}.json`))) {
+      const rel = {
+        to: { "/": `./person_${p}.json` },
+        from: { "/": `./${lastSales}` },
+      };
+      writeJson(
+        path.join(
+          "data",
+          `relationship_sales_person${p > 1 ? `_${p}` : ""}.json`,
+        ),
+        rel,
+      );
+      p++;
+      relIdx++;
+    }
+    let c = 1;
+    while (fs.existsSync(path.join("data", `company_${c}.json`))) {
+      const rel = {
+        to: { "/": `./company_${c}.json` },
+        from: { "/": `./${lastSales}` },
+      };
+      writeJson(
+        path.join(
+          "data",
+          `relationship_sales_company${c > 1 ? `_${c}` : ""}.json`,
+        ),
+        rel,
+      );
+      c++;
+      relIdx++;
     }
   }
 
