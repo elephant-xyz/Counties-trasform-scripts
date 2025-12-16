@@ -15,50 +15,10 @@ function norm(str) {
     .trim();
 }
 
-// Title case for names with proper handling of Mc/Mac prefixes and multi-part names
+// Title case for names: first letter uppercase, rest lowercase
 function titleCase(str) {
   if (!str) return str;
-
-  // Trim and handle empty strings
-  const trimmed = str.trim();
-  if (!trimmed) return "";
-
-  // Split on spaces, hyphens, apostrophes, but preserve the delimiters
-  const parts = trimmed.split(/(\s+|\-|'|,|\.)/);
-
-  const capitalized = parts.map((part, index) => {
-    // If it's a delimiter, keep it as is
-    if (/^(\s+|\-|'|,|\.)$/.test(part)) return part;
-
-    // Skip empty parts
-    if (!part) return part;
-
-    // Capitalize: first letter uppercase, rest lowercase
-    // Handle special cases like O'Brien, McDonald
-    if (part.length === 1) {
-      return part.toUpperCase();
-    }
-
-    // Check if previous part was an apostrophe or hyphen
-    const prevPart = index > 0 ? parts[index - 1] : null;
-    if (prevPart === "'" || prevPart === "-") {
-      // Capitalize after apostrophe or hyphen
-      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-    }
-
-    // Handle special prefixes (Mc, Mac, O')
-    if (part.toLowerCase().startsWith("mc") && part.length > 2) {
-      return "Mc" + part.charAt(2).toUpperCase() + part.slice(3).toLowerCase();
-    }
-    if (part.toLowerCase().startsWith("mac") && part.length > 3) {
-      return "Mac" + part.charAt(3).toUpperCase() + part.slice(4).toLowerCase();
-    }
-
-    // Standard capitalization
-    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-  });
-
-  return capitalized.join("");
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 }
 
 // Determine if text looks like an address or non-name noise
@@ -146,12 +106,6 @@ const companyKeywords = [
   "GROUP",
   "ENTERPRISES",
   "HOLDING",
-  "HOMEOWNERS",
-  "HOA",
-  "VILLAGE",
-  "COMMUNITY",
-  "CONDOMINIUM",
-  "CONDO",
 ];
 
 function looksLikeCompany(name) {
