@@ -374,7 +374,13 @@ function buildStructureFromBuilding(building, parcelId, buildingNumber, structur
         const trimmed = value.trim();
         if (trimmed !== '' && validSecondaryValues.includes(trimmed)) {
           structure.interior_wall_surface_material_secondary = trimmed;
+        } else {
+          // Invalid value - set to null explicitly
+          structure.interior_wall_surface_material_secondary = null;
         }
+      } else {
+        // No valid value - set to null explicitly
+        structure.interior_wall_surface_material_secondary = null;
       }
     }
   }
