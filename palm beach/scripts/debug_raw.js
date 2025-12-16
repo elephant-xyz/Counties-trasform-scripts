@@ -8771,6 +8771,7 @@ function enforceLeanCountyAddress(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
 
   const snapshot = readJSONIfExists(addressPath) || {};
+  const preferRaw = options.preferRaw === true;
   const rawValue = safeNullIfEmpty(
     resolveFirstNonEmptyString([
       snapshot.unnormalized_address,
@@ -8800,7 +8801,7 @@ function enforceLeanCountyAddress(addressPath, options = {}) {
       ...(options.sourceHttpRequestCandidates || []),
     ) || null;
 
-  if (normalizedComplete) {
+  if (normalizedComplete && !preferRaw) {
     const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
       if (field === "request_identifier") {
@@ -8853,36 +8854,22 @@ function enforceLeanCountyAddress(addressPath, options = {}) {
   }
 
   if (rawValue) {
-    const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
-    RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
-      if (field === "unnormalized_address") return;
-      if (field === "request_identifier") {
-        rawOut[field] =
-          requestIdentifier === undefined ? null : requestIdentifier;
-        return;
-      }
-      if (field === "source_http_request") {
-        rawOut[field] = sourceHttp ? deepClone(sourceHttp) : null;
-        return;
-      }
-      const candidate = Object.prototype.hasOwnProperty.call(snapshot, field)
-        ? snapshot[field]
-        : null;
-      rawOut[field] = sanitizeAddressFieldValue
-        ? sanitizeAddressFieldValue(field, candidate)
-        : candidate;
+    const rawOut = buildFinalRawAddressOutput(rawValue, {
+      requestIdentifier: requestIdentifier === undefined ? null : requestIdentifier,
+      sourceHttpRequest: sourceHttp,
+      countyName:
+        snapshot.county_name ||
+        (normalizedSurface && normalizedSurface.county_name) ||
+        null,
+      latitude: normalizedSurface && normalizedSurface.latitude,
+      longitude: normalizedSurface && normalizedSurface.longitude,
+      seed: snapshot,
     });
-    if (!rawOut.postal_code) {
-      rawOut.plus_four_postal_code = null;
+    if (rawOut) {
+      writeJSON(addressPath, rawOut);
+    } else {
+      removeFileIfExists(addressPath);
     }
-    if (
-      hasMeaningfulAddressValue(rawOut.state_code) &&
-      !hasMeaningfulAddressValue(rawOut.country_code)
-    ) {
-      rawOut.country_code = "US";
-    }
-    rawOut.unnormalized_address = rawValue;
-    writeJSON(addressPath, rawOut);
   } else {
     removeFileIfExists(addressPath);
   }
@@ -27071,6 +27058,8 @@ async function main() {
         : null;
     const preferredNormalized =
       normalizedFromBest || normalizedFromSnapshot || null;
+    const preferRawBranch =
+      prefersRawAddressBranch || Boolean(finalRawSelection);
 
     let finalAddressOutput = null;
     if (finalRawSelection) {
@@ -27256,6 +27245,7 @@ async function main() {
         seed && seed.source_http_request,
         unAddr && unAddr.source_http_request,
       ],
+      preferRaw: preferRawBranch,
     });
 
     clampAddressToMinimalOneOfBranch(addressOutputPath, {
@@ -27287,7 +27277,7 @@ async function main() {
         seed && seed.source_http_request,
         unAddr && unAddr.source_http_request,
       ],
-      preferRaw: prefersRawAddressBranch,
+      preferRaw: preferRawBranch,
     });
 
     // Guarantee relationships are left for downstream population (no local URs).
