@@ -368,7 +368,8 @@ function buildStructureFromBuilding(building, parcelId, buildingNumber, structur
         "Decorative Panels", "Feature Wall Material"
       ];
       const value = secondaryMaterials[0];
-      if (validSecondaryValues.includes(value)) {
+      // Only set if value is a non-empty string and in the valid list
+      if (value && typeof value === 'string' && value.trim() !== '' && validSecondaryValues.includes(value)) {
         structure.interior_wall_surface_material_secondary = value;
       }
     }

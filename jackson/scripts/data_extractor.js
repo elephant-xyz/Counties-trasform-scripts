@@ -1927,7 +1927,8 @@ function createStructureFiles(seed,parcelIdentifier) {
         "Decorative Panels", "Feature Wall Material"
       ];
       const secondaryValue = struct?.interior_wall_surface_material_secondary ?? null;
-      const validatedSecondary = (secondaryValue && validSecondaryValues.includes(secondaryValue)) ? secondaryValue : null;
+      // Ensure the value is a non-empty string and in the valid list, otherwise set to null
+      const validatedSecondary = (secondaryValue && typeof secondaryValue === 'string' && secondaryValue.trim() !== '' && validSecondaryValues.includes(secondaryValue)) ? secondaryValue : null;
 
       const structureOut = {
         ...appendSourceInfo(seed),
