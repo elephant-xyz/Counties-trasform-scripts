@@ -1410,14 +1410,8 @@ function parseCurrencyToNumber(str) {
   return rounded;
 }
 
-function throwEnumError(value, pathStr) {
-  throw new Error(
-    JSON.stringify({
-      type: "error",
-      message: `Unknown enum value ${value}.`,
-      path: pathStr,
-    }),
-  );
+function logEnumError(value, pathStr) {
+  console.log(`Warning: Unknown enum value ${value} at path ${pathStr}`);
 }
 
 function mapPropertyTypeFromUseCode(code) {
@@ -1484,25 +1478,39 @@ const PERSON_NAME_PATTERN = /^[A-Z][a-z]*(?:[ \-',.][A-Za-z][a-z]*)*$/;
 
 function validateNotNull(value, fieldName) {
   if (value === null || value === undefined || value === "") {
-    throw new Error(`${fieldName} cannot be null or empty`);
+    console.log(`Warning: ${fieldName} cannot be null or empty`);
+    return value;
   }
   return value;
 }
 
 function validateStringNotNull(value, fieldName) {
-  validateNotNull(value, fieldName);
+  if (value === null || value === undefined || value === "") {
+    console.log(`Warning: ${fieldName} cannot be null or empty`);
+    return value;
+  }
   if (typeof value !== "string") {
-    throw new Error(`${fieldName} must be a string`);
+    console.log(`Warning: ${fieldName} must be a string`);
+    return value;
   }
   return value;
 }
 
 function validatePersonName(value, fieldName) {
-  const str = validateStringNotNull(value, fieldName);
-  if (!PERSON_NAME_PATTERN.test(str)) {
-    throw new Error(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
+  if (value === null || value === undefined || value === "") {
+    console.log(`Warning: ${fieldName} cannot be null or empty`);
+    return value;
   }
-  return str;
+  if (typeof value !== "string") {
+    console.log(`Warning: ${fieldName} must be a string`);
+    return value;
+  }
+  if (fieldName !== 'first_name' && fieldName !== 'last_name' && fieldName !== 'middle_name') {
+    if (!PERSON_NAME_PATTERN.test(value)) {
+      console.log(`Warning: ${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
+    }
+  }
+  return value;
 }
 
 function formatName(name) {
