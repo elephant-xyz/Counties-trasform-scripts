@@ -806,11 +806,16 @@ const buildDefaultRelationshipFileName = (rel) => {
 
 function titleCaseName(s) {
   if (s == null) return null;
-  s = String(s).toLowerCase();
-  return s.replace(
+  s = String(s).trim();
+  if (!s) return null;
+  s = s.toLowerCase();
+  const result = s.replace(
     /(^|[\s\-\'])([a-z])/g,
     (m, p1, p2) => p1 + p2.toUpperCase(),
   );
+  // Ensure result starts with an uppercase letter (valid name pattern)
+  if (!result || !/^[A-Z]/.test(result)) return null;
+  return result;
 }
 
 function getValueByStrong($, label) {
@@ -1864,6 +1869,8 @@ function main() {
     const first = titleCaseName(p.first_name);
     const last = titleCaseName(p.last_name);
     const middle = p.middle_name ? titleCaseName(p.middle_name) : null;
+    // Ensure first and last names are valid after title casing
+    if (!first || !last) return null;
     const personObj = {
       birth_date: null,
       first_name: first,
