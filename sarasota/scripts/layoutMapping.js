@@ -17,122 +17,399 @@ function extractPropertyId($) {
   return m ? m[1] : "unknown";
 }
 
-function buildLayouts($) {
-  const layouts = [];
-  let layoutIndex = 1;
-  
-  // Parse building information from the Buildings table
-  const buildingsTable = $("#Buildings");
-  if (buildingsTable.length > 0) {
-    buildingsTable.find("tbody tr").each((i, row) => {
-      const cells = $(row).find("td");
-      if (cells.length >= 10) {
-        const beds = parseInt($(cells[2]).text().trim()) || 0;
-        const baths = parseInt($(cells[3]).text().trim()) || 0;
-        const halfBaths = parseInt($(cells[4]).text().trim()) || 0;
-        const yearBuilt = parseInt($(cells[5]).text().trim()) || null;
-        const livingArea = parseInt($(cells[8]).text().replace(/,/g, '').trim()) || null;
-        
-        // Create bedroom layouts
-        for (let b = 0; b < beds; b++) {
-          layouts.push(createLayout("Bedroom", layoutIndex++, null, yearBuilt));
-        }
-        
-        // Create full bathroom layouts
-        for (let b = 0; b < baths; b++) {
-          layouts.push(createLayout("Full Bathroom", layoutIndex++, null, yearBuilt));
-        }
-        
-        // Create half bathroom layouts
-        for (let b = 0; b < halfBaths; b++) {
-          layouts.push(createLayout("Half Bathroom / Powder Room", layoutIndex++, null, yearBuilt));
-        }
-        
-        // Add standard rooms if we have living area
-        if (livingArea > 0) {
-          layouts.push(createLayout("Living Room", layoutIndex++, null, yearBuilt));
-          layouts.push(createLayout("Kitchen", layoutIndex++, null, yearBuilt));
-        }
-      }
-    });
+class MultiCounter {
+  constructor() {
+    // Use a Map to store counts for different keys.
+    // Map keys can be any data type (strings, numbers, objects).
+    this.counts = new Map();
   }
-  
-  // Parse extra features (pool, spa, patio, etc.)
-  const extraFeaturesTable = $("span.h2").filter((i, el) => 
-    $(el).text().trim().includes("Extra Features")
-  ).next("table");
-  
-  if (extraFeaturesTable.length > 0) {
-    extraFeaturesTable.find("tbody tr").each((i, row) => {
-      const cells = $(row).find("td");
-      if (cells.length >= 6) {
-        const description = $(cells[2]).text().trim().toLowerCase();
-        const units = parseInt($(cells[3]).text().replace(/,/g, '').trim()) || null;
-        const unitType = $(cells[4]).text().trim();
-        const year = parseInt($(cells[5]).text().trim()) || null;
-        
-        if (description.includes("pool")) {
-          layouts.push(createLayout("Outdoor Pool", layoutIndex++, units, year, true));
-        } else if (description.includes("spa") || description.includes("whirlpool")) {
-          layouts.push(createLayout("Hot Tub / Spa Area", layoutIndex++, units, year, true));
-        } else if (description.includes("patio")) {
-          layouts.push(createLayout("Patio", layoutIndex++, units, year, true));
-        } else if (description.includes("screened") && description.includes("enclosure")) {
-          layouts.push(createLayout("Screened Porch", layoutIndex++, units, year, true));
-        } else if (description.includes("screened")) {
-          layouts.push(createLayout("Screened Porch", layoutIndex++, units, year, true));
-        } else if (description.includes("garage")) {
-          layouts.push(createLayout("Attached Garage", layoutIndex++, units, year, true));
-        } else if (description.includes("carport")) {
-          layouts.push(createLayout("Carport", layoutIndex++, units, year, true));
-        }
-      }
-    });
+
+  /**
+   * Increments the count for a given key.
+   * If the key doesn't exist, it initializes its count to 0 before incrementing.
+   * @param {any} key - The key whose count should be incremented.
+   * @param {number} [step=1] - The amount to increment by.
+   */
+  increment(key, step = 1) {
+    if (typeof step !== 'number' || step <= 0) {
+      throw new Error("Increment step must be a positive number.");
+    }
+    const currentCount = this.counts.get(key) || 0;
+    this.counts.set(key, currentCount + step);
   }
-  
-  return layouts;
+
+  /**
+   * Decrements the count for a given key.
+   * If the key doesn't exist, it initializes its count to 0 before decrementing.
+   * @param {any} key - The key whose count should be decremented.
+   * @param {number} [step=1] - The amount to decrement by.
+   */
+  decrement(key, step = 1) {
+    if (typeof step !== 'number' || step <= 0) {
+      throw new Error("Decrement step must be a positive number.");
+    }
+    const currentCount = this.counts.get(key) || 0;
+    this.counts.set(key, currentCount - step);
+  }
+
+  /**
+   * Sets the count for a given key to a specific value.
+   * @param {any} key - The key whose count should be set.
+   * @param {number} value - The new count value.
+   */
+  set(key, value) {
+    if (typeof value !== 'number') {
+      throw new Error("Count value must be a number.");
+    }
+    this.counts.set(key, value);
+  }
+
+  /**
+   * Gets the current count for a given key.
+   * Returns 0 if the key does not exist.
+   * @param {any} key - The key to retrieve the count for.
+   * @returns {number} The count for the key, or 0 if not found.
+   */
+  get(key) {
+    return this.counts.get(key) || 0;
+  }
 }
 
-function createLayout(spaceType, index, size, yearBuilt, isExterior = false) {
+function parseSarasotaTables($) {
+  const emptyResult = {
+    buildings: [],
+    extraFeatures: [],
+    values: [],
+    salesAndTransfers: [],
+    propertyAttributes: {},
+  };
+  const buildingsTable = $('#Buildings').first();
+  const extraFeaturesTable = findTableByHeading($, 'Extra Features');
+  const valuesTable = findTableByHeading($, 'Values');
+  const salesTable = findTableByHeading($, 'Sales & Transfers');
+
   return {
-    space_type: spaceType,
-    space_index: index,
+    buildings: parseHeaderTable($, buildingsTable),
+    extraFeatures: parseHeaderTable($, extraFeaturesTable),
+    values: parseHeaderTable($, valuesTable),
+    salesAndTransfers: parseHeaderTable($, salesTable),
+    propertyAttributes: extractPropertyAttributes($),
+  };
+}
+
+function findTableByHeading($, headingText) {
+  if (!headingText) {
+    return $();
+  }
+  const heading = $('span.h2')
+    .filter((_, el) => $(el).text().trim().startsWith(headingText))
+    .first();
+
+  if (!heading.length) {
+    return $();
+  }
+  return heading.nextAll('table').first();
+}
+
+function parseHeaderTable($, table) {
+  if (!table || !table.length) {
+    return [];
+  }
+
+  const headerRow = table.find('tr').first();
+  const headerCells = headerRow.find('th');
+
+  if (!headerCells.length) {
+    return [];
+  }
+
+  const headers = headerCells
+    .map((idx, th) => {
+      const text = $(th).text().replace(/\s+/g, ' ').trim();
+      return normalizeHeaderKey(text) || `column${idx + 1}`;
+    })
+    .get();
+
+  const bodyRows = table.find('tbody tr');
+  const rows = bodyRows.length ? bodyRows : table.find('tr').slice(1);
+  return rows
+    .map((_, row) => {
+      const cells = $(row).find('td');
+      const record = {};
+      headers.forEach((header, idx) => {
+        const cellText = cells
+          .eq(idx)
+          .text()
+          .replace(/\u00A0/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        record[header] = cellText || null;
+      });
+      return record;
+    })
+    .get();
+}
+
+function extractPropertyAttributes($) {
+  const result = {};
+  const detailsList = $('ul.resultr.spaced').first();
+
+  if (!detailsList.length) {
+    return result;
+  }
+
+  detailsList.find('li').each((_, item) => {
+    const strong = $(item).find('strong').first();
+    if (!strong.length) {
+      return;
+    }
+    const label = strong.text().replace(/[:]/g, '').trim();
+    const key = normalizeHeaderKey(label);
+    if (!key) {
+      return;
+    }
+
+    const clone = $(item).clone();
+    clone.find('strong').first().remove();
+    const value = clone
+      .text()
+      .replace(/\u00A0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    result[key] = value || null;
+  });
+
+  return result;
+}
+
+function normalizeHeaderKey(text) {
+  if (!text) {
+    return '';
+  }
+  const cleaned = text.replace(/[^a-zA-Z0-9]+/g, ' ').trim();
+  if (!cleaned) {
+    return '';
+  }
+  return cleaned
+    .split(' ')
+    .map((part, idx) =>
+      idx === 0 ? part.toLowerCase() : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase(),
+    )
+    .join('');
+}
+
+function baseLayoutDefaults() {
+  return {
+    // Required fields per schema (allowing null where permitted)
     flooring_material_type: null,
-    size_square_feet: size,
-    floor_level: isExterior ? null : "1st Floor",
+    size_square_feet: null,
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
     window_treatment_type: null,
-    is_finished: spaceType !== "Attached Garage" && spaceType !== "Detached Garage" && spaceType !== "Carport",
+    is_finished: true,
     furnished: null,
     paint_condition: null,
     flooring_wear: null,
     clutter_level: null,
     visible_damage: null,
-    countertop_material: spaceType === "Kitchen" ? null : null,
-    cabinet_style: spaceType === "Kitchen" ? null : null,
+    countertop_material: null,
+    cabinet_style: null,
     fixture_finish_quality: null,
     design_style: null,
     natural_light_quality: null,
     decor_elements: null,
-    pool_type: (spaceType === "Outdoor Pool" || spaceType === "Indoor Pool" || spaceType === "Pool Area") ? null : null,
+    pool_type: null,
     pool_equipment: null,
-    spa_type: spaceType === "Hot Tub / Spa Area" ? null : null,
+    spa_type: null,
     safety_features: null,
     view_type: null,
     lighting_features: null,
     condition_issues: null,
-    is_exterior: isExterior,
+    is_exterior: false,
     pool_condition: null,
     pool_surface_type: null,
     pool_water_quality: null,
-    source_http_request: {
-      method: "GET",
-      url: "https://www.sc-pa.com/propertysearch"
-    },
-    request_identifier: null
+    size_square_feet: null,
   };
+}
+
+function parseIntOrNull(val) {
+  if (!val) {
+    return null;
+  }
+  const normalized = val.replace(/,/gi, '').trim();
+  if (!normalized) {
+    return null;
+  }
+  const parsedVal = parseInt(normalized, 10);
+  return Number.isNaN(parsedVal) ? null : parsedVal;
+}
+
+function parseFloatOrNull(val) {
+  if (!val) {
+    return null;
+  }
+  const normalized = val.replace(/,/gi, '').trim();
+  if (!normalized) {
+    return null;
+  }
+  const parsedVal = parseFloat(normalized);
+  return Number.isNaN(parsedVal) ? null : parsedVal;
+}
+
+function buildLayouts($) {
+  const layouts = [];
+  
+  const parsed = parseSarasotaTables($);
+  const parsedBuildings = parsed.buildings;
+  parsedBuildings.forEach((parsedBuilding, index) => {
+    const buildIndex = index + 1;
+    const bedrooms = parseIntOrNull(parsedBuilding.beds);
+    const bathrooms = parseIntOrNull(parsedBuilding.baths);
+    const halfBathrooms = parseIntOrNull(parsedBuilding.halfBaths);
+    const property_structure_built_year = parseIntOrNull(parsedBuilding.yearBuilt);
+    const number_of_stories = parseIntOrNull(parsedBuilding.stories);
+    const total_area = parseIntOrNull(parsedBuilding.grossArea);
+    const livable_area_sq_ft = parseIntOrNull(parsedBuilding.livingArea);
+    // const typeRow = (parsedBuilding.typeRows && parsedBuilding.typeRows[0]) || {};
+    // const sectionDetails = parsedBuilding.sectionDetails || {};
+    // const characteristics = parsedBuilding.characteristics || {};
+    // const property_structure_built_year = parseIntOrNull(characteristics.yearBuilt);
+    // const number_of_stories = parseFloatOrNull(typeRow.stories);
+    // const finished_base_area = parseIntOrNull(typeRow.groundFloorArea);
+    // const total_area = parseIntOrNull(typeRow.totalFlrArea);
+    // const bedrooms = parseIntOrNull(sectionDetails.bedrooms);
+    // const bathrooms = (parseIntOrNull(sectionDetails["4FixtureBaths"]) ?? 0) + (parseIntOrNull(sectionDetails["3FixtureBaths"]) ?? 0) + (parseIntOrNull(sectionDetails["2FixtureBaths"]) ?? 0);
+    // const hasKitchen = sectionDetails["bltInKitchen"] && sectionDetails["bltInKitchen"] === "Y";
+    const buildingLayout = Object.assign(baseLayoutDefaults(), {
+      space_type: "Building",
+      space_type_index: buildIndex.toString(),
+      total_area_sq_ft: total_area,
+      livable_area_sq_ft: livable_area_sq_ft,
+      built_year: property_structure_built_year,
+      building_number: buildIndex,
+      is_finished: true,
+    });
+    layouts.push(buildingLayout);
+    if (number_of_stories) {
+      for (let roomIndex = 0; roomIndex < number_of_stories; roomIndex++) {
+        const roomLayout = Object.assign(baseLayoutDefaults(), {
+          space_type: "Floor",
+          space_type_index: `${buildIndex.toString()}.${roomIndex+1}`,
+          size_square_feet: null,
+          heated_area_sq_ft: null,
+          total_area_sq_ft: null,
+          built_year: null,
+          building_number: buildIndex,
+          is_finished: true,
+        });
+        layouts.push(roomLayout);
+      }
+    }
+    if (bedrooms) {
+      for (let roomIndex = 0; roomIndex < bedrooms; roomIndex++) {
+        const roomLayout = Object.assign(baseLayoutDefaults(), {
+          space_type: "Bedroom",
+          space_type_index: `${buildIndex.toString()}.${roomIndex+1}`,
+          size_square_feet: null,
+          heated_area_sq_ft: null,
+          total_area_sq_ft: null,
+          built_year: null,
+          building_number: buildIndex,
+          is_finished: true,
+        });
+        layouts.push(roomLayout);
+      }
+    }
+    if (halfBathrooms) {
+      for (let roomIndex = 0; roomIndex < halfBathrooms; roomIndex++) {
+        const roomLayout = Object.assign(baseLayoutDefaults(), {
+          space_type: "Half Bathroom / Powder Room",
+          space_type_index: `${buildIndex.toString()}.${roomIndex+1}`,
+          size_square_feet: null,
+          heated_area_sq_ft: null,
+          total_area_sq_ft: null,
+          built_year: null,
+          building_number: buildIndex,
+          is_finished: true,
+        });
+        layouts.push(roomLayout);
+      }
+    }
+    if (bathrooms) {
+      for (let roomIndex = 0; roomIndex < bathrooms; roomIndex++) {
+        const roomLayout = Object.assign(baseLayoutDefaults(), {
+          space_type: "Full Bathroom",
+          space_type_index: `${buildIndex.toString()}.${roomIndex+1}`,
+          size_square_feet: null,
+          heated_area_sq_ft: null,
+          total_area_sq_ft: null,
+          built_year: null,
+          building_number: buildIndex,
+          is_finished: true,
+        });
+        layouts.push(roomLayout);
+      }
+    }
+  });
+  let spaceTypeCounter = {};
+  spaceTypeCounter["NoBuilding"] = new MultiCounter();
+  const parsedFeatures = parsed.extraFeatures;
+  parsedFeatures.forEach((parsedFeature, index) => {
+    if (!parsedFeature.description) {
+      return;
+    }
+    const featureType = parsedFeature.description.toUpperCase();
+    const builtYear = parseIntOrNull(parsedFeature.year);
+    const buildingNum = parseIntOrNull(parsedFeature.buildingNumber);
+    if (buildingNum && spaceTypeCounter[buildingNum.toString()] === undefined) {
+      spaceTypeCounter[buildingNum.toString()] = new MultiCounter();
+    }
+    let spaceType = null;
+    if (featureType.includes("POOL") && featureType.includes("DECK")) {
+      spaceType = "Pool Area";
+    } else if(featureType.includes("POOL")) {
+      spaceType = "Outdoor Pool";
+    } else if(featureType.includes("SHED")) {
+      spaceType = "Shed";
+    } else if(featureType.includes("GARAGE")) {
+      spaceType = "Attached Garage";
+    } else if(featureType.includes("GREENHOUSE")) {
+      spaceType = "Greenhouse";
+    } else if(featureType.includes("PORCH") && featureType.includes("ENCLOSED") ) {
+      spaceType = "Enclosed Porch";
+    } else if(featureType.includes("PORCH") && featureType.includes("SCREENED") ) {
+      spaceType = "Screened Porch";
+    } else if(featureType.includes("PORCH") ) {
+      spaceType = "Porch";
+    } else if(featureType.includes("SPA") ) {
+      spaceType = "Hot Tub / Spa Area";
+    } else if(featureType.includes("SUMMER KITCHEN") ) {
+      spaceType = "Outdoor Kitchen";
+    }
+    if (spaceType) {
+      let spaceTypeIndex = null;
+      if (buildingNum) {
+        spaceTypeCounter[buildingNum.toString()].increment(spaceType);
+        spaceTypeIndex = `${buildingNum}.${spaceTypeCounter[buildingNum.toString()].get(spaceType)}`;
+      } else {
+        spaceTypeCounter["NoBuilding"].increment(spaceType);
+        spaceTypeIndex = `${spaceTypeCounter["NoBuilding"].get(spaceType)}`;
+      }
+      const featureLayout = Object.assign(baseLayoutDefaults(), {
+        space_type: spaceType,
+        space_type_index: spaceTypeIndex,
+        built_year: builtYear,
+        building_number: buildingNum ? buildingNum : null,
+        is_finished: true,
+      });
+      layouts.push(featureLayout);
+    }
+  });
+  
+  return layouts;
 }
 
 (function main() {

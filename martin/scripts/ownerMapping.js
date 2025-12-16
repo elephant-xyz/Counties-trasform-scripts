@@ -167,22 +167,49 @@ function parsePersonName(raw) {
   };
 }
 
-// Parse an owner raw string into one or more structured owners (person/company)
-function classifyOwner(raw) {
+const PERSON_FRAGMENT_BLOCKLIST = new Set([
+  "sons",
+  "heirs",
+  "estate",
+  "est",
+  "trust",
+  "trustee",
+  "associates",
+]);
+
+function isLikelyPersonFragment(raw) {
+  const cleaned = stripRoleTokens(cleanName(raw));
+  if (!cleaned) return false;
+  if (COMPANY_REGEX.test(cleaned)) return false;
+  if (/\b(revocable|trust|agreement)\b/i.test(cleaned)) return false;
+  if (/[^a-z\s\-',.]/i.test(cleaned)) return false;
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  if (!tokens.length || tokens.length > 3) return false;
+  const normalized = tokens.map((t) => t.replace(/\.$/, "").toLowerCase());
+  if (normalized.some((t) => PERSON_FRAGMENT_BLOCKLIST.has(t))) return false;
+  return tokens.every((t) => /^[A-Za-z][A-Za-z'.-]*\.?$/.test(t));
+}
+
+function inferPersonWithFallback(raw, fallbackLast) {
+  if (!fallbackLast) return null;
+  if (!isLikelyPersonFragment(raw)) return null;
+  const cleanedTokens = stripRoleTokens(cleanName(raw))
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!cleanedTokens.length) return null;
+  const first = cleanedTokens[0];
+  const middle = cleanedTokens.length > 1 ? cleanedTokens.slice(1).join(" ") : null;
+  return {
+    type: "person",
+    first_name: first,
+    middle_name: middle || null,
+    last_name: fallbackLast,
+  };
+}
+
+function classifySingleOwner(raw, fallbackLastName = null) {
   const s = cleanName(raw);
   if (!s) return { owners: [], invalid: { raw, reason: "empty name" } };
-
-  const parts = splitRawOwners(s);
-  if (parts.length > 1) {
-    const owners = [];
-    const invalids = [];
-    for (const p of parts) {
-      const res = classifyOwner(p);
-      owners.push(...res.owners);
-      if (res.invalid) invalids.push(res.invalid);
-    }
-    return { owners, invalid: invalids.length ? invalids[0] : null };
-  }
 
   const isCompany =
     COMPANY_REGEX.test(s) || /\b(revocable|trust|agreement)\b/i.test(s);
@@ -190,15 +217,50 @@ function classifyOwner(raw) {
     return { owners: [{ type: "company", name: s }], invalid: null };
   }
 
-  if (looksLikePerson(s)) {
-    const person = parsePersonName(s);
-    if (person) return { owners: [person], invalid: null };
-  }
+  let person = looksLikePerson(s) ? parsePersonName(s) : null;
+  if (!person) person = inferPersonWithFallback(s, fallbackLastName);
+
+  if (person) return { owners: [person], invalid: null };
 
   return {
     owners: [],
     invalid: { raw: s, reason: "unclassifiable or ambiguous" },
   };
+}
+
+function classifyOwnerParts(parts) {
+  const owners = [];
+  const invalids = [];
+  let fallbackLast = null;
+
+  for (const part of parts) {
+    const result = classifySingleOwner(part, fallbackLast);
+    if (result.owners && result.owners.length) {
+      owners.push(...result.owners);
+      const lastPerson = [...result.owners]
+        .reverse()
+        .find((o) => o.type === "person" && o.last_name);
+      if (lastPerson) fallbackLast = lastPerson.last_name;
+    } else if (result.invalid) {
+      invalids.push(result.invalid);
+    }
+  }
+
+  return { owners, invalids };
+}
+
+// Parse an owner raw string into one or more structured owners (person/company)
+function classifyOwner(raw) {
+  const s = cleanName(raw);
+  if (!s) return { owners: [], invalid: { raw, reason: "empty name" } };
+
+  const parts = splitRawOwners(s);
+  if (parts.length > 1) {
+    const { owners, invalids } = classifyOwnerParts(parts);
+    return { owners, invalid: invalids.length ? invalids[0] : null };
+  }
+
+  return classifySingleOwner(s);
 }
 
 // Normalize owner key for deduplication
@@ -317,45 +379,13 @@ function toISODate(s) {
 
 // Build owners_by_date map sorted chronologically, plus current
 function buildOwnersByDate() {
-  const invalid_owners = [];
-
   const current = getCurrentOwners();
-  invalid_owners.push(...current.invalids);
-
-  const hist = getHistoricalOwners();
-  invalid_owners.push(...hist.invalids);
-
-  const map = new Map();
-  for (const entry of hist.entries) {
-    let key = entry.date;
-    if (!key) {
-      let idx = 1;
-      while (map.has(`unknown_date_${idx}`)) idx++;
-      key = `unknown_date_${idx}`;
-    }
-    const arr = map.get(key) || [];
-    for (const o of entry.owners) arr.push(o);
-    map.set(key, dedupeOwners(arr));
-  }
-
-  const keys = Array.from(map.keys());
-  const dateKeys = keys.filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
-  const unknownKeys = keys
-    .filter((k) => /^unknown_date_\d+$/.test(k))
-    .sort((a, b) => {
-      const ia = parseInt(a.replace(/\D/g, ""), 10);
-      const ib = parseInt(b.replace(/\D/g, ""), 10);
-      return ia - ib;
-    });
-
-  const ordered = {};
-  for (const k of [...dateKeys, ...unknownKeys]) {
-    ordered[k] = map.get(k) || [];
-  }
-
-  ordered["current"] = current.owners;
-
-  return { owners_by_date: ordered, invalid_owners: invalid_owners };
+  return {
+    owners_by_date: {
+      current: current.owners,
+    },
+    invalid_owners: current.invalids,
+  };
 }
 
 // Compose final object

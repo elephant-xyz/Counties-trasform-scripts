@@ -2779,7 +2779,7 @@ async function main() {
         property_land_amount:
           typeof landVal === "number" && Number.isFinite(landVal) && landVal > 0 ? landVal : null,
         property_taxable_value_amount:
-          typeof taxableVal === "number" && Number.isFinite(taxableVal) ? taxableVal : 0,
+          typeof taxableVal === 'number' && Number.isFinite(taxableVal) ? taxableVal : 0,
         monthly_tax_amount: null,
         period_end_date: null,
         period_start_date: null,
