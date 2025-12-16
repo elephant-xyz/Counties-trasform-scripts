@@ -1243,12 +1243,16 @@ function extract() {
       }
       return null;
     })(),
-    lot_length_feet: frontage
-      ? parseInt(String(frontage).replace(/[^0-9.]/g, ""), 10)
-      : null,
-    lot_width_feet: depth
-      ? parseInt(String(depth).replace(/[^0-9.]/g, ""), 10)
-      : null,
+    lot_length_feet: (() => {
+      if (!frontage) return null;
+      const parsed = parseInt(String(frontage).replace(/[^0-9.]/g, ""), 10);
+      return parsed >= 1 ? parsed : null;
+    })(),
+    lot_width_feet: (() => {
+      if (!depth) return null;
+      const parsed = parseInt(String(depth).replace(/[^0-9.]/g, ""), 10);
+      return parsed >= 1 ? parsed : null;
+    })(),
     lot_area_sqft: estSqft
       ? parseInt(String(estSqft).replace(/[^0-9]/g, ""), 10)
       : null,
