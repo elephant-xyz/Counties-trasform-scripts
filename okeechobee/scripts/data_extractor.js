@@ -3421,8 +3421,8 @@ function main() {
       if (row.bookPageTxt) {
         const bookPageMatch = row.bookPageTxt.match(/(\d+)\s*\/\s*(\d+)/);
         if (bookPageMatch) {
-          book = bookPageMatch[1] ? bookPageMatch[1].trim() : null;
-          page = bookPageMatch[2] ? bookPageMatch[2].trim() : null;
+          book = bookPageMatch[1] ? String(bookPageMatch[1].trim()) : null;
+          page = bookPageMatch[2] ? String(bookPageMatch[2].trim()) : null;
         }
       }
 
@@ -3435,10 +3435,10 @@ function main() {
 
         // Only include book and page if they are valid non-empty strings
         if (book && typeof book === 'string' && book.length > 0) {
-          deed.book = book;
+          deed.book = String(book);
         }
         if (page && typeof page === 'string' && page.length > 0) {
-          deed.page = page;
+          deed.page = String(page);
         }
 
         if (row.deedCode !== "N/A") {
