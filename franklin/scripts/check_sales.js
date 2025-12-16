@@ -1,7 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 const cheerio = require('cheerio');
-const html = fs.readFileSync(path.join(__dirname, '../input/1907S04W4250000C0120.html'), 'utf8');
+const inputDir = path.join(__dirname, '../input');
+const files = fs.readdirSync(inputDir);
+const htmlFile = files.find(f => f.endsWith('.html'));
+if (!htmlFile) {
+  throw new Error('No HTML file found in input directory');
+}
+const html = fs.readFileSync(path.join(inputDir, htmlFile), 'utf8');
 const $ = cheerio.load(html);
 console.log('SALES GRANTEES:');
 $('section.sale table.grid2 tbody tr').each((i, tr) => {
