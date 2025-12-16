@@ -2906,7 +2906,13 @@ function extract() {
 
 
   // Keys & frequently used fields
-  const parcelId = getTextOrNull($("#pacel_no"));
+  const parcelIdFromHtml = getTextOrNull($("#pacel_no"));
+  // CRITICAL: parcel_identifier is REQUIRED and must be a string with minLength: 1
+  // Use parcel_id from seed file, or request_identifier as fallback
+  const parcelId = parcelIdFromHtml ||
+                   (seed && seed.parcel_id) ||
+                   (seed && seed.request_identifier) ||
+                   "UNKNOWN_PARCEL";
   // Fallback to seed if HTML element is not found or empty
   const requestIdentifier =(seed &&
       seed.source_http_request &&
@@ -3053,15 +3059,17 @@ function extract() {
         // console.error("Failed to create new file:", err.message);
       }
     }
-    
-    // const relationship = {
-    //   from: { "/": `./property.json` },
-    //   to: { "/": `./propertyLot.json` }
-    // };
-    // writeJSON(
-    //   path.join("data", `relationship_property_has_lot.json`),
-    //   relationship
-    // );
+
+    // CRITICAL: Create property_has_lot relationship: parcel (from) → lot (to)
+    // The "from" must be a parcel entity with parcel_identifier (not property)
+    const relationship = {
+      from: { "/": `./parcel.json` },
+      to: { "/": `./lot.json` }
+    };
+    writeJSON(
+      path.join(dataDir, `relationship_property_has_lot.json`),
+      relationship
+    );
 
 
   } catch (e) {
@@ -3182,6 +3190,18 @@ function extract() {
     if (property[k] === undefined) delete property[k];
   });
   writeJSON(path.join(dataDir, "property.json"), property);
+
+  // CRITICAL: Create parcel.json file - required for property_has_lot relationship
+  // The parcel entity is the "from" in the property_has_lot relationship
+  const parcel = {
+    parcel_identifier: parcelId,
+    request_identifier: requestIdentifier
+  };
+  writeJSON(path.join(dataDir, "parcel.json"), parcel);
+
+  // CRITICAL: Create property_has_lot relationship: parcel (from) → lot (to)
+  // This relationship is created after lot.json is generated (lines 3056)
+  // We'll add the relationship creation right after the lot file is written
 
   // ADDRESS
   try {
