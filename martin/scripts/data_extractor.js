@@ -456,8 +456,6 @@ function mapContractorType(value) {
 const LAYOUT_FIELD_SET = new Set(LAYOUT_FIELDS);
 const UTILITY_FIELD_SET = new Set(UTILITY_FIELDS);
 
-const WRITTEN_DATA_FILES = new Set();
-
 function readText(p) {
   return fs.readFileSync(p, "utf8");
 }
@@ -615,8 +613,6 @@ function parsePersonNameComponents(raw) {
       last = tokens[0];
       first = tokens[1];
       if (tokens.length > 2) middle = tokens.slice(2).join(" ");
-    } else {
-      return null;
     }
   }
   if (!first || !last) return null;
@@ -627,41 +623,13 @@ function parsePersonNameComponents(raw) {
   };
 }
 
-function isLikelyPersonFragment(raw) {
-  const cleaned = normalizePartyName(raw);
-  if (!cleaned) return false;
-  if (cleaned.includes(",")) return false;
-  if (isCompanyName(cleaned)) return false;
-  if (/[^a-z\s\-',.]/i.test(cleaned)) return false;
-  const tokens = cleaned.split(/\s+/).filter(Boolean);
-  if (!tokens.length || tokens.length > 3) return false;
-  const normalized = tokens.map((t) => t.replace(/\.$/, "").toLowerCase());
-  if (normalized.some((t) => PERSON_FRAGMENT_BLOCKLIST.has(t))) return false;
-  return tokens.every((t) => /^[A-Za-z][A-Za-z'.-]*\.?$/.test(t));
-}
-
-function inferPersonWithFallback(raw, fallbackLast) {
-  if (!fallbackLast) return null;
-  if (!isLikelyPersonFragment(raw)) return null;
-  const tokens = normalizePartyName(raw).split(/\s+/).filter(Boolean);
-  if (!tokens.length) return null;
-  const first = tokens[0];
-  const middle = tokens.length > 1 ? tokens.slice(1).join(" ") : null;
-  return {
-    first_name: first,
-    middle_name: middle || null,
-    last_name: fallbackLast,
-  };
-}
-
-function classifySingleParty(raw, fallbackLastName = null) {
+function classifyParty(raw) {
   const cleaned = normalizePartyName(raw);
   if (!cleaned) return null;
   if (isCompanyName(cleaned)) {
     return { type: "company", name: cleaned };
   }
-  let person = parsePersonNameComponents(cleaned);
-  if (!person) person = inferPersonWithFallback(cleaned, fallbackLastName);
+  const person = parsePersonNameComponents(cleaned);
   if (person) {
     return { type: "person", ...person };
   }
@@ -669,23 +637,6 @@ function classifySingleParty(raw, fallbackLastName = null) {
     return { type: "company", name: cleaned };
   }
   return null;
-}
-
-function classifyParties(raw) {
-  const segments = splitPartySegments(raw);
-  if (!segments.length) return [];
-  const parties = [];
-  let fallbackLast = null;
-  segments.forEach((segment) => {
-    const party = classifySingleParty(segment, fallbackLast);
-    if (party) {
-      parties.push(party);
-      if (party.type === "person" && party.last_name) {
-        fallbackLast = party.last_name;
-      }
-    }
-  });
-  return parties;
 }
 
 function extractDeedReference(bookPageText, href) {
@@ -745,29 +696,6 @@ function writeRelationshipFiles(relations, buildFileName) {
     const fileName = buildFileName(rel);
     if (!fileName) return;
     writeJson(path.join("data", fileName), rel);
-  });
-}
-
-function updateDatagroupFiles(mutator) {
-  const dataDir = path.resolve("data");
-  if (!fs.existsSync(dataDir)) return;
-  fs.readdirSync(dataDir).forEach((name) => {
-    if (!name.toLowerCase().endsWith(".json")) return;
-    const fullPath = path.join(dataDir, name);
-    let parsed;
-    try {
-      const raw = fs.readFileSync(fullPath, "utf8");
-      parsed = JSON.parse(raw);
-    } catch (err) {
-      return;
-    }
-    if (!parsed || typeof parsed !== "object") return;
-    if (!parsed.relationships || typeof parsed.relationships !== "object") return;
-    const changed = mutator(parsed);
-    if (changed) {
-      const payload = JSON.stringify(parsed, null, 2);
-      fs.writeFileSync(fullPath, payload, "utf8");
-    }
   });
 }
 
@@ -1633,11 +1561,16 @@ function main() {
   };
   writeJson(path.join("data", "geometry.json"), geometryOut);
 
-  const relAddressGeometry = {
-    from: { "/": "./address.json" },
-    to: { "/": "./geometry.json" },
-  };
-  writeJson(path.join("data", "relationship_address_geometry.json"), relAddressGeometry);
+  const relAddressGeometry = [
+    {
+      from: { "/": "./address.json" },
+      to: { "/": "./geometry.json" },
+    },
+  ];
+  writeJson(
+    path.join("data", "relationship_address_geometry.json"),
+    relAddressGeometry,
+  );
 
   // Property
   const parcelId =
@@ -1966,8 +1899,8 @@ function main() {
       });
     }
 
-    const parties = classifyParties(row.grantor);
-    parties.forEach((party) => {
+    const party = classifyParty(row.grantor);
+    if (party) {
       if (party.type === "person") {
         const file = addPerson(party);
         if (file) {
@@ -1979,7 +1912,7 @@ function main() {
           saleGrantorCompanies.push({ saleIndex, file });
         }
       }
-    });
+    }
   });
 
   salesHistoryOut.forEach((s) => writeJson(path.join("data", s.file), s.data));
@@ -2003,43 +1936,27 @@ function main() {
     });
   });
   const currentOwners = ownersByDate["current"] || [];
-  let latestOwners = currentOwners;
-  if (!latestOwners.length) {
-    const datedEntries = Object.entries(ownersByDate)
-      .filter(
-        ([key, value]) =>
-          key !== "current" &&
-          Array.isArray(value) &&
-          value.length &&
-          !Number.isNaN(Date.parse(key)),
-      )
-      .map(([key, value]) => ({ key, value, ts: Date.parse(key) }))
-      .sort((a, b) => b.ts - a.ts);
-    if (datedEntries.length) {
-      latestOwners = datedEntries[0].value;
-    }
-  }
-  const latestOwnerPersonFiles = [];
-  const latestOwnerCompanyFiles = [];
-  latestOwners.forEach((o) => {
+  const currentOwnerPersonFiles = [];
+  const currentOwnerCompanyFiles = [];
+  currentOwners.forEach((o) => {
     if (o.type === "person") {
       const file = addPerson(o);
-      if (file) latestOwnerPersonFiles.push(file);
+      if (file) currentOwnerPersonFiles.push(file);
     } else if (o.type === "company" && o.name) {
       const file = ensureCompany(o.name);
-      if (file) latestOwnerCompanyFiles.push(file);
+      if (file) currentOwnerCompanyFiles.push(file);
     }
   });
 
   const mailingPersonRelationships = [];
   const mailingCompanyRelationships = [];
-  Array.from(new Set(latestOwnerPersonFiles)).forEach((file) => {
+  Array.from(new Set(currentOwnerPersonFiles)).forEach((file) => {
     mailingPersonRelationships.push({
       from: { "/": `./${file}` },
       to: { "/": `./${mailingAddressFile}` },
     });
   });
-  Array.from(new Set(latestOwnerCompanyFiles)).forEach((file) => {
+  Array.from(new Set(currentOwnerCompanyFiles)).forEach((file) => {
     mailingCompanyRelationships.push({
       from: { "/": `./${file}` },
       to: { "/": `./${mailingAddressFile}` },
@@ -2182,15 +2099,15 @@ function main() {
   });
 
   writeRelationshipFiles(mailingPersonRelationships, (rel) => {
-    const fromPath = rel?.from?.["/"];
-    const personIdx = getIndexFromRelPath(fromPath, "person_");
+    const toPath = rel?.to?.["/"];
+    const personIdx = getIndexFromRelPath(toPath, "person_");
     if (!personIdx) return null;
     return `relationship_person_${personIdx}_has_mailing_address.json`;
   });
 
   writeRelationshipFiles(mailingCompanyRelationships, (rel) => {
-    const fromPath = rel?.from?.["/"];
-    const companyIdx = getIndexFromRelPath(fromPath, "company_");
+    const toPath = rel?.to?.["/"];
+    const companyIdx = getIndexFromRelPath(toPath, "company_");
     if (!companyIdx) return null;
     return `relationship_company_${companyIdx}_has_mailing_address.json`;
   });
@@ -2941,47 +2858,6 @@ const layoutFilesOut = [];
     propertyHasStructureRels,
     buildDefaultRelationshipFileName,
   );
-
-  const propertyFactSheetRel = {
-    from: { "/": "./property.json" },
-    to: { "/": "./fact_sheet.json" },
-  };
-  writeJson(
-    path.join("data", "relationship_property_fact_sheet.json"),
-    propertyFactSheetRel,
-  );
-
-  const factSheetRelations = [];
-  WRITTEN_DATA_FILES.forEach((fileName) => {
-    if (!fileName || fileName === "fact_sheet.json") return;
-    factSheetRelations.push({
-      from: { "/": `./${fileName}` },
-      to: { "/": "./fact_sheet.json" },
-    });
-  });
-  writeRelationshipFiles(factSheetRelations, (rel) => {
-    const fromPath = rel?.from?.["/"];
-    if (!fromPath) return null;
-    const fromBase = path.basename(fromPath).replace(/\.json$/i, "");
-    if (!fromBase) return null;
-    return `relationship_${fromBase}_to_fact_sheet.json`;
-  });
-
-  updateDatagroupFiles((doc) => {
-    if (!doc.relationships || typeof doc.relationships !== "object")
-      return false;
-    const relPath = "./relationship_property_fact_sheet.json";
-    const existing = doc.relationships.property_has_fact_sheet;
-    let alreadySet = false;
-    if (Array.isArray(existing)) {
-      alreadySet = existing.some((entry) => entry && entry["/"] === relPath);
-    } else if (existing && typeof existing === "object") {
-      alreadySet = existing["/"] === relPath;
-    }
-    if (alreadySet) return false;
-    doc.relationships.property_has_fact_sheet = { "/": relPath };
-    return true;
-  });
 }
 
 try {

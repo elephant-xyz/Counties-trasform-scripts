@@ -1265,8 +1265,8 @@ function main() {
       const fIndex = fileIndexBySale.get(sIndex);
       if (!fIndex) continue;
       const relDF = {
-        to: { "/": `./deed_${dIndex}.json` },
-        from: { "/": `./file_${fIndex}.json` },
+        from: { "/": `./deed_${dIndex}.json` },
+        to: { "/": `./file_${fIndex}.json` },
       };
       writeJson(path.join("data", `relationship_deed_file_${rdfIdx}.json`), relDF);
       rdfIdx++;
