@@ -1839,6 +1839,13 @@ function writeTaxes($, parcelId) {
       yearly_tax_amount: null
     };
     writeJSON(path.join("data", `tax_${v.year}.json`), taxObj);
+
+    // Create relationship between property and tax
+    const relPropertyTax = {
+      from: { "/": "./property.json" },
+      to: { "/": `./tax_${v.year}.json` }
+    };
+    writeJSON(path.join("data", `relationship_property_has_tax_${v.year}.json`), relPropertyTax);
   });
 }
 
