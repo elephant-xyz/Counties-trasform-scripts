@@ -10,8 +10,7 @@ function readHtml(filepath) {
   return cheerio.load(html);
 }
 
-const PARCEL_SELECTOR =
-  "#ctlBodyPane_ctl04_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl04_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
 const BUILDING_SECTION_TITLE = "Building Information";
 
 function textTrim(s) {
@@ -72,9 +71,9 @@ function collectBuildings($) {
           if (label) map[label] = value;
         });
       if (Object.keys(map).length) {
-        const combined_map = { ...buildings[buildingCount], ...map };
+        const combined_map = {...buildings[buildingCount], ...map};
         buildings[buildingCount++] = combined_map;
-      }
+      };
     });
   return buildings;
 }
@@ -88,10 +87,11 @@ function toInt(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function defaultLayout(space_type, idx) {
+function defaultLayout(space_type, building_number = null, space_type_index = null) {
   return {
     space_type,
-    space_index: idx,
+    space_type_index: space_type_index ?? null,
+    building_number,
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: null,
@@ -129,29 +129,57 @@ function defaultLayout(space_type, idx) {
 }
 
 function buildLayoutsFromBuildings(buildings) {
-  // Sum across all buildings
-  let totalBeds = 0;
-  let totalBaths = 0;
-  buildings.forEach((b) => {
-    totalBeds += toInt(b["Bedrooms"]);
-    totalBaths += toInt(b["Bathrooms"]);
-  });
   const layouts = [];
-  let idx = 1;
-  for (let i = 0; i < totalBeds; i++) {
-    layouts.push(defaultLayout("Bedroom", idx++));
-  }
-  for (let i = 0; i < totalBaths; i++) {
-    layouts.push(defaultLayout("Full Bathroom", idx++));
-  }
+
+  buildings.forEach((building, idx) => {
+    const buildingNumber = idx + 1;
+    const buildingSpaceTypeIndex = `${buildingNumber}`;
+    layouts.push(defaultLayout("Building", buildingNumber, buildingSpaceTypeIndex));
+
+    const bathrooms = Math.max(toInt(building["Bathrooms"]), 0);
+    const bedrooms = Math.max(toInt(building["Bedrooms"]), 0);
+    const spaceCounters = {};
+
+    function addSpaces(count, spaceType) {
+      const counterKey = spaceType;
+      for (let i = 0; i < count; i++) {
+        spaceCounters[counterKey] = (spaceCounters[counterKey] || 0) + 1;
+        const typeIndex = `${buildingNumber}.${spaceCounters[counterKey]}`;
+        layouts.push(defaultLayout(spaceType, buildingNumber, typeIndex));
+      }
+    }
+
+    addSpaces(bathrooms, "Full Bathroom");
+    addSpaces(bedrooms, "Bedroom");
+  });
+
   return layouts;
+}
+function readJSON(p) {
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) {
+    return null;
+  }
 }
 
 function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
-  if (!parcelId) throw new Error("Parcel ID not found");
+  if (!parcelId) {
+    console.log("Parcel ID not found");
+    return;
+  }
+  const propertySeed = readJSON("property_seed.json");
+  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
+    throw {
+      type: "error",
+      message: "Request identifier and parcel id don't match.",
+      path: "property.request_identifier",
+    };
+  }
+
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings);
 

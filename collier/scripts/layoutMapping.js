@@ -60,7 +60,9 @@ function ensureDir(filePath) {
     const buildingNum = buildingNumMatch[1];
 
     // Check if this matches any residential pattern
-    const isResidential = residentialTypes.some(pattern => pattern.test(buildingClass));
+    const isResidential = residentialTypes.some((pattern) =>
+      pattern.test(buildingClass),
+    );
 
     if (isResidential) {
       // This is a residential building - find corresponding BASEAREA field
@@ -70,7 +72,9 @@ function ensureDir(filePath) {
       if (areaText) {
         const num = parseFloat(areaText.replace(/[^0-9.]/g, ""));
         if (!isNaN(num) && num > 0) {
-          console.log(`Adding area ${num} from building ${buildingNum} (${buildingClass})`);
+          console.log(
+            `Adding area ${num} from building ${buildingNum} (${buildingClass})`,
+          );
           totalLivableArea += num;
           totalUnderAir += num;
           hasAnyBuildings = true;
@@ -81,8 +85,10 @@ function ensureDir(filePath) {
 
   // Only set values if we found at least one building and total >= 10 sq ft
   // (values < 10 are unrealistic and fail validation)
-  const livableAreaSqFt = hasAnyBuildings && totalLivableArea >= 10 ? totalLivableArea : null;
-  const areaUnderAirSqFt = hasAnyBuildings && totalUnderAir >= 10 ? totalUnderAir : null;
+  const livableAreaSqFt =
+    hasAnyBuildings && totalLivableArea >= 10 ? totalLivableArea : null;
+  const areaUnderAirSqFt =
+    hasAnyBuildings && totalUnderAir >= 10 ? totalUnderAir : null;
 
   // Create layouts array with Living Area
   const layouts = [];
@@ -91,6 +97,7 @@ function ensureDir(filePath) {
   layouts.push({
     space_type: "Living Area",
     space_index: 1,
+    space_type_index: "1",
     livable_area_sq_ft: livableAreaSqFt,
     area_under_air_sq_ft: areaUnderAirSqFt,
     flooring_material_type: null,
@@ -131,5 +138,8 @@ function ensureDir(filePath) {
   const outPath = path.join("owners", "layout_data.json");
   ensureDir(outPath);
   fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf8");
-  console.log(`Wrote layout data with Living Area (${livableAreaSqFt} sq ft) for property_${parcelId} to ${outPath}`);
+  console.log(
+    `Wrote layout data with Living Area (${livableAreaSqFt} sq ft) for property_${parcelId} to ${outPath}`,
+  );
 })();
+
