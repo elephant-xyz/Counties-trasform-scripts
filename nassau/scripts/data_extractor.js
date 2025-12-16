@@ -2699,9 +2699,15 @@ function main() {
     const deedFileName = `deed_${deedIndex}.json`;
     writeJSON(path.join("data", deedFileName), deedObj);
 
+    // Ensure name is never empty - use default if both parts are empty
+    let fileName = (instAbbr ? instAbbr + " " : "") + (bookPage || "");
+    if (!fileName || fileName.trim() === "") {
+      fileName = "Document";
+    }
+
     const fileObj = {
       file_format: null,
-      name: (instAbbr ? instAbbr + " " : "") + (bookPage || ""),
+      name: fileName,
       original_url: deedUrl,
       ipfs_url: null,
       document_type: mapDocumentType(deedType),
