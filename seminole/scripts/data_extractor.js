@@ -41,8 +41,29 @@ function toCurrencyNumber(n) {
 
 function properCaseName(s) {
   if (!s) return s;
-  const lower = s.toLowerCase();
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
+
+  // Convert to string and trim whitespace
+  const str = String(s).trim();
+  if (!str) return str;
+
+  // Normalize whitespace (replace multiple spaces with single space)
+  const normalized = str.replace(/\s+/g, ' ');
+
+  // Split on word boundaries (spaces, hyphens, apostrophes) while preserving separators
+  const words = normalized.split(/(\s+|[-',.])/);
+
+  // Capitalize each word segment (non-separator parts)
+  const result = words.map((word, index) => {
+    // If it's a separator or empty, keep as-is
+    if (!word || /^[\s\-',.]$/.test(word)) {
+      return word;
+    }
+
+    // Capitalize first letter, lowercase the rest
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }).join('');
+
+  return result;
 }
 
 function normalizeLookupString(value) {

@@ -28,6 +28,7 @@ const COMPANY_REGEX = new RegExp(
   [
     "inc",
     "l\\.?l\\.?c",
+    "l\\.?l\\.?l\\.?p",
     "ltd",
     "foundation",
     "alliance",
@@ -43,6 +44,7 @@ const COMPANY_REGEX = new RegExp(
     "partners",
     "\\blp\\b",
     "\\bllp\\b",
+    "\\blllp\\b",
     "\\bpllc\\b",
     "\\bpc\\b",
     "bank",
@@ -89,6 +91,14 @@ function parsePersonName(raw, inferredLastName) {
   const s = normWS(raw);
   if (!s) return null;
 
+  // Helper to validate that a name starts with a letter
+  const isValidName = (name) => {
+    if (!name) return false;
+    const trimmed = normWS(name);
+    // Must start with a letter (not number or special char)
+    return /^[a-zA-Z]/.test(trimmed);
+  };
+
   if (s.includes(",")) {
     const [lastPart, rest] = s.split(",").map(normWS);
     if (!rest) return null;
@@ -100,6 +110,12 @@ function parsePersonName(raw, inferredLastName) {
       const sufRx = /\b(jr|sr|ii|iii|iv|v)\.?$/i;
       middle = normWS(middle.replace(sufRx, "").trim()) || null;
     }
+
+    // Validate first and last names
+    if (!isValidName(first) || !isValidName(lastPart)) {
+      return null;
+    }
+
     return {
       type: "person",
       first_name: first,
@@ -110,7 +126,7 @@ function parsePersonName(raw, inferredLastName) {
 
   const tokens = s.split(" ").filter(Boolean);
   if (tokens.length === 1) {
-    if (inferredLastName) {
+    if (inferredLastName && isValidName(tokens[0]) && isValidName(inferredLastName)) {
       return {
         type: "person",
         first_name: tokens[0],
@@ -124,6 +140,12 @@ function parsePersonName(raw, inferredLastName) {
   const last = tokens[tokens.length - 1];
   const middleTokens = tokens.slice(1, -1);
   const middle = middleTokens.length ? middleTokens.join(" ") : null;
+
+  // Validate first and last names
+  if (!isValidName(first) || !isValidName(last)) {
+    return null;
+  }
+
   return {
     type: "person",
     first_name: first,
