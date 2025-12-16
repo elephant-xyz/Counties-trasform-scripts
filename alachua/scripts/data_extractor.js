@@ -1049,7 +1049,7 @@ function mapPermitImprovementType(typeText) {
   if (txt.includes("WELL")) return "WellPermit";
   if (txt.includes("SITE") || txt.includes("DEV")) return "SiteDevelopment";
   if (txt.includes("GENERAL") || txt.includes("BUILD")) return "GeneralBuilding";
-  return "GeneralBuilding";
+  return null;
 }
 
 function mapPermitImprovementAction(typeText) {
@@ -1806,7 +1806,7 @@ function main() {
       : `${baseRequestId}-permit-${idx + 1}`;
 
     const improvement = {
-      improvement_type: improvementType || "GeneralBuilding",
+      improvement_type: improvementType || null,
       improvement_status: improvementStatus || null,
       improvement_action: improvementAction,
       permit_number: permitNumber,
