@@ -26880,6 +26880,113 @@ async function main() {
       writeJSON(addressOutputPath, finalAddressOutput);
     }
 
+    // Final oneOf clamp: always prefer the raw branch when we have any
+    // unnormalized source string, otherwise emit a fully populated normalized
+    // payload. This keeps the object on exactly one schema branch and ensures
+    // all required fields exist.
+    const terminalAddress = readJSONIfExists(addressOutputPath);
+    if (
+      terminalAddress &&
+      typeof terminalAddress === "object" &&
+      !Array.isArray(terminalAddress)
+    ) {
+      const terminalNormalizedSurface =
+        ensureNormalizedAddressSchemaSurface &&
+        ensureNormalizedAddressSchemaSurface({ ...terminalAddress });
+      const terminalNormalizedComplete =
+        terminalNormalizedSurface &&
+        hasCompleteNormalizedAddress({ ...terminalNormalizedSurface });
+      const terminalRawString = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          finalRawSelection,
+          terminalAddress.unnormalized_address,
+          ...(finalUnnormalizedCandidates || []),
+          unnormalizedAddressCandidate,
+          combinedModelAddress,
+          siteLocationLine,
+          addressLineCombined,
+          fullAddr,
+          fullAddrInput,
+          unAddr && unAddr.full_address,
+          unAddr && unAddr.unnormalized_address,
+        ]),
+      );
+
+      let oneOfReady = null;
+      if (terminalRawString) {
+        oneOfReady = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+        RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+          if (field === "unnormalized_address") {
+            oneOfReady.unnormalized_address = terminalRawString;
+            return;
+          }
+          if (field === "request_identifier") {
+            oneOfReady.request_identifier =
+              finalResolvedRequestId === undefined ? null : finalResolvedRequestId;
+            return;
+          }
+          if (field === "source_http_request") {
+            const prepared = prepareSourceHttpRequest(finalResolvedSourceHttp);
+            oneOfReady.source_http_request = prepared ? deepClone(prepared) : null;
+            return;
+          }
+          let value = terminalAddress[field];
+          if (value === undefined && terminalNormalizedSurface) {
+            value = terminalNormalizedSurface[field];
+          }
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            const numeric = parseCoordinate(value);
+            oneOfReady[field] = Number.isFinite(numeric) ? numeric : null;
+            return;
+          }
+          oneOfReady[field] = sanitizeAddressFieldValue(field, value);
+        });
+        if (!oneOfReady.postal_code) {
+          oneOfReady.plus_four_postal_code = null;
+        }
+        if ((oneOfReady.latitude == null) !== (oneOfReady.longitude == null)) {
+          oneOfReady.latitude = null;
+          oneOfReady.longitude = null;
+        }
+        if (
+          hasMeaningfulAddressValue(oneOfReady.state_code) &&
+          !hasMeaningfulAddressValue(oneOfReady.country_code)
+        ) {
+          oneOfReady.country_code = "US";
+        }
+      } else if (terminalNormalizedComplete) {
+        oneOfReady = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+        NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+          let value = terminalNormalizedSurface[field];
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            const numeric = parseCoordinate(value);
+            value = Number.isFinite(numeric) ? numeric : null;
+          } else if (typeof value === "string") {
+            const trimmed = value.trim();
+            value = trimmed.length ? trimmed : null;
+          } else if (value === undefined) {
+            value = null;
+          }
+          oneOfReady[field] = value;
+        });
+        if (!oneOfReady.postal_code) {
+          oneOfReady.plus_four_postal_code = null;
+        }
+        if (
+          hasMeaningfulAddressValue(oneOfReady.state_code) &&
+          !hasMeaningfulAddressValue(oneOfReady.country_code)
+        ) {
+          oneOfReady.country_code = "US";
+        }
+      }
+
+      if (oneOfReady) {
+        writeJSON(addressOutputPath, oneOfReady);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
+
     // Guarantee relationships are left for downstream population (no local URs).
     enforcePropertyRelationshipNulls(propertyFilePath);
     [
