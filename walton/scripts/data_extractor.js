@@ -1314,7 +1314,7 @@ function extractSales($) {
 }
 
 function mapInstrumentToDeedType(instr) {
-  if (!instr) return null;
+  if (!instr) return "Miscellaneous";
   const u = instr.trim().toUpperCase();
   
   // Common abbreviations and full names
