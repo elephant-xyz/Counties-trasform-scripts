@@ -2377,7 +2377,7 @@ function main() {
         ownership_transfer_date: parseISODate(s.DateOfSale) || null,
         purchase_price_amount: s.SalePrice != null ? Number(s.SalePrice) : null,
       };
-      writeJson(path.join("data", `sales_${saleIndex}.json`), sales);
+      writeJson(path.join("data", `sales_history_${saleIndex}.json`), sales);
 
       // Common Miami-Dade fields we might encounter
       const book =
@@ -2463,14 +2463,14 @@ function main() {
       deedIdx++;
     }
 
-    // relationship_sales_deed (deed → sale)
+    // relationship_sales_history_deed (deed → sale)
     let relSDIdx = 1;
     for (const [sIndex, dIndex] of deedMap.entries()) {
       const relSD = {
-        from: { "/": `./sales_${sIndex}.json` },
+        from: { "/": `./sales_history_${sIndex}.json` },
         to: { "/": `./deed_${dIndex}.json` },
       };
-      writeJson(path.join("data", `relationship_sales_deed_${relSDIdx}.json`), relSD);
+      writeJson(path.join("data", `relationship_sales_history_${relSDIdx}_has_deed.json`), relSD);
       relSDIdx++;
     }
 
@@ -2498,7 +2498,7 @@ function main() {
   // Check if there are sales files generated
   const salesFiles = fs.existsSync("data")
     ? fs.readdirSync("data")
-        .filter((f) => /^sales_\d+\.json$/.test(f))
+        .filter((f) => /^sales_history_\d+\.json$/.test(f))
         .sort((a, b) => {
           const ai = parseInt(a.match(/(\d+)/)[1], 10);
           const bi = parseInt(b.match(/(\d+)/)[1], 10);
@@ -2555,40 +2555,43 @@ function main() {
       }
     }
 
-    // relationships for sales → owners (use latest sales_1.json if exists)
+    // relationships for sales → owners (use latest sales_history_1.json if exists)
     const lastSales = salesFiles[0]; // if only last is desired; spec does not define matching by date; link available sale
-    let relIdx = 1;
-    let p = 1;
-    while (fs.existsSync(path.join("data", `person_${p}.json`))) {
-      const rel = {
-        to: { "/": `./person_${p}.json` },
-        from: { "/": `./${lastSales}` },
-      };
-      writeJson(
-        path.join(
-          "data",
-          `relationship_sales_person${p > 1 ? `_${p}` : ""}.json`,
-        ),
-        rel,
-      );
-      p++;
-      relIdx++;
-    }
-    let c = 1;
-    while (fs.existsSync(path.join("data", `company_${c}.json`))) {
-      const rel = {
-        to: { "/": `./company_${c}.json` },
-        from: { "/": `./${lastSales}` },
-      };
-      writeJson(
-        path.join(
-          "data",
-          `relationship_sales_company${c > 1 ? `_${c}` : ""}.json`,
-        ),
-        rel,
-      );
-      c++;
-      relIdx++;
+
+    if (lastSales) {
+      let relIdx = 1;
+      let p = 1;
+      while (fs.existsSync(path.join("data", `person_${p}.json`))) {
+        const rel = {
+          to: { "/": `./person_${p}.json` },
+          from: { "/": `./${lastSales}` },
+        };
+        writeJson(
+          path.join(
+            "data",
+            `relationship_sales_history_buyer_person_${p}.json`,
+          ),
+          rel,
+        );
+        p++;
+        relIdx++;
+      }
+      let c = 1;
+      while (fs.existsSync(path.join("data", `company_${c}.json`))) {
+        const rel = {
+          to: { "/": `./company_${c}.json` },
+          from: { "/": `./${lastSales}` },
+        };
+        writeJson(
+          path.join(
+            "data",
+            `relationship_sales_history_buyer_company_${c}.json`,
+          ),
+          rel,
+        );
+        c++;
+        relIdx++;
+      }
     }
   }
 
