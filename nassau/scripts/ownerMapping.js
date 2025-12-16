@@ -450,21 +450,22 @@ function buildOwnersByDate($) {
         .replace(/\.$/, "")
         .replace(/\s*\([^)]*\)\s*/g, " ") // Remove ALL parenthetical content like (GUARDIAN), (TRUSTEE), etc.
         .replace(/\b(AS\s+(?:TRUSTEE|BISHOP|GUARDIAN|ADMINISTRATOR|EXECUTOR|EXECUTRIX|AGENT|ATTORNEY|REPRESENTATIVE|CONSERVATOR|CUSTODIAN))\b.*$/i, "")
-        .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|CUSTODIAN)\b.*$/i, "")
+        .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|M\/C|H&W|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|CUSTODIAN)\b.*$/i, "")
         .replace(/\s+/g, ' ') // Normalize multiple spaces
     ).trim();
 
     // If the original string is clearly a company (has LLC, INC, etc.), don't split it
     let parts;
     if (isCompanyName(cleanedGrantee) || /\b(revocable|living)\b\s*\btrust\b/i.test(cleanedGrantee)) {
-      parts = [grantee];
+      parts = [cleanedGrantee];
     } else {
-      parts = splitJointOwners(grantee);
+      parts = splitJointOwners(cleanedGrantee);
     }
 
     const owners = [];
 
-    // Parse each owner independently
+    // Parse each owner independently, but track the first person's last name for joint ownership
+    let sharedLastName = null;
 
     for (let idx = 0; idx < parts.length; idx++) {
       const raw = parts[idx];
@@ -482,7 +483,7 @@ function buildOwnersByDate($) {
           .replace(/\.$/, "")
           .replace(/\s*\([^)]*\)\s*/g, " ") // Remove ALL parenthetical content like (GUARDIAN), (TRUSTEE), etc.
           .replace(/\b(AS\s+(?:TRUSTEE|BISHOP|GUARDIAN|ADMINISTRATOR|EXECUTOR|EXECUTRIX|AGENT|ATTORNEY|REPRESENTATIVE|CONSERVATOR|CUSTODIAN))\b.*$/i, "")
-          .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|CUSTODIAN)\b.*$/i, "")
+          .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|M\/C|H&W|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|CUSTODIAN)\b.*$/i, "")
           .replace(/\s+/g, ' ') // Normalize multiple spaces
       ).trim();
 
@@ -500,7 +501,20 @@ function buildOwnersByDate($) {
         const person = parsePerson(clean);
         if (person) {
           owners.push(person);
+          // Track the first person's last name for joint ownership scenarios
+          if (idx === 0 && person.last_name && parts.length > 1) {
+            sharedLastName = person.last_name;
+          }
         } else {
+          // If parsing failed and we have a shared last name, try appending it
+          if (sharedLastName && parts.length > 1 && idx > 0) {
+            const nameWithLast = `${clean} ${sharedLastName}`;
+            const personWithLast = parsePerson(nameWithLast);
+            if (personWithLast) {
+              owners.push(personWithLast);
+              continue;
+            }
+          }
           invalid.push({ raw: clean, reason: "could_not_parse_person" });
         }
         continue;
@@ -516,7 +530,20 @@ function buildOwnersByDate($) {
         const person = parsePerson(clean);
         if (person) {
           owners.push(person);
+          // Track the first person's last name for joint ownership scenarios
+          if (idx === 0 && person.last_name && parts.length > 1) {
+            sharedLastName = person.last_name;
+          }
         } else {
+          // If parsing failed and we have a shared last name, try appending it
+          if (sharedLastName && parts.length > 1 && idx > 0) {
+            const nameWithLast = `${clean} ${sharedLastName}`;
+            const personWithLast = parsePerson(nameWithLast);
+            if (personWithLast) {
+              owners.push(personWithLast);
+              continue;
+            }
+          }
           invalid.push({ raw: clean, reason: "unrecognized_owner_format" });
         }
       }
