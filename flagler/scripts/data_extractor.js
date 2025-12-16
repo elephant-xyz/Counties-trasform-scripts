@@ -784,7 +784,7 @@ const PROPERTY_USE_DESCRIPTION_MAP = new Map([
   ["MINERAL PROCESSING", { property_usage_type: "MineralProcessing" }],
   ["MINI MART", { property_usage_type: "RetailStore" }],
   ["MISCELLANEOUS", { property_usage_type: "Unknown" }],
-  ["MIXED COMMERCIAL", { property_usage_type: "MixedUse" }],
+  ["MIXED COMMERCIAL", { property_usage_type: "Commercial" }],
   ["MOBILE HOME", { property_usage_type: "Residential", property_type: "ManufacturedHome", structure_form: "ManufacturedHousing" }],
   ["MODULAR HOME", { property_usage_type: "Residential", property_type: "ManufacturedHome", structure_form: "ManufacturedHousing" }],
   ["MORTUARY CEMETE", { property_usage_type: "MortuaryCemetery", property_type: "LandParcel", build_status: "Improved" }],
@@ -895,7 +895,7 @@ const PROPERTY_USE_DESCRIPTION_PATTERNS = [
   },
   {
     pattern: /MIXED/i,
-    overrides: { property_usage_type: "MixedUse" },
+    overrides: { property_usage_type: "Commercial" },
   },
 ];
 
