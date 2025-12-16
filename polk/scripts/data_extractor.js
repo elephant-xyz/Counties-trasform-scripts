@@ -67,7 +67,8 @@ const VALID_SUFFIXES = [
 function normalizeSuffix(suffix) {
   if (!suffix) return null;
 
-  const trimmed = suffix.trim();
+  // Convert to string and trim to handle any type
+  const trimmed = String(suffix).trim();
   if (!trimmed) return null;
 
   // Check if it's already valid
@@ -76,17 +77,30 @@ function normalizeSuffix(suffix) {
   }
 
   // Try to normalize common variations
-  const normalized = trimmed.toUpperCase().replace(/\./g, "");
+  // Remove all periods, extra spaces, and convert to uppercase
+  const normalized = trimmed.replace(/\./g, "").replace(/\s+/g, "").toUpperCase();
 
   const suffixMap = {
     "JR": "Jr.",
+    "JUNIOR": "Jr.",
     "SR": "Sr.",
+    "SENIOR": "Sr.",
     "II": "II",
+    "2": "II",
+    "2ND": "II",
+    "SECOND": "II",
     "III": "III",
+    "3": "III",
+    "3RD": "III",
+    "THIRD": "III",
     "IV": "IV",
+    "4": "IV",
+    "4TH": "IV",
+    "FOURTH": "IV",
     "PHD": "PhD",
     "MD": "MD",
     "ESQ": "Esq.",
+    "ESQUIRE": "Esq.",
     "JD": "JD",
     "LLM": "LLM",
     "MBA": "MBA",
@@ -98,10 +112,18 @@ function normalizeSuffix(suffix) {
     "PE": "PE",
     "PMP": "PMP",
     "EMERITUS": "Emeritus",
-    "RET": "Ret."
+    "RET": "Ret.",
+    "RETIRED": "Ret."
   };
 
-  return suffixMap[normalized] || null;
+  const result = suffixMap[normalized] || null;
+
+  // Final validation: ensure result is in VALID_SUFFIXES or null
+  if (result !== null && !VALID_SUFFIXES.includes(result)) {
+    return null;
+  }
+
+  return result;
 }
 
 
@@ -4103,9 +4125,19 @@ function main() {
     const personIdx = i + 1;
     if (usedPersonIndices.has(personIdx)) {
       // Final validation: ensure suffix_name is either null or a valid enum value
+      // Convert empty strings to null
+      if (p.suffix_name === "" || p.suffix_name === undefined) {
+        p.suffix_name = null;
+      }
+      // Validate against allowed values
       if (p.suffix_name !== null && !VALID_SUFFIXES.includes(p.suffix_name)) {
         p.suffix_name = null; // Set to null if invalid
       }
+      // Ensure all name fields are properly formatted (trim and convert empty to null)
+      if (typeof p.first_name === "string") p.first_name = p.first_name.trim() || null;
+      if (typeof p.last_name === "string") p.last_name = p.last_name.trim() || null;
+      if (typeof p.middle_name === "string") p.middle_name = p.middle_name.trim() || null;
+      if (p.middle_name === "") p.middle_name = null;
       writeJSON(path.join("data", `person_${personIdx}.json`), p);
     }
   });
