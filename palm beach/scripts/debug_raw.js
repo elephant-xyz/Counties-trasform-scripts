@@ -2097,6 +2097,65 @@ function lockAddressToSchemaOneOf(addressPath, options = {}) {
   writeJSON(addressPath, finalOut);
 }
 
+function pruneRawAddressOneOfSurface(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedReady =
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...payload });
+  if (normalizedReady) {
+    if (Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")) {
+      delete payload.unnormalized_address;
+    }
+    writeJSON(addressPath, payload);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const pruned = RAW_ONEOF_OUTPUT_FIELDS.reduce((acc, field) => {
+    if (field === "unnormalized_address") {
+      acc[field] = rawValue;
+      return acc;
+    }
+    let value =
+      field === "request_identifier" && payload[field] === undefined
+        ? null
+        : payload[field];
+
+    if (field === "source_http_request") {
+      acc[field] = prepareSourceHttpRequest(value) || null;
+      return acc;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      acc[field] = Number.isFinite(numeric) ? numeric : null;
+      return acc;
+    }
+    acc[field] = safeNullIfEmpty(value);
+    return acc;
+  }, {});
+
+  if ((pruned.latitude == null) !== (pruned.longitude == null)) {
+    pruned.latitude = null;
+    pruned.longitude = null;
+  }
+
+  writeJSON(addressPath, pruned);
+}
+
 function finalizeAddressOneOfSelection(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
 
@@ -8867,6 +8926,23 @@ const RAW_ADDRESS_OUTPUT_FIELDS = Array.from(new Set(RAW_ADDRESS_ALLOWED_FIELDS)
 const NORMALIZED_OPTIONAL_NULLABLE_FIELDS = new Set([
   "lot",
   "municipality_name",
+]);
+
+// Keep the raw oneOf branch lean so validation picks the raw branch when only
+// an unnormalized string is available from the source.
+const RAW_ONEOF_OUTPUT_FIELDS = Object.freeze([
+  "unnormalized_address",
+  "request_identifier",
+  "source_http_request",
+  "county_name",
+  "country_code",
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
+  "latitude",
+  "longitude",
 ]);
 
 const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
@@ -23167,6 +23243,7 @@ async function main() {
     requestIdentifier: resolvedRequestIdentifier,
     sourceHttpRequest: resolvedSourceHttp,
   });
+  pruneRawAddressOneOfSurface(addressOutputPath);
 
   // Guarantee relationships are left for downstream population (no local URs).
   enforcePropertyRelationshipNulls(propertyFilePath);
