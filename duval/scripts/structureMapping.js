@@ -1163,6 +1163,7 @@ function mapInteriorWallSurfaceSecondary(detail) {
   if (/TILE\s*ACCENT/.test(upper)) return "Tile Accent";
   if (/METAL\s*ACCENT/.test(upper)) return "Metal Accent";
   if (/GLASS\s*INSERT/.test(upper)) return "Glass Insert";
+  if (/DECORAT/.test(upper)) return "Decorative Panels";
   if (/DECORAT.*PANEL/.test(upper)) return "Decorative Panels";
   if (/FEATURE\s*WALL/.test(upper)) return "Feature Wall Material";
   return null;

@@ -497,7 +497,17 @@ const SUFFIXES_IGNORE =
 
 function isCompanyName(txt) {
   if (!txt) return false;
-  return COMPANY_KEYWORDS.test(txt);
+
+  // Check for standard company keywords
+  if (COMPANY_KEYWORDS.test(txt)) return true;
+
+  // Check for telecom/wireless company patterns (AT&T, T-Mobile, etc.)
+  if (/\b(AT&T|T-Mobile|NCWPCS|wireless|cellular|telecom)\b/i.test(txt)) return true;
+
+  // If text contains & followed by single letter or T- pattern, likely a company
+  if (/\b[A-Z]&[A-Z]\b|\b[A-Z]-\s|&\s*[A-Z]-/i.test(txt)) return true;
+
+  return false;
 }
 
 function tokenizeNamePart(part) {
@@ -514,10 +524,10 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   if (!tokens || !tokens.length) return null;
   if (tokens.length === 1) return null;
 
-  // Strip trailing periods before processing
-  const stripTrailingPeriod = (str) => {
+  // Strip trailing periods and hyphens before processing
+  const stripTrailingPunctuation = (str) => {
     if (!str) return str;
-    const stripped = str.replace(/\.$/, '');
+    const stripped = str.replace(/[\.\-]+$/, '');
     // If the result is empty or contains no letters, return null
     if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
     return stripped;
@@ -554,7 +564,7 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   // Check last token for suffix
   if (workingTokens.length > 2) {
     const lastToken = workingTokens[workingTokens.length - 1];
-    const stripped = stripTrailingPeriod(lastToken);
+    const stripped = stripTrailingPunctuation(lastToken);
     if (stripped && suffixMap[stripped.toLowerCase()]) {
       suffix = suffixMap[stripped.toLowerCase()];
       workingTokens.pop();
@@ -606,9 +616,9 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     last = fallbackLastName;
   }
 
-  first = stripTrailingPeriod(first);
-  last = stripTrailingPeriod(last);
-  middle = middle ? stripTrailingPeriod(middle) : null;
+  first = stripTrailingPunctuation(first);
+  last = stripTrailingPunctuation(last);
+  middle = middle ? stripTrailingPunctuation(middle) : null;
 
   const titleCasedFirst = titleCase(first || "");
   const titleCasedLast = titleCase(last || "");
@@ -1732,10 +1742,6 @@ function findValuationRow(rowMap, labelOptions) {
         return values;
       }
     }
-  });
-
-  if (!years.length || !Object.keys(rows).length) {
-    return null;
   }
   return null;
 }
