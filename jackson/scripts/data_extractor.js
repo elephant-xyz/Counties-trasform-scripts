@@ -1928,7 +1928,14 @@ function createStructureFiles(seed,parcelIdentifier) {
       ];
       const secondaryValue = struct?.interior_wall_surface_material_secondary ?? null;
       // Ensure the value is a non-empty string and in the valid list, otherwise set to null
-      const validatedSecondary = (secondaryValue && typeof secondaryValue === 'string' && secondaryValue.trim() !== '' && validSecondaryValues.includes(secondaryValue)) ? secondaryValue : null;
+      // Trim the value first, then check if it's in the valid list
+      let validatedSecondary = null;
+      if (secondaryValue && typeof secondaryValue === 'string') {
+        const trimmed = secondaryValue.trim();
+        if (trimmed !== '' && validSecondaryValues.includes(trimmed)) {
+          validatedSecondary = trimmed;
+        }
+      }
 
       const structureOut = {
         ...appendSourceInfo(seed),
