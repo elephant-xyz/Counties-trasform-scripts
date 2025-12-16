@@ -15,11 +15,249 @@ const cleanWhitespace = (s) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const PERSONAL_PREFIXES = new Set([
+  "ADM",
+  "ADMIRAL",
+  "ATTY",
+  "ATTORNEY",
+  "CAPT",
+  "CAPTAIN",
+  "CHIEF",
+  "COL",
+  "COLONEL",
+  "CPT",
+  "DOCTOR",
+  "DR",
+  "FATHER",
+  "FR",
+  "GEN",
+  "GENERAL",
+  "HON",
+  "HONORABLE",
+  "JUDGE",
+  "LADY",
+  "LIEUTENANT",
+  "LT",
+  "MAJ",
+  "MAJOR",
+  "MISS",
+  "MISTER",
+  "MR",
+  "MRS",
+  "MS",
+  "MX",
+  "PASTOR",
+  "PROF",
+  "PROFESSOR",
+  "REV",
+  "REVEREND",
+  "SIR",
+  "SISTER",
+]);
+
+const QUALIFIER_TOKENS = new Set([
+  "ET",
+  "UX",
+  "VIR",
+  "AL",
+  "ALIA",
+  "ALIAS",
+  "JR",
+  "SR",
+  "II",
+  "III",
+  "IV",
+  "V",
+  "VI",
+  "VII",
+  "MD",
+  "PHD",
+  "ESQ",
+  "ESQUIRE",
+  "TR",
+  "TRS",
+  "TRUST",
+  "TRUSTEE",
+  "TRUSTEES",
+  "TTEE",
+  "FBO",
+  "CUST",
+  "CUSTODIAN",
+  "EST",
+  "ESTATE",
+  "DECEASED",
+]);
+
+function normalizeToken(token) {
+  return (token || "").replace(/[^A-Za-z]/g, "").toUpperCase();
+}
+
+function scrubPersonalName(raw) {
+  const tokens = (raw || "")
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const cleaned = [];
+  let removedPrefix = false;
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    const normalized = normalizeToken(token);
+    if (!normalized) continue;
+
+    if (!cleaned.length && PERSONAL_PREFIXES.has(normalized)) {
+      removedPrefix = true;
+      continue;
+    }
+
+    if (!cleaned.length && (normalized === "AND" || normalized === "OR")) {
+      continue;
+    }
+
+    if (normalized === "ET") {
+      const next = normalizeToken(tokens[i + 1]);
+      const nextNext = normalizeToken(tokens[i + 2]);
+      if (next === "UX" || next === "VIR") {
+        i += 1;
+        continue;
+      }
+      if (next === "AL" && nextNext === "IA") {
+        i += 2;
+        continue;
+      }
+      if (next === "ALIA" || next === "ALIAS") {
+        i += 1;
+        continue;
+      }
+    }
+
+    if (QUALIFIER_TOKENS.has(normalized)) {
+      continue;
+    }
+
+    cleaned.push(token);
+  }
+
+  return {
+    value: cleaned.join(" ").trim(),
+    removedPrefix,
+  };
+}
+
+function splitOwnerSegments(raw) {
+  if (!raw) return [];
+  const replacedNewlines = raw.replace(/<br\s*\/?>/gi, "|").replace(/[\r\n]+/g, "|");
+  const textOnly = cleanWhitespace(cheerio.load(`<span>${replacedNewlines}</span>`).text());
+  if (!textOnly) return [];
+
+  const primary = textOnly
+    .split(/\s*\|\s*/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  const expanded = [];
+  primary.forEach((segment) => {
+    const andSplit = segment
+      .replace(/\s+and\s+/gi, "|")
+      .replace(/\s+&\s+/g, "|")
+      .split(/\s*\|\s*/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (andSplit.length) {
+      expanded.push(...andSplit);
+    } else {
+      expanded.push(segment);
+    }
+  });
+
+  return expanded;
+}
+
+function parsePersonFromTokens(tokens, options) {
+  const { original, invalid_owners, fallbackLast, removedPrefix } = options;
+  const working = [...tokens];
+  const fallbackNorm = fallbackLast ? fallbackLast.toLowerCase() : null;
+
+  if (working.length === 0) {
+    invalid_owners.push({
+      raw: original,
+      reason: "name_empty_after_scrub",
+    });
+    return null;
+  }
+
+  if (working.length === 1) {
+    if (fallbackNorm) {
+      return {
+        type: "person",
+        first_name: cap(working[0]),
+        last_name: cap(fallbackLast),
+        middle_name: null,
+      };
+    }
+    invalid_owners.push({
+      raw: original,
+      reason: "insufficient_tokens_for_person",
+    });
+    return null;
+  }
+
+  let first = null;
+  let last = null;
+  let middle = null;
+
+  if (
+    fallbackNorm &&
+    working[working.length - 1].toLowerCase() === fallbackNorm &&
+    working.length >= 2
+  ) {
+    last = working.pop();
+    first = working.shift();
+    middle = working.length ? working.join(" ") : null;
+  } else if (removedPrefix) {
+    first = working.shift();
+    last = working.pop();
+    middle = working.length ? working.join(" ") : null;
+  } else {
+    last = working.shift();
+    first = working.shift();
+    middle = working.length ? working.join(" ") : null;
+  }
+
+  if (!first || !last) {
+    invalid_owners.push({
+      raw: original,
+      reason: "unable_to_parse_person_name",
+    });
+    return null;
+  }
+
+  return {
+    type: "person",
+    first_name: cap(first),
+    last_name: cap(last),
+    middle_name: middle ? cap(middle) : null,
+  };
+}
+
 // Property ID extraction with fallbacks
 function getPropertyId() {
   let id = $('span[id*="PARCEL_KEYLabel"]').first().text().trim();
   if (!id) {
+    id = $("#parcelKey").text().trim();
+  }
+  if (!id) {
     id = $("input#hidParcelKey").attr("value") || "";
+  }
+  if (!id) {
+    $(".value-pair").each((i, pair) => {
+      const label = cleanWhitespace($(pair).find(".parcel-label").text());
+      if (/parcel\s*key/i.test(label)) {
+        id = cleanWhitespace($(pair).find(".parcel-value").text());
+        return false;
+      }
+      return undefined;
+    });
   }
   if (!id) {
     // try to find in details table near text 'Parcel Key:'
@@ -74,158 +312,131 @@ function isCompanyName(name) {
   return patterns.some((p) => n.includes(p));
 }
 
-// Remove legal/suffix/qualifiers from a personal name string
-function stripQualifiers(raw) {
-  let s = " " + raw + " ";
-  const removeList = [
-    " ET UX",
-    " ET VIR",
-    " ET ALIA",
-    " ET AL",
-    " ETAL",
-    " ET ",
-    " TRS",
-    " TR",
-    " TTEE",
-    " TRUSTEES",
-    " TRUSTEE",
-    " JR",
-    " SR",
-    " II",
-    " III",
-    " IV",
-    " V",
-    " VI",
-    " VII",
-    " MD",
-    " PHD",
-    " ESQ",
-    " ESQUIRE",
-  ];
-  removeList.forEach((r) => {
-    const re = new RegExp(r.replace(/\s+/g, "\\s+"), "ig");
-    s = s.replace(re, " ");
-  });
-  return s.replace(/\s+/g, " ").trim();
-}
-
 // Parse date MM/DD/YYYY to YYYY-MM-DD; return null if invalid
-function toISODate(mdY) {
-  const s = (mdY || "").trim();
-  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  const [_, mm, dd, yyyy] = m;
-  return `${yyyy}-${mm}-${dd}`;
+function toISODate(input) {
+  const s = (input || "").trim();
+  if (!s) return null;
+  const slash = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (slash) {
+    const [_, mm, dd, yyyy] = slash;
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  const dash = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dash) {
+    const [_, yyyy, mm, dd] = dash;
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return null;
 }
 
 // Name classification
-function classifyOwner(raw, invalid_owners) {
+function classifyOwner(raw, invalid_owners, options = {}) {
+  const { allowSplit = true, fallbackLast = null } = options;
   const original = cleanWhitespace(raw);
   if (!original) return null;
-  const cleaned = original.replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
 
-  // Company
-  if (isCompanyName(" " + cleaned + " ")) {
-    return { type: "company", name: cleaned };
+  const normalizedName = original.replace(/\s+/g, " ").trim();
+  if (isCompanyName(" " + normalizedName + " ")) {
+    return { type: "company", name: normalizedName };
   }
 
-  // Split couples connected with '&' or ' and '
-  if (/[&]/.test(cleaned) || /\band\b/i.test(cleaned)) {
-    // When multiple people listed together without clear last names for each,
-    // attempt to split and parse each sub-name separately. If ambiguous, record invalid.
-    const parts = cleaned
-      .split(/\s*&\s*|\s+and\s+/i)
-      .map((p) => p.trim())
-      .filter(Boolean);
-    if (parts.length === 1) {
-      // fall through to single person parsing
-    } else {
-      // Try to infer last name from the final token of the last part if missing
-      const lastTokens = parts[parts.length - 1].split(/\s+/);
-      const inferredLast = lastTokens[lastTokens.length - 1];
-      const persons = [];
-      parts.forEach((p) => {
-        const noQual = stripQualifiers(p);
-        const tokens = noQual.split(/\s+/).filter(Boolean);
-        if (tokens.length >= 2) {
-          // Assume LAST FIRST format if looks like LAST FIRST
-          const last = tokens[0];
-          const first = tokens[1];
-          const middle = tokens.slice(2).join(" ") || null;
-          persons.push({
-            type: "person",
-            first_name: cap(first),
-            last_name: cap(last),
-            middle_name: middle ? cap(middle) : null,
+  if (allowSplit) {
+    const segments = splitOwnerSegments(raw);
+    if (segments.length > 1) {
+      const entities = [];
+      let rollingLast = fallbackLast;
+      segments.forEach((segment) => {
+        const classified = classifyOwner(segment, invalid_owners, {
+          allowSplit: false,
+          fallbackLast: rollingLast,
+        });
+        if (!classified) return;
+        if (Array.isArray(classified)) {
+          classified.forEach((entry) => {
+            entities.push(entry);
+            if (entry.type === "person" && entry.last_name) {
+              rollingLast = entry.last_name;
+            } else if (entry.type === "company") {
+              rollingLast = null;
+            }
           });
-        } else if (tokens.length === 1) {
-          // Single token; attach inferred last name
-          persons.push({
-            type: "person",
-            first_name: cap(tokens[0]),
-            last_name: cap(inferredLast),
-            middle_name: null,
-          });
+        } else {
+          entities.push(classified);
+          if (classified.type === "person" && classified.last_name) {
+            rollingLast = classified.last_name;
+          } else if (classified.type === "company") {
+            rollingLast = null;
+          }
         }
       });
-      if (persons.length) return persons; // caller must handle array result
-      invalid_owners.push({
-        raw: original,
-        reason: "ambiguous_multi_person_name",
-      });
-      return null;
+      if (entities.length) return entities;
     }
   }
 
-  // Single person path
-  const noQual = stripQualifiers(cleaned);
+  if (allowSplit && /,/.test(original)) {
+    const commaParts = original
+      .split(/\s*,\s*/)
+      .map((part) => cleanWhitespace(part))
+      .filter(Boolean);
+    if (commaParts.length > 1) {
+      const trialInvalid = [];
+      const trialResults = [];
+      let rollingLast = fallbackLast;
+      let success = true;
+      for (let i = 0; i < commaParts.length; i += 1) {
+        const part = commaParts[i];
+        const result = classifyOwner(part, trialInvalid, {
+          allowSplit: false,
+          fallbackLast: rollingLast,
+        });
+        if (!result || Array.isArray(result)) {
+          success = false;
+          break;
+        }
+        trialResults.push(result);
+        if (result.type === "person" && result.last_name) {
+          rollingLast = result.last_name;
+        } else if (result.type === "company") {
+          rollingLast = null;
+        }
+      }
+      if (success && trialResults.length > 1) {
+        trialInvalid.forEach((entry) => invalid_owners.push(entry));
+        return trialResults;
+      }
+    }
+  }
+
+  const cleaned = original.replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
+  const { value: noQual, removedPrefix } = scrubPersonalName(cleaned);
   const tokens = noQual.split(/\s+/).filter(Boolean);
-  if (tokens.length < 2) {
-    invalid_owners.push({
-      raw: original,
-      reason: "insufficient_tokens_for_person",
-    });
-    return null;
-  }
 
-  // Detect patterns: if contains a comma, treat as LAST, FIRST MIDDLE
-  if (noQual.includes(",")) {
-    const [lastPart, rest] = noQual.split(",").map((s) => s.trim());
-    const restTokens = (rest || "").split(/\s+/).filter(Boolean);
-    const first = restTokens[0] || null;
-    const middle = restTokens.slice(1).join(" ") || null;
-    if (!first) {
-      invalid_owners.push({
-        raw: original,
-        reason: "missing_first_name_after_comma",
-      });
-      return null;
-    }
-    return {
-      type: "person",
-      first_name: cap(first),
-      last_name: cap(lastPart),
-      middle_name: middle ? cap(middle) : null,
-    };
-  }
+  const person = parsePersonFromTokens(tokens, {
+    original,
+    invalid_owners,
+    fallbackLast,
+    removedPrefix,
+  });
 
-  // Default heuristic: assume format LAST FIRST [MIDDLE ...]
-  const last = tokens[0];
-  const first = tokens[1];
-  const middle = tokens.slice(2).join(" ") || null;
-  return {
-    type: "person",
-    first_name: cap(first),
-    last_name: cap(last),
-    middle_name: middle ? cap(middle) : null,
-  };
+  return person;
 }
 
 function cap(s) {
   if (!s) return s;
   return s
-    .split(" ")
-    .map((w) => (w.length ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .split(/\s+/)
+    .map((w) =>
+      w
+        .split(/([-'])/)
+        .map((part) =>
+          part === "-" || part === "'"
+            ? part
+            : part.length
+            ? part[0].toUpperCase() + part.slice(1).toLowerCase()
+            : part,
+        )
+        .join(""),
+    )
     .join(" ");
 }
 
@@ -247,29 +458,54 @@ function dedupeOwners(owners) {
 
 // Extract current owners
 function getCurrentOwners(invalid_owners) {
-  let owners = [];
-  // Direct spans in Owner Information
-  const spans = $('span[id*="OWNER_NAMELabel"]')
-    .map((i, el) => $(el).text().trim())
-    .get();
-  if (spans.length) {
-    owners = spans;
-  } else {
-    // Fallback: Search results Owner Name cell
+  const ownerStrings = [];
+
+  const legacySpans = $('span[id*="OWNER_NAMELabel"]')
+    .map((i, el) => cleanWhitespace($(el).text()))
+    .get()
+    .filter(Boolean);
+  if (legacySpans.length) {
+    ownerStrings.push(...legacySpans);
+  }
+
+  if (!ownerStrings.length) {
+    const ownerSpan = $("#ownerName");
+    if (ownerSpan.length) {
+      const ownerHtml = ownerSpan.html() || "";
+      if (/<br\s*\/?>/i.test(ownerHtml)) {
+        ownerHtml
+          .split(/<br\s*\/?>/i)
+          .map((fragment) => cleanWhitespace(cheerio.load(`<span>${fragment}</span>`).text()))
+          .filter(Boolean)
+          .forEach((value) => ownerStrings.push(value));
+      } else {
+        const ownerText = cleanWhitespace(ownerSpan.text());
+        if (ownerText) ownerStrings.push(ownerText);
+      }
+    }
+  }
+
+  if (!ownerStrings.length) {
     const cell = $("#MainContent_gvParcelResults tr").eq(1).find("td").eq(2);
     if (cell && cell.length) {
-      const raw = cell.text().trim();
-      const parts = raw
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      owners = parts.length ? parts : raw ? [raw] : [];
+      const raw = cleanWhitespace(cell.text());
+      if (raw) {
+        const parts = raw
+          .split(/\s*,\s*/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (parts.length) {
+          ownerStrings.push(...parts);
+        } else {
+          ownerStrings.push(raw);
+        }
+      }
     }
   }
 
   const parsed = [];
-  owners.forEach((n) => {
-    const classified = classifyOwner(n, invalid_owners);
+  ownerStrings.forEach((name) => {
+    const classified = classifyOwner(name, invalid_owners);
     if (Array.isArray(classified)) {
       parsed.push(...classified);
     } else if (classified) {
@@ -281,25 +517,58 @@ function getCurrentOwners(invalid_owners) {
 
 // Extract historical owners from Sales table (Grantee by Sale Date)
 function getHistoricalOwnersByDate(invalid_owners) {
-  const rows = $("#MainContent_frmParcelDetail_gvSales tr").slice(1);
+  let rows = $("#MainContent_frmParcelDetail_gvSales tr").slice(1);
+  let dateIdx = 0;
+  let granteeIdx = -1;
+
+  if (rows.length) {
+    const headerCells = $("#MainContent_frmParcelDetail_gvSales tr").first().find("th");
+    if (headerCells.length) {
+      const headers = headerCells
+        .map((i, el) => cleanWhitespace($(el).text()).toLowerCase())
+        .get();
+      dateIdx = headers.findIndex((h) => /date/.test(h));
+      granteeIdx = headers.findIndex((h) => /(grantee|buyer|purchaser|owner)/.test(h));
+    }
+    if (dateIdx < 0) dateIdx = 0;
+  }
+
+  if (!rows.length) {
+    rows = $("#salesTable tbody tr");
+    if (rows.length) {
+      const headerCells = $("#salesTable thead tr").first().find("th");
+      const headers = headerCells
+        .map((i, el) => cleanWhitespace($(el).text()).toLowerCase())
+        .get();
+      dateIdx = headers.findIndex((h) => /date/.test(h));
+      granteeIdx = headers.findIndex((h) => /(grantee|buyer|purchaser|owner)/.test(h));
+      if (dateIdx < 0) dateIdx = 0;
+    }
+  }
+
+  if (!rows.length || granteeIdx === -1) {
+    return {};
+  }
+
   const groups = {};
   rows.each((i, tr) => {
     const tds = $(tr).find("td");
     if (!tds.length) return;
-    const dateStr = text(tds.eq(0));
+    if (dateIdx >= tds.length || granteeIdx >= tds.length) return;
+    const dateStr = text(tds.eq(dateIdx));
     const iso = toISODate(dateStr);
-    const granteeCell = tds.last();
+    const granteeCell = tds.eq(granteeIdx);
+    const granteeHtml = granteeCell.html() || "";
     const granteeRaw = text(granteeCell);
     if (!granteeRaw) return;
     const key =
       iso ||
       `unknown_date_${Object.keys(groups).filter((k) => k.startsWith("unknown_date_")).length + 1}`;
 
-    const splitParts = granteeRaw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const nameParts = splitParts.length ? splitParts : [granteeRaw];
+    const segmented = splitOwnerSegments(
+      granteeHtml || granteeRaw,
+    );
+    const nameParts = segmented.length ? segmented : [granteeRaw];
 
     const owners = groups[key] || [];
     nameParts.forEach((g) => {

@@ -49,14 +49,20 @@ function toISODate(mmddyyyy) {
 
 const COMPANY_KEYWORDS = [
   "inc",
+  "inc.",
+  "incorporated",
+  "incorp",
   "llc",
   "l.l.c",
+  "l.l.c.",
   "ltd",
   "limited",
+  "limited liability company",
   "foundation",
   "alliance",
   "solutions",
   "corp",
+  "corp.",
   "corporation",
   "co",
   "co.",
@@ -64,13 +70,18 @@ const COMPANY_KEYWORDS = [
   "services",
   "service",
   "trust",
+  "trustee",
   "tr",
   "tr.",
+  "trs",
+  "trs.",
   "bank",
   "na",
   "n.a.",
+  "n.a",
   "assn",
   "association",
+  "associates",
   "dept",
   "department",
   "authority",
@@ -86,15 +97,27 @@ const COMPANY_KEYWORDS = [
   "clerk",
   "court",
   "courts",
+  "municipal",
+  "municipality",
   "federal",
   "state",
+  "gov",
+  "government",
   "lp",
+  "l.p.",
   "llp",
+  "l.l.p.",
   "plc",
+  "p.l.c.",
   "pc",
+  "p.c.",
   "p.a",
   "p.a.",
   "credit union",
+  "partners",
+  "partnership",
+  "properties",
+  "property management",
 ];
 
 function isCompanyName(raw) {
@@ -117,6 +140,10 @@ function cleanInvalidCharsFromName(raw) {
   let parsedName = normalizeWhitespace(raw)
     .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
     .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .replace(/--+/g, "-")  // Replace multiple hyphens with single hyphen
+    .replace(/'{2,}/g, "'")  // Replace multiple apostrophes with single apostrophe
+    .replace(/\.\.+/g, ".")  // Replace multiple periods with single period
+    .replace(/,{2,}/g, ",")  // Replace multiple commas with single comma
     .trim();
   while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
     parsedName = parsedName.slice(1);
@@ -125,6 +152,172 @@ function cleanInvalidCharsFromName(raw) {
     parsedName = parsedName.slice(0, parsedName.length - 1);
   }
   return parsedName;
+}
+
+const PERSON_PREFIX_ENUMS = [
+  "Mr.",
+  "Mrs.",
+  "Ms.",
+  "Miss",
+  "Mx.",
+  "Dr.",
+  "Prof.",
+  "Rev.",
+  "Fr.",
+  "Sr.",
+  "Br.",
+  "Capt.",
+  "Col.",
+  "Maj.",
+  "Lt.",
+  "Sgt.",
+  "Hon.",
+  "Judge",
+  "Rabbi",
+  "Imam",
+  "Sheikh",
+  "Sir",
+  "Dame",
+  null,
+];
+
+const PERSON_SUFFIX_ENUMS = [
+  "Jr.",
+  "Sr.",
+  "II",
+  "III",
+  "IV",
+  "PhD",
+  "MD",
+  "Esq.",
+  "JD",
+  "LLM",
+  "MBA",
+  "RN",
+  "DDS",
+  "DVM",
+  "CFA",
+  "CPA",
+  "PE",
+  "PMP",
+  "Esq.",
+  "Emeritus",
+  "Ret.",
+  null,
+];
+
+const PREFIX_MAP = new Map([
+  ["mr", "Mr."],
+  ["mr.", "Mr."],
+  ["mrs", "Mrs."],
+  ["mrs.", "Mrs."],
+  ["ms", "Ms."],
+  ["ms.", "Ms."],
+  ["miss", "Miss"],
+  ["mx", "Mx."],
+  ["mx.", "Mx."],
+  ["dr", "Dr."],
+  ["dr.", "Dr."],
+  ["prof", "Prof."],
+  ["prof.", "Prof."],
+  ["rev", "Rev."],
+  ["rev.", "Rev."],
+  ["fr", "Fr."],
+  ["fr.", "Fr."],
+  ["sr", "Sr."],
+  ["sr.", "Sr."],
+  ["br", "Br."],
+  ["br.", "Br."],
+  ["capt", "Capt."],
+  ["capt.", "Capt."],
+  ["col", "Col."],
+  ["col.", "Col."],
+  ["maj", "Maj."],
+  ["maj.", "Maj."],
+  ["lt", "Lt."],
+  ["lt.", "Lt."],
+  ["sgt", "Sgt."],
+  ["sgt.", "Sgt."],
+  ["hon", "Hon."],
+  ["hon.", "Hon."],
+  ["judge", "Judge"],
+  ["rabbi", "Rabbi"],
+  ["imam", "Imam"],
+  ["sheikh", "Sheikh"],
+  ["sir", "Sir"],
+  ["dame", "Dame"],
+]);
+
+const SUFFIX_MAP = new Map([
+  ["jr", "Jr."],
+  ["jr.", "Jr."],
+  ["junior", "Jr."],
+  ["sr", "Sr."],
+  ["sr.", "Sr."],
+  ["senior", "Sr."],
+  ["ii", "II"],
+  ["2nd", "II"],
+  ["second", "II"],
+  ["iii", "III"],
+  ["3rd", "III"],
+  ["third", "III"],
+  ["iv", "IV"],
+  ["4th", "IV"],
+  ["fourth", "IV"],
+  ["phd", "PhD"],
+  ["ph.d", "PhD"],
+  ["ph.d.", "PhD"],
+  ["md", "MD"],
+  ["m.d", "MD"],
+  ["m.d.", "MD"],
+  ["esq", "Esq."],
+  ["esq.", "Esq."],
+  ["jd", "JD"],
+  ["j.d", "JD"],
+  ["j.d.", "JD"],
+  ["llm", "LLM"],
+  ["mba", "MBA"],
+  ["rn", "RN"],
+  ["dds", "DDS"],
+  ["dvm", "DVM"],
+  ["cfa", "CFA"],
+  ["cpa", "CPA"],
+  ["pe", "PE"],
+  ["p.e", "PE"],
+  ["pmp", "PMP"],
+  ["emeritus", "Emeritus"],
+  ["ret", "Ret."],
+  ["ret.", "Ret."],
+]);
+
+function extractPrefixSuffix(tokens) {
+  const safeTokens = [...tokens];
+  let prefix = null;
+  let suffix = null;
+
+  if (safeTokens.length) {
+    const firstNorm = safeTokens[0].replace(/[.]/g, "").toLowerCase();
+    if (PREFIX_MAP.has(firstNorm)) {
+      prefix = PREFIX_MAP.get(firstNorm);
+      safeTokens.shift();
+    }
+  }
+
+  if (safeTokens.length) {
+    const lastNorm = safeTokens[safeTokens.length - 1]
+      .replace(/[.]/g, "")
+      .toLowerCase();
+    if (SUFFIX_MAP.has(lastNorm)) {
+      suffix = SUFFIX_MAP.get(lastNorm);
+      safeTokens.pop();
+    }
+  }
+
+  return {
+    prefix_name: PERSON_PREFIX_ENUMS.includes(prefix) ? prefix : null,
+    suffix_name: PERSON_SUFFIX_ENUMS.includes(suffix) ? suffix : null,
+    tokens: safeTokens,
+  };
 }
 
 function splitByDelimiters(raw) {
@@ -140,12 +333,21 @@ function splitByDelimiters(raw) {
 function parsePersonName(raw, inferredLastName = null) {
   const name = cleanName(raw);
   if (!name) return null;
+  let prefix_name = null;
+  let suffix_name = null;
 
   // Handle comma format: LAST, FIRST MIDDLE
   if (name.includes(",")) {
     const [lastPart, restPart] = name.split(",").map((s) => s.trim());
     if (!restPart) return null;
-    const restTokens = restPart.split(/\s+/).filter(Boolean);
+    const restTokensRaw = restPart.split(/\s+/).filter(Boolean);
+    const {
+      prefix_name: pref,
+      suffix_name: suf,
+      tokens: restTokens,
+    } = extractPrefixSuffix(restTokensRaw);
+    prefix_name = pref;
+    suffix_name = suf;
     const first = restTokens[0] || null;
     const middle = restTokens.slice(1).join(" ") || null;
     if (!first || !lastPart) return null;
@@ -154,11 +356,17 @@ function parsePersonName(raw, inferredLastName = null) {
       first_name: cleanInvalidCharsFromName(first),
       last_name: cleanInvalidCharsFromName(lastPart),
       middle_name: cleanInvalidCharsFromName(middle) || null,
+      prefix_name,
+      suffix_name,
     };
   }
 
   // If inferred last name is provided and current segment doesn't appear to contain a surname, prepend it
-  const tokens = name.split(/\s+/).filter(Boolean);
+  const rawTokens = name.split(/\s+/).filter(Boolean);
+  const { prefix_name: pref, suffix_name: suf, tokens } =
+    extractPrefixSuffix(rawTokens);
+  prefix_name = pref;
+  suffix_name = suf;
 
   // Heuristic: SRC PA format often is LAST FIRST [MIDDLE]
   if (tokens.length === 1 && inferredLastName) {
@@ -168,6 +376,8 @@ function parsePersonName(raw, inferredLastName = null) {
       first_name: cleanInvalidCharsFromName(tokens[0]),
       last_name: cleanInvalidCharsFromName(inferredLastName),
       middle_name: null,
+      prefix_name,
+      suffix_name,
     };
   }
 
@@ -189,6 +399,8 @@ function parsePersonName(raw, inferredLastName = null) {
         first_name: cleanInvalidCharsFromName(first),
         last_name: cleanInvalidCharsFromName(inferredLastName),
         middle_name: cleanInvalidCharsFromName(middle) || null,
+        prefix_name,
+        suffix_name,
       };
     }
 
@@ -202,6 +414,8 @@ function parsePersonName(raw, inferredLastName = null) {
       first_name: cleanInvalidCharsFromName(first),
       last_name: cleanInvalidCharsFromName(last),
       middle_name: cleanInvalidCharsFromName(middle) || null,
+      prefix_name,
+      suffix_name,
     };
   }
 
@@ -322,6 +536,7 @@ function extractSales($) {
 
   // Current owners
   const currentOwnerRaw = extractCurrentOwners($);
+  // console.log("TTT",currentOwnerRaw);
   if (currentOwnerRaw) {
     const { valid, invalid } = classifyAndSplitOwners(currentOwnerRaw);
     invalid.forEach((inv) => invalidOwners.push(inv));

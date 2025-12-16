@@ -1,28 +1,26 @@
 // Structure mapping script
-// Reads input.html, parses building and summary data using cheerio, and writes owners/structure_data.json
+// Generates owners/structure_data.json with a structure record per building.
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
+
+const PARCEL_SELECTOR =
+  "#ctlBodyPane_ctl01_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
+const BUILDING_SECTION_TITLE = "Building Information";
 
 function readHtml(filepath) {
   const html = fs.readFileSync(filepath, "utf8");
   return cheerio.load(html);
 }
 
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
-const BUILDING_SECTION_TITLE = "Building Information";
-
 function textTrim(s) {
   return (s || "").replace(/\s+/g, " ").trim();
 }
 
 function getParcelId($) {
-  let parcelIdText = $(PARCEL_SELECTOR).text().trim();
-  if (parcelIdText) {
-    return parcelIdText;
-  }
-  return null;
+  const parcelIdText = $(PARCEL_SELECTOR).text().trim();
+  return parcelIdText || null;
 }
 
 function collectBuildings($) {
@@ -45,15 +43,13 @@ function collectBuildings($) {
         .find("table tbody tr")
         .each((__, tr) => {
           let label = textTrim($(tr).find("td strong").first().text());
-          if (!label || !label.trim()) {
-            label = textTrim($(tr).find("th strong").first().text());
-          }
+          if (!label) label = textTrim($(tr).find("th strong").first().text());
           const value = textTrim($(tr).find("td span").first().text());
           if (label) map[label] = value;
         });
       if (Object.keys(map).length) buildings.push(map);
     });
-  let buildingCount = 0;
+  let index = 0;
   $(section)
     .find(
       '.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"]',
@@ -64,58 +60,16 @@ function collectBuildings($) {
         .find("table tbody tr")
         .each((__, tr) => {
           let label = textTrim($(tr).find("td strong").first().text());
-          if (!label || !label.trim()) {
-            label = textTrim($(tr).find("th strong").first().text());
-          }
+          if (!label) label = textTrim($(tr).find("th strong").first().text());
           const value = textTrim($(tr).find("td span").first().text());
           if (label) map[label] = value;
         });
-      if (Object.keys(map).length) {
-        const combined_map = {...buildings[buildingCount], ...map};
-        buildings[buildingCount++] = combined_map;
-      };
+      if (Object.keys(map).length && buildings[index]) {
+        buildings[index] = { ...buildings[index], ...map };
+        index += 1;
+      }
     });
   return buildings;
-}
-
-function mapExteriorMaterials(tokens) {
-  const out = [];
-  tokens.forEach((tok) => {
-    const t = tok.toUpperCase().trim();
-    if (!t) return;
-    if (t.includes("BRK") || t.includes("BRICK")) out.push("Brick");
-    if (t.includes("CEDAR") || t.includes("WOOD")) out.push("Wood Siding");
-    if (t.includes("STUC")) out.push("Stucco");
-    if (t.includes("VINYL")) out.push("Vinyl Siding");
-    if (t.includes("BLOCK") || t.includes("CONCRETE")) out.push("Concrete Block");
-  });
-  return out;
-}
-
-function mapInteriorSurface(tokens) {
-  const out = [];
-  tokens.forEach((tok) => {
-    const t = tok.toUpperCase().trim();
-    if (t.includes("BRK") || t.includes("BRICK")) out.push("Exposed Brick");
-    if (t.includes("CEDAR") || t.includes("WOOD")) out.push("Wood Paneling");
-    if (t.includes("STEEL")) out.push("Metal Panels");
-    if (t.includes("BLOCK") || t.includes("CONCRETE")) out.push("Concrete");
-  });
-  return out;
-}
-
-function mapFlooring(tokens) {
-  const out = [];
-  tokens.forEach((tok) => {
-    const t = tok.toUpperCase().trim();
-    if (t.includes("CARPET")) out.push("Carpet");
-    if (t.includes("VINYL")) out.push("Sheet Vinyl");
-    if (t.includes("CERAMIC")) out.push("Ceramic Tile");
-    if (t.includes("LVP")) out.push("Luxury Vinyl Plank");
-    if (t.includes("LAMINATE")) out.push("Laminate");
-    if (t.includes("STONE")) out.push("Natural Stone Tile");
-  });
-  return out;
 }
 
 function parseNumber(val) {
@@ -124,9 +78,63 @@ function parseNumber(val) {
   return Number.isFinite(n) ? n : null;
 }
 
-function buildStructureRecord($, buildings) {
-  // Defaults per schema requirements (all present, many null)
-  const rec = {
+function tokenize(value) {
+  return (value || "")
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function mapExteriorMaterials(tokens) {
+  const out = [];
+  tokens.forEach((tok) => {
+    const t = tok.toUpperCase();
+    if (!t) return;
+    if (t.includes("BRK") || t.includes("BRICK")) out.push("Brick");
+    if (t.includes("STONE")) out.push("Natural Stone");
+    if (t.includes("STUC")) out.push("Stucco");
+    if (t.includes("VINYL")) out.push("Vinyl Siding");
+    if (t.includes("BLOCK") || t.includes("CONCRETE")) out.push("Concrete Block");
+    if (t.includes("EIFS")) out.push("EIFS");
+    if (t.includes("WOOD") || t.includes("CEDAR")) out.push("Wood Siding");
+    if (t.includes("METAL") || t.includes("ALUM")) out.push("Metal Siding");
+  });
+  return Array.from(new Set(out));
+}
+
+function mapInteriorSurface(tokens) {
+  const out = [];
+  tokens.forEach((tok) => {
+    const t = tok.toUpperCase();
+    if (!t) return;
+    if (t.includes("DRYWALL") || t.includes("SHEETROCK")) out.push("Drywall");
+    if (t.includes("PLASTER")) out.push("Plaster");
+    if (t.includes("WOOD") || t.includes("PANEL")) out.push("Wood Paneling");
+    if (t.includes("BRK") || t.includes("BRICK")) out.push("Exposed Brick");
+    if (t.includes("BLOCK") || t.includes("CONCRETE")) out.push("Exposed Block");
+    if (t.includes("STONE")) out.push("Stone Veneer");
+  });
+  return Array.from(new Set(out));
+}
+
+function mapFlooring(tokens) {
+  const out = [];
+  tokens.forEach((tok) => {
+    const t = tok.toUpperCase();
+    if (!t) return;
+    if (t.includes("CARPET")) out.push("Carpet");
+    if (t.includes("VINYL")) out.push("Sheet Vinyl");
+    if (t.includes("LVP")) out.push("Luxury Vinyl Plank");
+    if (t.includes("LAMINATE")) out.push("Laminate");
+    if (t.includes("STONE")) out.push("Natural Stone Tile");
+    if (t.includes("CERAMIC") || t.includes("TILE")) out.push("Ceramic Tile");
+    if (t.includes("WOOD")) out.push("Hardwood");
+  });
+  return Array.from(new Set(out));
+}
+
+function createStructureFromBuilding(building, buildingNumber) {
+  const record = {
     architectural_style_type: null,
     attachment_type: null,
     ceiling_condition: null,
@@ -188,99 +196,106 @@ function buildStructureRecord($, buildings) {
     window_installation_date: null,
     window_operation_type: null,
     window_screen_material: null,
+    building_number: buildingNumber,
   };
 
-  // Aggregate from buildings
-  const extTokens = [];
-  const intWallTokens = [];
-  const floorTokens = [];
-  const roofTokens = [];
-  const frameTokens = [];
-  const stories = [];
-
-  buildings.forEach((b) => {
-    if (b["Exterior Walls"])
-      extTokens.push(...b["Exterior Walls"].split(";").map((s) => s.trim()));
-    if (b["Interior Walls"])
-      intWallTokens.push(
-        ...b["Interior Walls"].split(";").map((s) => s.trim()),
-      );
-    if (b["Floor Cover"])
-      floorTokens.push(...b["Floor Cover"].split(";").map((s) => s.trim()));
-    if (b["Roof Cover"]) roofTokens.push(b["Roof Cover"]);
-    if (b["Frame Type"]) frameTokens.push(b["Frame Type"]);
-    if (b["Stories"]) {
-      const st = parseNumber(b["Stories"]);
-      if (st != null) stories.push(st);
-    }
-  });
-
-  // Exterior materials
-  const ext = mapExteriorMaterials(extTokens);
-  if (ext.length) {
-    // Choose primary material as the most common/first detected
-    rec.exterior_wall_material_primary = ext[0] || null;
+  const extMaterials = mapExteriorMaterials(
+    tokenize(building["Exterior Walls"]),
+  );
+  if (extMaterials.length) {
+    record.exterior_wall_material_primary = extMaterials[0];
+    if (extMaterials.length > 1)
+      record.exterior_wall_material_secondary = extMaterials[1];
   }
 
-  // Interior wall surface
-  const intSurf = mapInteriorSurface(intWallTokens);
-  if (intSurf.length) {
-    rec.interior_wall_surface_material_primary = intSurf[0] || null;
+  const interiorSurfaces = mapInteriorSurface(
+    tokenize(building["Interior Walls"]),
+  );
+  if (interiorSurfaces.length) {
+    record.interior_wall_surface_material_primary = interiorSurfaces[0];
+    if (interiorSurfaces.length > 1)
+      record.interior_wall_surface_material_secondary = interiorSurfaces[1];
   }
 
-  // Flooring
-  const floors = mapFlooring(floorTokens);
-  if (floors.length) {
-    rec.flooring_material_primary = floors[0] || null;
+  const flooring = mapFlooring(tokenize(building["Floor Cover"]));
+  if (flooring.length) {
+    record.flooring_material_primary = flooring[0];
+    if (flooring.length > 1)
+      record.flooring_material_secondary = flooring[1];
   }
 
-  // Roof covering mapping
+  const roofTokens = tokenize(building["Roof Cover"]);
   if (roofTokens.length) {
-    const u = roofTokens.join(" ").toUpperCase();
+    const roofText = roofTokens.join(" ").toUpperCase();
     if (
-      u.includes("ENG SHINGL") ||
-      u.includes("ARCH") ||
-      u.includes("ARCHITECT") ||
-      u.includes("SHINGLE")
+      roofText.includes("ENG SHINGL") ||
+      roofText.includes("ARCH") ||
+      roofText.includes("ARCHITECT") ||
+      roofText.includes("SHINGLE")
     ) {
-      rec.roof_covering_material = "Architectural Asphalt Shingle";
+      record.roof_covering_material = "Architectural Asphalt Shingle";
     }
   }
 
-  // Framing
-  if (frameTokens.join(" ").toUpperCase().includes("WOOD")) {
-    rec.primary_framing_material = "Wood Frame";
-    // rec.interior_wall_structure_material = "Wood Frame";
-    // rec.interior_wall_structure_material_primary = "Wood Frame";
-  }
+  const frameTokens = tokenize(building["Frame Type"]);
+  const frameText = frameTokens.join(" ").toUpperCase();
+  if (frameText.includes("WOOD")) record.primary_framing_material = "Wood Frame";
+  else if (frameText.includes("STEEL"))
+    record.primary_framing_material = "Steel Frame";
 
-  // Stories
-  if (stories.length) {
-    // Use max stories across buildings
-    rec.number_of_stories = Math.max(...stories);
-  }
+  const stories = parseNumber(building["Stories"]);
+  if (stories != null) record.number_of_stories = stories;
 
-  // Subfloor unknown; if any heated area present and FL likely slab, but leave null to avoid assumption
-  // rec.subfloor_material = null;
+  const finishedArea =
+    parseNumber(building["Heated Area"]) ||
+    parseNumber(building["Living Area"]) ||
+    parseNumber(building["Total Area"]);
+  if (finishedArea != null) record.finished_base_area = finishedArea;
 
-  return rec;
+  const roofYear = parseNumber(building["Actual Year Built"]);
+  if (roofYear) record.roof_date = String(roofYear);
+
+  return record;
 }
 
 function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
-  if (!parcelId) {
-    throw new Error("Parcel ID not found");
-  }
+  if (!parcelId) throw new Error("Parcel ID not found");
+
   const buildings = collectBuildings($);
-  const structureRecord = buildStructureRecord($, buildings);
+  const structures = buildings.map((building, idx) =>
+    createStructureFromBuilding(building, idx + 1),
+  );
+
+  if (!structures.length) {
+    console.log("No structures found.");
+    return;
+  }
+
+  const filteredStructures = structures.filter((record) => {
+    const keys = Object.keys(record);
+    return keys.some((key) => {
+      if (key === "building_number") return true;
+      const value = record[key];
+      return value !== null && value !== undefined && value !== "";
+    });
+  });
+
+  if (!filteredStructures.length) {
+    console.log("No populated structures found.");
+    return;
+  }
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "structure_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = structureRecord;
+  if (filteredStructures.length === 1)
+    outObj[`property_${parcelId}`] = filteredStructures[0];
+  else outObj[`property_${parcelId}`] = { structures: filteredStructures };
+
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }
