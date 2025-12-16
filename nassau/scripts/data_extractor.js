@@ -1776,7 +1776,8 @@ function checkOwnerInfoVsCurrentOwners(ownerInfo, ownersByDateCurrent) {
   function titleCase(str) {
     return (str || "")
       .toLowerCase()
-      .replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
+      .replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b)
+      .trim();
   }
   
   function buildPersonFromOwnerMapping(first, last, middle) {
