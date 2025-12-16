@@ -62,11 +62,9 @@ function validatePersonName(name) {
   // Remove any leading/trailing special characters that might have been left
   const cleaned = trimmed.replace(/^[^A-Za-z]+|[^A-Za-z\s\-',.]+$/g, '').trim();
   if (!cleaned) return null;
-  // Pattern from Elephant schema: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  // Must be in proper title case:
-  // - Start with uppercase letter followed by lowercase letters
-  // - Then optionally: separator + one letter (any case) + lowercase letters
-  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  // Pattern from Elephant schema: ^[A-Z][a-zA-Z\s\-',.]*$
+  // Must start with uppercase letter, then any mix of letters, spaces, and allowed punctuation
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   if (!pattern.test(cleaned)) {
     return null;
   }
