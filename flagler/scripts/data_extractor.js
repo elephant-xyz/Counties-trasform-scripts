@@ -784,7 +784,7 @@ const PROPERTY_USE_DESCRIPTION_MAP = new Map([
   ["MINERAL PROCESSING", { property_usage_type: "MineralProcessing" }],
   ["MINI MART", { property_usage_type: "RetailStore" }],
   ["MISCELLANEOUS", { property_usage_type: "Unknown" }],
-  ["MIXED COMMERCIAL", { property_usage_type: "Commercial" }],
+  ["MIXED COMMERCIAL", { property_usage_type: "MixedUse" }],
   ["MOBILE HOME", { property_usage_type: "Residential", property_type: "ManufacturedHome", structure_form: "ManufacturedHousing" }],
   ["MODULAR HOME", { property_usage_type: "Residential", property_type: "ManufacturedHome", structure_form: "ManufacturedHousing" }],
   ["MORTUARY CEMETE", { property_usage_type: "MortuaryCemetery", property_type: "LandParcel", build_status: "Improved" }],
@@ -895,7 +895,7 @@ const PROPERTY_USE_DESCRIPTION_PATTERNS = [
   },
   {
     pattern: /MIXED/i,
-    overrides: { property_usage_type: "Commercial" },
+    overrides: { property_usage_type: "MixedUse" },
   },
 ];
 
@@ -3299,18 +3299,8 @@ function main() {
     unaddr && unaddr.full_address ? String(unaddr.full_address).trim() : null;
   const unnormalizedAddress = htmlFullAddress || fallbackAddress || null;
 
-  // Ensure we have a valid unnormalized address
-  let finalUnnormalizedAddress = unnormalizedAddress;
-  if (!finalUnnormalizedAddress && addrFromHTML.addrLine1) {
-    finalUnnormalizedAddress = addrFromHTML.addrLine1;
-  }
-  // If still no address, use parcel identifier as fallback
-  if (!finalUnnormalizedAddress) {
-    finalUnnormalizedAddress = parcelId || propId || "Unknown Address";
-  }
-
   const address = {
-    unnormalized_address: finalUnnormalizedAddress,
+    unnormalized_address: unnormalizedAddress,
     source_http_request: clone(defaultSourceHttpRequest),
     request_identifier: requestIdentifier,
     county_name:
@@ -3319,6 +3309,9 @@ function main() {
     "Flagler",
     country_code: "US",
   };
+  if (!address.unnormalized_address && addrFromHTML.addrLine1) {
+    address.unnormalized_address = addrFromHTML.addrLine1;
+  }
   const addressFilename = "address.json";
   const addressPath = `./${addressFilename}`;
   writeJSON(path.join(dataDir, addressFilename), address);
