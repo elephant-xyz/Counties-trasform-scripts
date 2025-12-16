@@ -1350,38 +1350,44 @@ function removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx) {
           let shouldRemove = false;
 
           if (rel.from && rel.from['/']) {
-            const fromPath = rel.from['/'];
+            // Trim whitespace from path before matching
+            const fromPath = String(rel.from['/']).trim();
             const personFromMatch = fromPath.match(/\.\/person_(\d+)\.json$/);
             const companyFromMatch = fromPath.match(/\.\/company_(\d+)\.json$/);
 
             if (personFromMatch) {
               const idx = parseInt(personFromMatch[1], 10);
               if (!usedPersonIdx.has(idx)) {
+                console.log(`Removing relationship ${file}: references unused person ${idx} in 'from'`);
                 shouldRemove = true;
               }
             }
             if (companyFromMatch) {
               const idx = parseInt(companyFromMatch[1], 10);
               if (!usedCompanyIdx.has(idx)) {
+                console.log(`Removing relationship ${file}: references unused company ${idx} in 'from'`);
                 shouldRemove = true;
               }
             }
           }
 
           if (rel.to && rel.to['/']) {
-            const toPath = rel.to['/'];
+            // Trim whitespace from path before matching
+            const toPath = String(rel.to['/']).trim();
             const personToMatch = toPath.match(/\.\/person_(\d+)\.json$/);
             const companyToMatch = toPath.match(/\.\/company_(\d+)\.json$/);
 
             if (personToMatch) {
               const idx = parseInt(personToMatch[1], 10);
               if (!usedPersonIdx.has(idx)) {
+                console.log(`Removing relationship ${file}: references unused person ${idx} in 'to'`);
                 shouldRemove = true;
               }
             }
             if (companyToMatch) {
               const idx = parseInt(companyToMatch[1], 10);
               if (!usedCompanyIdx.has(idx)) {
+                console.log(`Removing relationship ${file}: references unused company ${idx} in 'to'`);
                 shouldRemove = true;
               }
             }
@@ -1396,6 +1402,83 @@ function removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx) {
         }
       }
     });
+
+    // Final validation: check for any remaining relationships that reference non-existent files
+    const finalFiles = fs.readdirSync(dataDir);
+    const existingPersonFiles = new Set();
+    const existingCompanyFiles = new Set();
+
+    finalFiles.forEach((file) => {
+      const personMatch = file.match(/^person_(\d+)\.json$/);
+      if (personMatch) {
+        existingPersonFiles.add(parseInt(personMatch[1], 10));
+      }
+      const companyMatch = file.match(/^company_(\d+)\.json$/);
+      if (companyMatch) {
+        existingCompanyFiles.add(parseInt(companyMatch[1], 10));
+      }
+    });
+
+    finalFiles.forEach((file) => {
+      if (file.startsWith('relationship_') && file.endsWith('.json')) {
+        try {
+          const content = fs.readFileSync(path.join(dataDir, file), 'utf8');
+          const rel = JSON.parse(content);
+          let shouldRemove = false;
+
+          // Check if 'from' references a non-existent person/company file
+          if (rel.from && rel.from['/']) {
+            const fromPath = String(rel.from['/']).trim();
+            const personFromMatch = fromPath.match(/\.\/person_(\d+)\.json$/);
+            const companyFromMatch = fromPath.match(/\.\/company_(\d+)\.json$/);
+
+            if (personFromMatch) {
+              const idx = parseInt(personFromMatch[1], 10);
+              if (!existingPersonFiles.has(idx)) {
+                console.log(`Final cleanup: Removing relationship ${file}: person_${idx}.json does not exist (referenced in 'from')`);
+                shouldRemove = true;
+              }
+            }
+            if (companyFromMatch) {
+              const idx = parseInt(companyFromMatch[1], 10);
+              if (!existingCompanyFiles.has(idx)) {
+                console.log(`Final cleanup: Removing relationship ${file}: company_${idx}.json does not exist (referenced in 'from')`);
+                shouldRemove = true;
+              }
+            }
+          }
+
+          // Check if 'to' references a non-existent person/company file
+          if (rel.to && rel.to['/']) {
+            const toPath = String(rel.to['/']).trim();
+            const personToMatch = toPath.match(/\.\/person_(\d+)\.json$/);
+            const companyToMatch = toPath.match(/\.\/company_(\d+)\.json$/);
+
+            if (personToMatch) {
+              const idx = parseInt(personToMatch[1], 10);
+              if (!existingPersonFiles.has(idx)) {
+                console.log(`Final cleanup: Removing relationship ${file}: person_${idx}.json does not exist (referenced in 'to')`);
+                shouldRemove = true;
+              }
+            }
+            if (companyToMatch) {
+              const idx = parseInt(companyToMatch[1], 10);
+              if (!existingCompanyFiles.has(idx)) {
+                console.log(`Final cleanup: Removing relationship ${file}: company_${idx}.json does not exist (referenced in 'to')`);
+                shouldRemove = true;
+              }
+            }
+          }
+
+          if (shouldRemove) {
+            fs.unlinkSync(path.join(dataDir, file));
+          }
+        } catch (e) {
+          console.error(`Final cleanup: Error processing relationship file ${file}:`, e.message);
+        }
+      }
+    });
+
   } catch (e) {
     console.error("Error removing unused owner files:", e);
   }
