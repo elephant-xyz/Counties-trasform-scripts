@@ -1415,40 +1415,72 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   // console.log("ownersByDate",ownersByDate);
 
   //Person processing and mapping creation.
-  // Build a set of date keys that will be used for relationships
-  const salesDates = new Set(sales.map(rec => parseDateToISO(rec.saleDate)).filter(d => d !== null));
-  salesDates.add("current");
+  // Build a map to track which persons will actually get relationships
+  const personRelationshipsMap = new Map();
 
-  const personMap = new Map();
-  Object.keys(ownersByDate).forEach((dateKey) => {
-    // Skip unknown_date_* entries as they won't be linked to any sale
-    if (/^unknown_date_\d+$/.test(dateKey)) return;
+  // First pass: collect all persons that appear on sales dates
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    const ownersOnDate = ownersByDate[d] || [];
+    ownersOnDate
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
+        if ((o.first_name || "").trim() && (o.last_name || "").trim()) {
+          const key = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+          if (!personRelationshipsMap.has(key)) {
+            personRelationshipsMap.set(key, {
+              first_name: o.first_name,
+              middle_name: o.middle_name,
+              last_name: o.last_name,
+              prefix_name: o.prefix_name,
+              suffix_name: o.suffix_name
+            });
+          } else {
+            const existing = personRelationshipsMap.get(key);
+            if (!existing.middle_name && o.middle_name)
+              existing.middle_name = o.middle_name;
+          }
+        }
+      });
+  });
 
-    // Skip date keys that won't be used for relationships
-    if (!salesDates.has(dateKey)) return;
+  // Second pass: check if current owners need to be linked to first sale
+  if (sales.length > 0) {
+    const firstSaleDate = parseDateToISO(sales[0].saleDate);
+    const ownersOnFirstSale = ownersByDate[firstSaleDate] || [];
+    const currentOwners = ownersByDate["current"] || [];
 
-    const arr = ownersByDate[dateKey];
-    (arr || []).forEach((o) => {
-      if (o.type === "person") {
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!personMap.has(k))
-          personMap.set(k, {
-            first_name: o.first_name,
-            middle_name: o.middle_name,
-            last_name: o.last_name,
-            prefix_name: o.prefix_name,
-            suffix_name: o.suffix_name
-          });
-        else {
-          const existing = personMap.get(k);
-          if (!existing.middle_name && o.middle_name)
-            existing.middle_name = o.middle_name;
+    currentOwners.forEach((owner) => {
+      if (owner.type === "person" && (owner.first_name || "").trim() && (owner.last_name || "").trim()) {
+        const key = `${(owner.first_name || "").trim().toUpperCase()}|${(owner.last_name || "").trim().toUpperCase()}`;
+        // Check if this person already appears on the first sale date
+        const alreadyOnFirstSale = ownersOnFirstSale.some(existingOwner => {
+          return existingOwner.type === "person" &&
+                 (existingOwner.first_name || "").trim().toUpperCase() === (owner.first_name || "").trim().toUpperCase() &&
+                 (existingOwner.last_name || "").trim().toUpperCase() === (owner.last_name || "").trim().toUpperCase();
+        });
+        // Only add if not already on first sale
+        if (!alreadyOnFirstSale) {
+          if (!personRelationshipsMap.has(key)) {
+            personRelationshipsMap.set(key, {
+              first_name: owner.first_name,
+              middle_name: owner.middle_name,
+              last_name: owner.last_name,
+              prefix_name: owner.prefix_name,
+              suffix_name: owner.suffix_name
+            });
+          } else {
+            const existing = personRelationshipsMap.get(key);
+            if (!existing.middle_name && owner.middle_name)
+              existing.middle_name = owner.middle_name;
+          }
         }
       }
     });
-  });
-// console.log("personMap",personMap)  
-  people = Array.from(personMap.values()).map((p) => ({
+  }
+
+  // Only create person files for persons that have relationships
+  people = Array.from(personRelationshipsMap.values()).map((p) => ({
   ...appendSourceInfo(seed),
   birth_date: null,
   first_name: p.first_name ? formatNameForSchema(p.first_name) : null,
