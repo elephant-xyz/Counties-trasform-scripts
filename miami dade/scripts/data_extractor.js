@@ -2581,7 +2581,7 @@ function main() {
         writeJson(
           path.join(
             "data",
-            `relationship_sales_person_${relPersonCounter}.json`,
+            `relationship_sales_history_has_person_${relPersonCounter}.json`,
           ),
           rel,
         );
@@ -2598,7 +2598,7 @@ function main() {
         writeJson(
           path.join(
             "data",
-            `relationship_sales_company_${relCompanyCounter}.json`,
+            `relationship_sales_history_has_company_${relCompanyCounter}.json`,
           ),
           rel,
         );

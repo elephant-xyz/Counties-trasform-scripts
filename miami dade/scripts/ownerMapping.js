@@ -225,6 +225,11 @@ function classifyOwner(rawName) {
     return { owner: { type: "company", name: name }, reason: null };
   }
 
+  // Check for LLC/LC patterns with spaces (e.g., "LAND HOLD L C" or "COMPANY L L C")
+  if (/\b[L]\s+[LC]\b/i.test(name) || /\bL\s+L\s+C\b/i.test(name)) {
+    return { owner: { type: "company", name: name }, reason: null };
+  }
+
   // Check for government entities and other organizational patterns
   const upperName = name.toUpperCase();
   if (
@@ -240,7 +245,9 @@ function classifyOwner(rawName) {
     upperName.includes("PROPERTIES") ||
     upperName.includes("DEVELOPMENT") ||
     upperName.includes("ENTERPRISES") ||
-    upperName.includes("INVESTMENTS")
+    upperName.includes("INVESTMENTS") ||
+    upperName.includes("LAND HOLD") ||
+    upperName.includes("HOLDINGS")
   ) {
     return { owner: { type: "company", name: name }, reason: null };
   }
