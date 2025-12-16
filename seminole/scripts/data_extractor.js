@@ -3788,7 +3788,40 @@ function main() {
           JSON.stringify(relObj, null, 2),
         );
       });
+
+      // Link any unused utilities directly to property
+      utilityOutputs.forEach((entry, idx) => {
+        if (usedUtilityIndexes.has(idx)) return;
+        const relObj = {
+          from: { "/": "./property.json" },
+          to: { "/": `./${entry.fileName}` },
+        };
+        const relationshipFileName = createRelationshipFileName(
+          "property.json",
+          entry.fileName,
+        );
+        fs.writeFileSync(
+          path.join("data", relationshipFileName),
+          JSON.stringify(relObj, null, 2),
+        );
+      });
     }
+  } else {
+    // No layout data - link all utilities directly to property
+    utilityOutputs.forEach((entry) => {
+      const relObj = {
+        from: { "/": "./property.json" },
+        to: { "/": `./${entry.fileName}` },
+      };
+      const relationshipFileName = createRelationshipFileName(
+        "property.json",
+        entry.fileName,
+      );
+      fs.writeFileSync(
+        path.join("data", relationshipFileName),
+        JSON.stringify(relObj, null, 2),
+      );
+    });
   }
 
   structureOutputs.forEach((entry, idx) => {
