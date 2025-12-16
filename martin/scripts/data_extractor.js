@@ -816,15 +816,28 @@ function titleCaseName(s) {
   s = s.replace(/[^a-zA-Z\s\-',.]/g, '');
   if (!s) return null;
 
+  // Remove leading/trailing separators and collapse multiple spaces
+  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '').replace(/\s+/g, ' ');
+  if (!s) return null;
+
   s = s.toLowerCase();
+
+  // Apply title casing: uppercase letter after start or after a separator
   const result = s.replace(
-    /(^|[\s\-\'])([a-z])/g,
-    (m, p1, p2) => p1 + p2.toUpperCase(),
+    /(^|[\s\-',.])([a-z])/g,
+    (m, p1, p2) => p1 + p2.toUpperCase()
   );
 
-  // Ensure result matches the required pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
-  return result;
+  // Remove any consecutive separators (reduce to single space)
+  let cleaned = result;
+  while (/[\s\-',.]{2,}/.test(cleaned)) {
+    cleaned = cleaned.replace(/[\s\-',.]{2,}/g, ' ');
+  }
+  cleaned = cleaned.trim();
+
+  // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  if (!cleaned || !/^[A-Z][a-z]*([\s\-',.][A-Za-z][a-z]*)*$/.test(cleaned)) return null;
+  return cleaned;
 }
 
 function getValueByStrong($, label) {
