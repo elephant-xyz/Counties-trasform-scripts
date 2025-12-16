@@ -1696,14 +1696,49 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
 }
 
 function removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx) {
-  // Remove person files that are not referenced by any relationship
+  // Remove person and company files that are not referenced by any relationship
+  // Scan actual relationship files to determine which entities are truly referenced
   try {
     const files = fs.readdirSync("data");
+    const referencedPersonIdx = new Set();
+    const referencedCompanyIdx = new Set();
+
+    // Scan all relationship files to find actually referenced persons and companies
+    files.forEach((filename) => {
+      if (filename.startsWith("relationship_") && filename.endsWith(".json")) {
+        try {
+          const relPath = path.join("data", filename);
+          const relContent = readJSON(relPath);
+          if (relContent) {
+            // Check "from" field
+            if (relContent.from && relContent.from["/"]) {
+              const fromPath = relContent.from["/"];
+              const personMatch = fromPath.match(/person_(\d+)\.json$/);
+              const companyMatch = fromPath.match(/company_(\d+)\.json$/);
+              if (personMatch) referencedPersonIdx.add(parseInt(personMatch[1], 10));
+              if (companyMatch) referencedCompanyIdx.add(parseInt(companyMatch[1], 10));
+            }
+            // Check "to" field
+            if (relContent.to && relContent.to["/"]) {
+              const toPath = relContent.to["/"];
+              const personMatch = toPath.match(/person_(\d+)\.json$/);
+              const companyMatch = toPath.match(/company_(\d+)\.json$/);
+              if (personMatch) referencedPersonIdx.add(parseInt(personMatch[1], 10));
+              if (companyMatch) referencedCompanyIdx.add(parseInt(companyMatch[1], 10));
+            }
+          }
+        } catch (e) {
+          // Skip invalid relationship files
+        }
+      }
+    });
+
+    // Remove person and company files that are not referenced
     files.forEach((filename) => {
       const personMatch = filename.match(/^person_(\d+)\.json$/);
       if (personMatch) {
         const idx = parseInt(personMatch[1], 10);
-        if (!usedPersonIdx.has(idx)) {
+        if (!referencedPersonIdx.has(idx)) {
           fs.unlinkSync(path.join("data", filename));
           console.log(`Removed unused person file: ${filename}`);
         }
@@ -1712,7 +1747,7 @@ function removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx) {
       const companyMatch = filename.match(/^company_(\d+)\.json$/);
       if (companyMatch) {
         const idx = parseInt(companyMatch[1], 10);
-        if (!usedCompanyIdx.has(idx)) {
+        if (!referencedCompanyIdx.has(idx)) {
           fs.unlinkSync(path.join("data", filename));
           console.log(`Removed unused company file: ${filename}`);
         }
