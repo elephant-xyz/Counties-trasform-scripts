@@ -1605,7 +1605,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_history_${idx + 1}_buyer_person_${relPersonCounter}.json`,
+              `relationship_sales_person_${relPersonCounter}.json`,
             ),
             {
               from: { "/": `./sales_${idx + 1}.json` },
@@ -1624,7 +1624,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_history_${idx + 1}_buyer_company_${relCompanyCounter}.json`,
+              `relationship_sales_company_${relCompanyCounter}.json`,
             ),
             {
               from: { "/": `./sales_${idx + 1}.json` },
@@ -1662,7 +1662,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             writeJSON(
               path.join(
                 "data",
-                `relationship_sales_history_1_buyer_person_${relPersonCounter}.json`,
+                `relationship_sales_person_${relPersonCounter}.json`,
               ),
               {
                 from: { "/": "./sales_1.json" },
@@ -1678,7 +1678,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             writeJSON(
               path.join(
                 "data",
-                `relationship_sales_history_1_buyer_company_${relCompanyCounter}.json`,
+                `relationship_sales_company_${relCompanyCounter}.json`,
               ),
               {
                 from: { "/": "./sales_1.json" },
