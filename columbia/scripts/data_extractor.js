@@ -2410,9 +2410,8 @@ const specificDocumentTypeMap = {
       return record;
     };
 
-    // Do not create structure entities when they only contain area measurements
-    // Area data is already captured in layout entities
-    // structuresArr.forEach((structure) => addStructure(structure, false));
+    // Process main building structures
+    structuresArr.forEach((structure) => addStructure(structure, false));
     // Create structure entities for extra features (carports, barns, etc.) and link them via relationships
     extraStructuresArr.forEach((structure) => addStructure(structure, true));
 
