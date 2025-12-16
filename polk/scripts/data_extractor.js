@@ -4235,7 +4235,12 @@ function main() {
     if (nm) companyNameToPath.set(nm, `./company_${i + 1}.json`);
   });
 
-  // Check sales history to mark additional persons/companies as used
+  // COMMENTED OUT: Check sales history to mark additional persons/companies as used
+  // This logic is disabled because sales history relationships are not being created
+  // (see lines 4400-4442 where the relationship creation code is commented out)
+  // If we mark persons/companies as used here but don't create relationships for them,
+  // they become "unused" files that fail validation
+  /*
   sales.forEach((s, idx) => {
     const g = normalizeNameForMatch(s.grantee);
     if (!g) return;
@@ -4309,6 +4314,7 @@ function main() {
       }
     }
   });
+  */
 
   // Now write only the used person and company files
   pc.persons.forEach((p, i) => {
