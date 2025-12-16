@@ -245,7 +245,7 @@ function classifyOwner(raw) {
       suffixName = normalizeSuffix(leftTokens.pop());
     }
 
-    lastName = leftTokens.map(titleCase).join(" ");
+    lastName = leftTokens.map(titleCase).join(" ").replace(/'\s+/g, "'");
 
     // Parse right side (first + middle names)
     const firstMiddle = parts[1].trim();
@@ -345,7 +345,7 @@ function classifyOwner(raw) {
         suffixName = normalizeSuffix(tokens.pop());
       }
 
-      const lastName = titleCase(tokens[tokens.length - 1]);
+      const lastName = titleCase(tokens[tokens.length - 1]).replace(/'\s+/g, "'");
       tokens.pop(); // Remove last name
 
       // Now tokens contains all first names (and possibly middle names)
@@ -383,7 +383,7 @@ function classifyOwner(raw) {
         suffixName = normalizeSuffix(tokens.pop());
       }
 
-      const lastName = titleCase(tokens[tokens.length - 1]);
+      const lastName = titleCase(tokens[tokens.length - 1]).replace(/'\s+/g, "'");
       tokens.pop(); // Remove last name
 
       // Split by "&"
@@ -443,7 +443,7 @@ function classifyOwner(raw) {
     const firstName = titleCase(tokens[0]);
 
     // Last token is the last name (after potentially removing suffix)
-    const lastName = titleCase(tokens[tokens.length - 1]);
+    const lastName = titleCase(tokens[tokens.length - 1]).replace(/'\s+/g, "'");
 
     // Everything in between is middle name
     const middleName =
