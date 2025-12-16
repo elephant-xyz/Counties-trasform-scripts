@@ -94,11 +94,14 @@ function formatNameToPattern(name) {
       // Normal word: capitalize first letter, lowercase rest
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     }
-  }).join(' ');
+  }).filter(p => p.length > 0).join(' ');
 
-  // Validate result matches required pattern: must start with uppercase letter
-  // and only contain letters, spaces, hyphens, apostrophes, commas, periods
-  if (!result || result.length === 0 || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
+  // Validate result matches the STRICT required pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // - Must start with uppercase letter
+  // - Followed by zero or more lowercase letters
+  // - Then optionally: (separator + one letter (any case) + lowercase letters)*
+  if (!result || result.length === 0 || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
     return null;
   }
 

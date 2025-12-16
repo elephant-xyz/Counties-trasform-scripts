@@ -2086,6 +2086,31 @@ async function main() {
     if (!currentOwnerRecord && currentOwnerName) {
       currentOwnerRecord = ensureOwnerRecordFromName(currentOwnerName);
       registerPropertyRole(currentOwnerRecord, "current");
+      // Add to currentOwnerRecordsList to ensure relationships are created
+      if (!currentOwnerRecordIds.has(currentOwnerRecord.id)) {
+        currentOwnerRecordIds.add(currentOwnerRecord.id);
+        currentOwnerRecordsList.push(currentOwnerRecord);
+        // Also update the display names and aliases
+        if (currentOwnerRecord.aliases && currentOwnerRecord.aliases.size) {
+          for (const aliasKey of currentOwnerRecord.aliases) {
+            currentOwnerAliasKeys.add(aliasKey);
+          }
+        }
+        if (currentOwnerRecord.displayName) {
+          currentOwnerDisplayNames.push(currentOwnerRecord.displayName);
+        }
+        if (currentOwnerRecord.person) {
+          const display = buildPersonDisplayName(currentOwnerRecord.person);
+          if (display) currentOwnerDisplayNames.push(display);
+        }
+        if (currentOwnerRecord.company?.name) {
+          currentOwnerDisplayNames.push(currentOwnerRecord.company.name);
+        }
+        // Update the uppercase list as well
+        currentOwnerDisplayNamesUpper = currentOwnerDisplayNames
+          .filter((name) => typeof name === "string" && name.trim())
+          .map((name) => name.toUpperCase());
+      }
     } else if (currentOwnerRecord && !currentOwnerName) {
       currentOwnerName = currentOwnerRecord.displayName || null;
     }
@@ -2747,12 +2772,12 @@ async function main() {
         source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
         request_identifier: baseRequestData.request_identifier || null,
         tax_year: targetTaxYear,
-        property_assessed_value_amount:
-          assessedVal && assessedVal > 0 ? assessedVal : null,
-        property_market_value_amount: justVal && justVal > 0 ? justVal : null,
         property_building_amount:
-          buildingVal && buildingVal > 0 ? buildingVal : null,
-        property_land_amount: landVal && landVal > 0 ? landVal : null,
+          typeof buildingVal === "number" && Number.isFinite(buildingVal) && buildingVal > 0
+            ? buildingVal
+            : null,
+        property_land_amount:
+          typeof landVal === "number" && Number.isFinite(landVal) && landVal > 0 ? landVal : null,
         property_taxable_value_amount:
           typeof taxableVal === 'number' && Number.isFinite(taxableVal) ? taxableVal : 0,
         monthly_tax_amount: null,
@@ -2762,6 +2787,15 @@ async function main() {
         first_year_on_tax_roll: null,
         yearly_tax_amount: null,
       };
+
+      const setIfPositiveNumber = (fieldName, value) => {
+        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+          taxOut[fieldName] = value;
+        }
+      };
+
+      setIfPositiveNumber("property_assessed_value_amount", assessedVal);
+      setIfPositiveNumber("property_market_value_amount", justVal);
       await fsp.writeFile(
         path.join("data", taxFileName),
         JSON.stringify(taxOut, null, 2),

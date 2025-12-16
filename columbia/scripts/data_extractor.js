@@ -940,33 +940,42 @@ function formatNameToPattern(name) {
   // Remove any remaining non-letter, non-special-character symbols
   cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, "");
 
+  // Remove leading non-letter characters
+  cleaned = cleaned.replace(/^[^A-Za-z]+/, "");
+
+  if (!cleaned) return null;
+
   // Split by special characters while preserving them
   const parts = cleaned.split(/([ \-',.])/);
 
-  // Filter out empty strings and format each part
-  const formatted = parts
-    .map((part) => {
-      if (!part) return "";
-      if (part.match(/[ \-',.]/)) return part;
-      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-    })
-    .filter(Boolean)
-    .join("");
+  // Format each part: after separator, capitalize the next letter, rest lowercase
+  // Also collapse multiple consecutive separators into one
+  let formatted = "";
+  let lastWasSeparator = false;
 
-  // Trim the result to remove any leading/trailing whitespace
-  let result = formatted.trim();
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!part) continue;
 
-  // Remove leading non-letter characters to ensure pattern compliance
-  // Pattern requires: ^[A-Z][a-zA-Z\s\-',.]*$
-  result = result.replace(/^[^A-Za-z]+/, "");
-
-  // Ensure first character is uppercase
-  if (result && result.length > 0) {
-    result = result.charAt(0).toUpperCase() + result.slice(1);
+    // If it's a separator
+    if (part.match(/^[ \-',.]$/)) {
+      // Only add separator if last wasn't a separator
+      if (!lastWasSeparator) {
+        formatted += part;
+        lastWasSeparator = true;
+      }
+    } else {
+      // It's a word part
+      formatted += part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+      lastWasSeparator = false;
+    }
   }
 
-  // Return null if result is empty or doesn't match the required pattern
-  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
+  // Trim the result
+  let result = formatted.trim();
+
+  // Validate against the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  if (!result || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
     return null;
   }
 
@@ -1739,6 +1748,10 @@ const specificDocumentTypeMap = {
     number_of_units_type_from_map ??
     getNumberOfUnitsTypeFromStructure(structure_form_mapped);
 
+  const derivedBuildStatus =
+    build_status_mapped ||
+    (livable || effYear ? "Improved" : "VacantLand");
+
   const prop = {
     source_http_request: {
       method: "GET",
@@ -1751,7 +1764,7 @@ const specificDocumentTypeMap = {
     property_structure_built_year: effYear || null,
     property_effective_built_year: effYear || null,
     ownership_estate_type: ownership_estate_type_mapped ?? null,
-    build_status: build_status_mapped ?? null,
+    build_status: derivedBuildStatus,
     property_usage_type: property_usage_type_mapped ?? null,
     structure_form: structure_form_mapped ?? null,
     property_type: property_type_mapped ?? null,
@@ -2527,17 +2540,48 @@ const specificDocumentTypeMap = {
 
     const assignStructures = () => {
       if (!structureRecords.length) {
-        propertyStructureRecords.forEach((record) => {
-          if (singleBuildingLayoutIndex) {
-            createLayoutToStructureRelationship(
-              singleBuildingLayoutIndex,
-              record.index,
+        // Handle propertyStructureRecords when no structureRecords exist
+        if (propertyStructureRecords.length) {
+          // Check if we need to create a default layout
+          if (!singleBuildingLayoutIndex && !buildingLayoutRecords.length) {
+            // Create a default building layout for propertyStructureRecords
+            const defaultLayoutIndex = addLayout(
+              {
+                space_type: "Building",
+                space_type_index: "1",
+                total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+                livable_area_sq_ft: toNumber(livable) ?? null,
+                area_under_air_sq_ft: toNumber(livable) ?? null,
+                size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+                building_number: 1,
+              },
+              null,
             );
-          } else if (buildingLayoutRecords.length) {
-            const layoutIdx = buildingLayoutRecords[0].index;
-            createLayoutToStructureRelationship(layoutIdx, record.index);
+            buildingLayoutRecords.push({
+              index: defaultLayoutIndex,
+              building_order: 1,
+              space_type_index: "1",
+            });
+            // Create property to layout relationship
+            const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
+            writeJson(path.join("data", relName), {
+              from: { "/": "./property.json" },
+              to: { "/": `./layout_${defaultLayoutIndex}.json` },
+            });
           }
-        });
+          // Now create relationships for all propertyStructureRecords
+          propertyStructureRecords.forEach((record) => {
+            if (singleBuildingLayoutIndex) {
+              createLayoutToStructureRelationship(
+                singleBuildingLayoutIndex,
+                record.index,
+              );
+            } else if (buildingLayoutRecords.length) {
+              const layoutIdx = buildingLayoutRecords[0].index;
+              createLayoutToStructureRelationship(layoutIdx, record.index);
+            }
+          });
+        }
         return;
       }
       if (!buildingLayoutRecords.length) {
@@ -2596,17 +2640,47 @@ const specificDocumentTypeMap = {
           }
         }
       }
-      propertyStructureRecords.forEach((record) => {
-        if (singleBuildingLayoutIndex) {
-          createLayoutToStructureRelationship(
-            singleBuildingLayoutIndex,
-            record.index,
+      // Handle propertyStructureRecords - ensure they have a layout to connect to
+      if (propertyStructureRecords.length) {
+        // If no building layouts exist, create a default one for propertyStructureRecords
+        if (!buildingLayoutRecords.length && !singleBuildingLayoutIndex) {
+          const defaultLayoutIndex = addLayout(
+            {
+              space_type: "Building",
+              space_type_index: "1",
+              total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+              livable_area_sq_ft: toNumber(livable) ?? null,
+              area_under_air_sq_ft: toNumber(livable) ?? null,
+              size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+              building_number: 1,
+            },
+            null,
           );
-        } else if (buildingLayoutRecords.length) {
-          const layoutIdx = buildingLayoutRecords[0].index;
-          createLayoutToStructureRelationship(layoutIdx, record.index);
+          buildingLayoutRecords.push({
+            index: defaultLayoutIndex,
+            building_order: 1,
+            space_type_index: "1",
+          });
+          // Create property to layout relationship
+          const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
+          writeJson(path.join("data", relName), {
+            from: { "/": "./property.json" },
+            to: { "/": `./layout_${defaultLayoutIndex}.json` },
+          });
         }
-      });
+
+        propertyStructureRecords.forEach((record) => {
+          if (singleBuildingLayoutIndex) {
+            createLayoutToStructureRelationship(
+              singleBuildingLayoutIndex,
+              record.index,
+            );
+          } else if (buildingLayoutRecords.length) {
+            const layoutIdx = buildingLayoutRecords[0].index;
+            createLayoutToStructureRelationship(layoutIdx, record.index);
+          }
+        });
+      }
     };
 
     assignUtilities();
@@ -2659,23 +2733,23 @@ const specificDocumentTypeMap = {
   try {
     if (unnormalizedAddress && unnormalizedAddress.full_address) {
       const full = unnormalizedAddress.full_address.trim();
-      let section = null,
-        township = null,
-        range = null;
-      // Updated selector for S/T/R
+      let section = null;
+      let township = null;
+      let range = null;
+
       const strTxt = $('td:contains("S/T/R")')
         .filter((i, el) => $(el).text().trim().startsWith("S/T/R"))
         .first()
         .next()
         .text()
-        .trim(); // "10-5S-16"
-      if (strTxt && /\d{1,2}-\d{1,2}[A-Z]?-\d{1,2}/.test(strTxt)) { // Updated regex for "10-5S-16" or "10-5-16"
-        const parts2 = strTxt.split("-");
-        section = parts2[0];
-        township = parts2[1]; // e.g., "5S"
-        range = parts2[2]; // e.g., "16"
-      }
+        .trim();
 
+      if (strTxt && /\d{1,2}-\d{1,2}[A-Z]?-\d{1,2}/.test(strTxt)) {
+        const parts2 = strTxt.split("-");
+        section = parts2[0] || null;
+        township = parts2[1] || null;
+        range = parts2[2] || null;
+      }
       const sourceHttp =
         (propertySeed && propertySeed.source_http_request
           ? JSON.parse(JSON.stringify(propertySeed.source_http_request))
@@ -2693,24 +2767,24 @@ const specificDocumentTypeMap = {
         (unnormalizedAddress ? unnormalizedAddress.request_identifier : null) ||
         null;
 
+      const countyName =
+        (unnormalizedAddress &&
+          unnormalizedAddress.county_jurisdiction &&
+          String(unnormalizedAddress.county_jurisdiction).trim()) ||
+        (propertySeed &&
+          propertySeed.county_name &&
+          String(propertySeed.county_name).trim()) ||
+        "Columbia";
+
       writeJson(path.join("data", "address.json"), {
-        unit_identifier: null,
-        city_name: null,
-        state_code: null,
-        postal_code: null,
-        plus_four_postal_code: null,
-        county_name: "Columbia",
-        country_code: "US",
-        route_number: null,
-        township: township || null,
-        range: range || null,
-        section: section || null,
-        lot: null,
-        block: null,
-        municipality_name: null,
         unnormalized_address: full || null,
         source_http_request: sourceHttp,
         request_identifier: requestIdentifier,
+        county_name: countyName || null,
+        country_code: "US",
+        section: section || null,
+        township: township || null,
+        range: range || null,
       });
 
       const latitude =

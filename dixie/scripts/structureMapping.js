@@ -319,12 +319,13 @@ function buildStructureRecord($, buildings, parcelId) {
     if (ext.length > 1) {
       const secondary = ext[1];
       if (secondary === "Brick") rec.exterior_wall_material_secondary = "Brick Accent";
-      else if (secondary === "Natural Stone") rec.exterior_wall_material_secondary = "Stone Accent";
+      else if (secondary === "Natural Stone" || secondary === "Manufactured Stone") rec.exterior_wall_material_secondary = "Stone Accent";
       else if (secondary === "Wood Siding") rec.exterior_wall_material_secondary = "Wood Trim";
       else if (secondary === "Metal Siding") rec.exterior_wall_material_secondary = "Metal Trim";
       else if (secondary === "Stucco") rec.exterior_wall_material_secondary = "Stucco Accent";
       else if (secondary === "Vinyl Siding") rec.exterior_wall_material_secondary = "Vinyl Accent";
       else if (secondary === "Concrete Block") rec.exterior_wall_material_secondary = "Decorative Block";
+      else rec.exterior_wall_material_secondary = null;
     }
   }
 

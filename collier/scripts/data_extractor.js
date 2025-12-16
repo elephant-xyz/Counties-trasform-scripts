@@ -107,9 +107,32 @@ function capitalizeProperName(name) {
   return capitalized.join("");
 }
 
+function resolveUseCode(map, useCodeText) {
+  if (!useCodeText) return null;
+  const match = useCodeText.match(/\d+/);
+  if (!match) return null;
+  let code = parseInt(match[0], 10);
+  if (!Number.isFinite(code)) return null;
+
+  const seen = new Set();
+  while (code >= 0 && !seen.has(code)) {
+    if (Object.prototype.hasOwnProperty.call(map, code)) {
+      return map[code];
+    }
+    seen.add(code);
+    if (code < 10) {
+      break;
+    }
+    code = Math.floor(code / 10);
+  }
+
+  return Object.prototype.hasOwnProperty.call(map, code)
+    ? map[code]
+    : null;
+}
+
 function extractPropertyUsageType(useCodeText) {
   if (!useCodeText) return null;
-  const code = useCodeText.split("-")[0].trim();
   const map = {
     // Residential (0-9)
     0: "Residential", // 00 - VACANT RESIDENTIAL
@@ -236,12 +259,11 @@ function extractPropertyUsageType(useCodeText) {
     98: "Utility", // 98 - CENTRALLY ASSESSED
     99: "Agricultural", // 99 - ACREAGE NOT CLASSIFIED AGRICULTURAL
   };
-  return map[code] || null;
+  return resolveUseCode(map, useCodeText);
 }
 
 function extractPropertyType(useCodeText) {
   if (!useCodeText) return null;
-  const code = useCodeText.split("-")[0].trim();
   const map = {
     // Residential (0-9)
     0: "VacantLand", // 00 - VACANT RESIDENTIAL
@@ -368,11 +390,11 @@ function extractPropertyType(useCodeText) {
     98: "Building", // 98 - CENTRALLY ASSESSED
     99: "LandParcel", // 99 - ACREAGE NOT CLASSIFIED AGRICULTURAL
   };
-  const val = map[code];
+  const val = resolveUseCode(map, useCodeText);
   if (!val) {
     const err = {
       type: "error",
-      message: `Unknown enum value ${code}.`,
+      message: `Unknown enum value ${useCodeText}.`,
       path: "property.property_type",
     };
     throw new Error(JSON.stringify(err));
@@ -476,105 +498,28 @@ function splitStreet(streetPart) {
 
 function parseAddress(
   fullAddress,
-  legalText,
-  section,
-  township,
-  range,
   countyNameFromSeed,
-  municipality,
+  countryCode,
+  sourceHttpRequest,
+  requestIdentifier,
 ) {
-  // Example fullAddress: 280 S COLLIER BLVD # 2306, MARCO ISLAND 34145
-  let streetNumber = null,
-    streetName = null,
-    postDir = null,
-    preDir = null,
-    suffixType = null,
-    city = null,
-    state = null,
-    zip = null,
-    unitId = null;
-
-  if (fullAddress) {
-    const addr = fullAddress.replace(/\s+,/g, ",").trim();
-
-    // First, extract unit identifier if present (# 2306, APT 2306, UNIT 2306, etc.)
-    let streetPartRaw = addr;
-    const unitMatch = addr.match(/(#|APT|UNIT|STE|SUITE)\s*([A-Z0-9-]+)/i);
-    if (unitMatch) {
-      unitId = unitMatch[2];
-      // Remove unit from address for further parsing
-      streetPartRaw = addr
-        .replace(/(#|APT|UNIT|STE|SUITE)\s*[A-Z0-9-]+/i, "")
-        .trim();
+  let cleaned = null;
+  if (typeof fullAddress === "string") {
+    cleaned = fullAddress.replace(/\s+/g, " ").replace(/\s+,/g, ",").trim();
+    if (cleaned.startsWith(",")) {
+      cleaned = cleaned.slice(1).trim();
     }
-
-    // Prefer pattern: <num> <street words> [<postDir>], <CITY>, <STATE> <ZIP>
-    let m = streetPartRaw.match(
-      /^(\d+)\s+([^,]+),\s*([A-Z\s]+),\s*([A-Z]{2})\s*(\d{5})(?:-\d{4})?$/,
-    );
-    if (m) {
-      streetNumber = m[1];
-      const streetPart = m[2].trim();
-      city = m[3].trim().toUpperCase();
-      state = m[4];
-      zip = m[5];
-      const parsed = splitStreet(streetPart);
-      streetName = parsed.streetName;
-      preDir = parsed.preDir;
-      postDir = parsed.postDir;
-      suffixType = parsed.suffix;
-    } else {
-      // Fallback pattern without explicit state: <num> <street words> [<postDir>], <CITY> <ZIP>
-      m = streetPartRaw.match(
-        /^(\d+)\s+([^,]+),\s*([A-Z\s]+)\s*(\d{5})(?:-\d{4})?$/,
-      );
-      if (m) {
-        streetNumber = m[1];
-        const streetPart = m[2].trim();
-        city = m[3].trim().toUpperCase();
-        zip = m[4];
-        const parsed = splitStreet(streetPart);
-        streetName = parsed.streetName;
-        preDir = parsed.preDir;
-        postDir = parsed.postDir;
-        suffixType = parsed.suffix;
-      }
+    if (!cleaned.length) {
+      cleaned = null;
     }
-  }
-
-  // From legal, get block and lot
-  let block = null,
-    lot = null;
-  if (legalText) {
-    const b = legalText.match(/BLOCK\s+([A-Z0-9]+)/i);
-    if (b) block = b[1].toUpperCase();
-    const l = legalText.match(/LOT\s+(\w+)/i);
-    if (l) lot = l[1];
   }
 
   return {
-    block: block || null,
-    city_name: city || null,
-    country_code: null, // do not fabricate
+    unnormalized_address: cleaned,
+    source_http_request: sourceHttpRequest || null,
+    request_identifier: requestIdentifier || null,
     county_name: countyNameFromSeed || null,
-    latitude: null,
-    longitude: null,
-    lot: lot || null,
-    municipality_name: municipality || null,
-    plus_four_postal_code: null,
-    postal_code: zip || null,
-    range: range || null,
-    route_number: null,
-    section: section || null,
-    state_code: state || "FL",
-    street_name: streetName || null,
-    street_number: streetNumber || null,
-    street_post_directional_text: postDir || null,
-    street_pre_directional_text: preDir || null,
-    street_suffix_type: suffixType || null,
-    township: township || null,
-    unit_identifier: unitId || null,
-    // unnormalized_address: fullAddress || null,
+    country_code: countryCode || null,
   };
 }
 
@@ -621,19 +566,14 @@ function main() {
 
   // Property JSON
   const property = {
-    livable_floor_area: null,
     parcel_identifier: parcelId,
     property_legal_description_text: legalText,
     property_structure_built_year: null,
     property_type: null,
     property_usage_type: null,
-    area_under_air: null,
     historic_designation: undefined,
     number_of_units: null,
-    number_of_units_type: null,
-    property_effective_built_year: null,
     subdivision: subdivision || null,
-    total_area: null,
     zoning: null,
   };
 
@@ -720,14 +660,6 @@ function main() {
   });
 
   if (yearBuilt) property.property_structure_built_year = yearBuilt;
-  // Only set area if >= 10 sq ft (values < 10 are unrealistic and fail validation)
-  if (hasAnyResidentialBuildings && totalBaseArea >= 10) {
-    property.livable_floor_area = String(totalBaseArea);
-    property.area_under_air = String(totalBaseArea);
-  }
-  if (hasAnyResidentialBuildings && totalAdjArea >= 10) {
-    property.total_area = String(totalAdjArea);
-  }
 
   // Write property.json
   fs.writeFileSync(
@@ -740,14 +672,25 @@ function main() {
     unaddr.county_jurisdiction === "Collier"
       ? "Collier"
       : unaddr.county_jurisdiction || null;
+  const sourceHttpRequest =
+    seed.source_http_request ||
+    (unaddr && unaddr.source_http_request) ||
+    null;
+  const requestIdentifier =
+    seed.request_identifier ||
+    seed.parcel_id ||
+    (unaddr && unaddr.request_identifier) ||
+    null;
+  const countryCode =
+    (unaddr && unaddr.country_code) ||
+    (seed && seed.country_code) ||
+    null;
   const addressObj = parseAddress(
     fullAddress,
-    legalText,
-    section,
-    township,
-    range,
     countyName,
-    municipality,
+    countryCode,
+    sourceHttpRequest,
+    requestIdentifier,
   );
   fs.writeFileSync(
     path.join(dataDir, "address.json"),
@@ -1414,4 +1357,3 @@ try {
   console.error(e.stack || e.message || String(e));
   process.exit(1);
 }
-

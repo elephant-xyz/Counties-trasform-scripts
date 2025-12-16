@@ -495,8 +495,11 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   // Helper to clean name parts - remove trailing periods and special chars
   const cleanNamePart = (part) => {
     if (!part) return part;
-    // Remove any non-letter characters except internal spaces, hyphens, apostrophes
-    return part.replace(/[^A-Za-z\s\-']/g, "").trim();
+    // Remove any non-letter characters except internal spaces, hyphens, apostrophes, commas, periods
+    let cleaned = part.replace(/[^A-Za-z\s\-',.]/g, "").trim();
+    // Remove trailing delimiters (periods, commas, hyphens, apostrophes) to match pattern
+    cleaned = cleaned.replace(/[ \-',.]+$/, '');
+    return cleaned;
   };
 
   let last = cleanNamePart(tokens[0]);
@@ -2085,16 +2088,24 @@ function main() {
 
   function createPersonRecord(personData) {
     if (!personData) return null;
-    const firstName =
+    // Clean and normalize names: remove extra whitespace and apply titleCase
+    const firstRaw =
       personData.first_name != null
-        ? String(personData.first_name).trim()
+        ? cleanText(String(personData.first_name))
         : "";
-    const lastName =
-      personData.last_name != null ? String(personData.last_name).trim() : "";
+    const lastRaw =
+      personData.last_name != null
+        ? cleanText(String(personData.last_name))
+        : "";
     const middleRaw =
       personData.middle_name != null
-        ? String(personData.middle_name).trim()
+        ? cleanText(String(personData.middle_name))
         : "";
+
+    // Apply titleCase to ensure proper capitalization
+    const firstName = firstRaw ? titleCase(firstRaw) : "";
+    const lastName = lastRaw ? titleCase(lastRaw) : "";
+    const middleFormatted = middleRaw ? titleCase(middleRaw) : "";
 
     // Validate first_name and last_name against required pattern
     const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
@@ -2109,10 +2120,10 @@ function main() {
 
     // Validate middle_name matches pattern ^[A-Z][a-zA-Z\s\-',.]*$ or set to null
     const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-    const middleName = middleRaw && middleNamePattern.test(middleRaw) ? middleRaw : null;
+    const middleName = middleFormatted && middleNamePattern.test(middleFormatted) ? middleFormatted : null;
     const key =
       firstName || lastName
-        ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
+        ? `${firstName.toLowerCase()}|${(middleName || "").toLowerCase()}|${lastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {
@@ -2264,25 +2275,123 @@ function main() {
     request_identifier: requestIdentifier,
   };
 
-  const structureItems = (() => {
-    const wrap = (entry, buildingIndex = null) => ({
-      data: {
-        ...baseStructure,
-        ...entry,
-        source_http_request:
-          entry && entry.source_http_request != null
-            ? entry.source_http_request
-            : clone(defaultSourceHttpRequest),
-        request_identifier:
-          entry && entry.request_identifier != null
-            ? entry.request_identifier
-            : requestIdentifier,
-      },
-      buildingIndex:
-        Number.isFinite(parseIntSafe(buildingIndex)) ?
-          parseIntSafe(buildingIndex) :
-          null,
+  const cleanStructureEntry = (entry) => {
+    if (!entry || typeof entry !== "object") return {};
+    const cleaned = { ...entry };
+    delete cleaned.buildings;
+    return cleaned;
+  };
+
+  const baseUtility = {
+    heating_system_type: null,
+    heating_fuel_type: null,
+    cooling_system_type: null,
+    public_utility_type: null,
+    sewer_type: null,
+    water_source_type: null,
+    plumbing_system_type: null,
+    plumbing_system_type_other_description: null,
+    electrical_panel_capacity: null,
+    electrical_wiring_type: null,
+    hvac_condensing_unit_present: null,
+    electrical_wiring_type_other_description: null,
+    solar_panel_present: null,
+    solar_panel_type: null,
+    solar_panel_type_other_description: null,
+    solar_inverter_visible: null,
+    smart_home_features: null,
+    smart_home_features_other_description: null,
+    hvac_unit_condition: null,
+    hvac_unit_issues: null,
+  };
+
+  const UTILITY_ALLOWED_KEYS = new Set([
+    "heating_system_type",
+    "heating_fuel_type",
+    "cooling_system_type",
+    "public_utility_type",
+    "sewer_type",
+    "water_source_type",
+    "plumbing_system_type",
+    "plumbing_system_type_other_description",
+    "electrical_panel_capacity",
+    "electrical_wiring_type",
+    "hvac_condensing_unit_present",
+    "electrical_wiring_type_other_description",
+    "solar_panel_present",
+    "solar_panel_type",
+    "solar_panel_type_other_description",
+    "solar_inverter_visible",
+    "smart_home_features",
+    "smart_home_features_other_description",
+    "hvac_unit_condition",
+    "hvac_unit_issues",
+    "source_http_request",
+    "request_identifier",
+  ]);
+
+  const UTILITY_VALUE_KEYS = [
+    "heating_system_type",
+    "heating_fuel_type",
+    "cooling_system_type",
+    "public_utility_type",
+    "sewer_type",
+    "water_source_type",
+    "plumbing_system_type",
+    "plumbing_system_type_other_description",
+    "electrical_panel_capacity",
+    "electrical_wiring_type",
+    "hvac_condensing_unit_present",
+    "electrical_wiring_type_other_description",
+    "solar_panel_present",
+    "solar_panel_type",
+    "solar_panel_type_other_description",
+    "solar_inverter_visible",
+    "smart_home_features",
+    "smart_home_features_other_description",
+    "hvac_unit_condition",
+    "hvac_unit_issues",
+  ];
+
+  const sanitizeUtilityEntry = (entry) => {
+    if (!entry || typeof entry !== "object") return {};
+    return Object.keys(entry).reduce((acc, key) => {
+      if (UTILITY_ALLOWED_KEYS.has(key)) {
+        acc[key] = entry[key];
+      }
+      return acc;
+    }, {});
+  };
+
+  const hasUtilityValues = (entry) =>
+    UTILITY_VALUE_KEYS.some((key) => {
+      const value = entry[key];
+      if (Array.isArray(value)) return value.length > 0;
+      return value !== null && value !== undefined;
     });
+
+  const structureItems = (() => {
+    const wrap = (entry, buildingIndex = null) => {
+      const sanitizedEntry = cleanStructureEntry(entry);
+      return {
+        data: {
+          ...baseStructure,
+          ...sanitizedEntry,
+          source_http_request:
+            sanitizedEntry && sanitizedEntry.source_http_request != null
+              ? sanitizedEntry.source_http_request
+              : clone(defaultSourceHttpRequest),
+          request_identifier:
+            sanitizedEntry && sanitizedEntry.request_identifier != null
+              ? sanitizedEntry.request_identifier
+              : requestIdentifier,
+        },
+        buildingIndex:
+          Number.isFinite(parseIntSafe(buildingIndex)) ?
+            parseIntSafe(buildingIndex) :
+            null,
+      };
+    };
 
     if (
       structureEntry &&
@@ -2291,15 +2400,19 @@ function main() {
       Array.isArray(structureEntry.buildings) &&
       structureEntry.buildings.length
     ) {
-      return structureEntry.buildings.map((rec) => {
-        const entry =
-          rec && typeof rec === "object" && rec.structure
-            ? rec.structure
-            : rec;
-        const buildingIndex =
-          rec && rec.building_index != null ? rec.building_index : null;
-        return wrap(entry || {}, buildingIndex);
-      });
+      const mapped = structureEntry.buildings
+        .map((rec) => {
+          const entry =
+            rec && typeof rec === "object" && rec.structure
+              ? rec.structure
+              : rec;
+          const buildingIndex =
+            rec && rec.building_index != null ? rec.building_index : null;
+          return wrap(entry || {}, buildingIndex);
+        })
+        .filter(Boolean);
+      if (mapped.length) return mapped;
+      return [];
     }
 
     if (Array.isArray(structureEntry)) {
@@ -2345,23 +2458,30 @@ function main() {
   });
 
   const utilityItems = (() => {
-    const wrap = (entry, buildingIndex = null) => ({
-      data: {
-        ...entry,
-        source_http_request:
-          entry && entry.source_http_request != null
-            ? entry.source_http_request
-            : clone(defaultSourceHttpRequest),
-        request_identifier:
-          entry && entry.request_identifier != null
-            ? entry.request_identifier
-            : requestIdentifier,
-      },
-      buildingIndex:
-        Number.isFinite(parseIntSafe(buildingIndex)) ?
-          parseIntSafe(buildingIndex) :
-          null,
-    });
+    const wrap = (entry, buildingIndex = null) => {
+      const sanitizedEntry = sanitizeUtilityEntry(entry);
+      if (!hasUtilityValues(sanitizedEntry)) return null;
+      const payload = {
+        ...baseUtility,
+        ...sanitizedEntry,
+      };
+      payload.source_http_request =
+        sanitizedEntry && sanitizedEntry.source_http_request != null
+          ? sanitizedEntry.source_http_request
+          : clone(defaultSourceHttpRequest);
+      payload.request_identifier =
+        sanitizedEntry && sanitizedEntry.request_identifier != null
+          ? sanitizedEntry.request_identifier
+          : requestIdentifier;
+
+      return {
+        data: payload,
+        buildingIndex:
+          Number.isFinite(parseIntSafe(buildingIndex)) ?
+            parseIntSafe(buildingIndex) :
+            null,
+      };
+    };
 
     if (
       utilitiesEntry &&
@@ -2370,19 +2490,25 @@ function main() {
       Array.isArray(utilitiesEntry.buildings) &&
       utilitiesEntry.buildings.length
     ) {
-      return utilitiesEntry.buildings.map((rec) => {
-        const entry =
-          rec && typeof rec === "object" && rec.utility
-            ? rec.utility
-            : rec;
-        const buildingIndex =
-          rec && rec.building_index != null ? rec.building_index : null;
-        return wrap(entry || {}, buildingIndex);
-      });
+      const mapped = utilitiesEntry.buildings
+        .map((rec) => {
+          const entry =
+            rec && typeof rec === "object" && rec.utility
+              ? rec.utility
+              : rec;
+          const buildingIndex =
+            rec && rec.building_index != null ? rec.building_index : null;
+          return wrap(entry || {}, buildingIndex);
+        })
+        .filter(Boolean);
+      if (mapped.length) return mapped;
+      return [];
     }
 
     if (Array.isArray(utilitiesEntry)) {
-      return utilitiesEntry.map((entry) => wrap(entry || {}, null));
+      return utilitiesEntry
+        .map((entry) => wrap(entry || {}, null))
+        .filter(Boolean);
     }
 
     if (
@@ -2390,11 +2516,14 @@ function main() {
       typeof utilitiesEntry === "object" &&
       Array.isArray(utilitiesEntry.utilities)
     ) {
-      return utilitiesEntry.utilities.map((entry) => wrap(entry || {}, null));
+      return utilitiesEntry.utilities
+        .map((entry) => wrap(entry || {}, null))
+        .filter(Boolean);
     }
 
     if (utilitiesEntry && typeof utilitiesEntry === "object") {
-      return [wrap(utilitiesEntry, null)];
+      const wrapped = wrap(utilitiesEntry, null);
+      return wrapped ? [wrapped] : [];
     }
 
     return [];

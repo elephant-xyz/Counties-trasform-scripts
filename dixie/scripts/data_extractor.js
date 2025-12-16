@@ -1429,7 +1429,10 @@ function writePersonCompaniesSalesRelationships($, parcelId, salesRecords) {
           if (!existing.middle_name && o.middle_name) existing.middle_name = o.middle_name;
         }
       } else if (o.type === "company" && (o.name || "").trim()) {
-        companySet.add((o.name || "").trim());
+        const normKey = (o.name || "").trim().toUpperCase();
+        if (!companyCanonical.has(normKey)) {
+          companyCanonical.set(normKey, (o.name || "").trim());
+        }
       }
     });
   });
@@ -1461,7 +1464,6 @@ function writePersonCompaniesSalesRelationships($, parcelId, salesRecords) {
 
   const companyIndexMap = new Map();
   Array.from(companyCanonical.values()).forEach((name, idx) => {
-  Array.from(companySet).forEach((name, idx) => {
     const companyObj = {
       name,
       request_identifier: parcelId,
@@ -1868,6 +1870,19 @@ function mapExteriorWallMaterial(value) {
   return null;
 }
 
+function mapExteriorWallMaterialSecondary(value) {
+  const primary = mapExteriorWallMaterial(value);
+  if (!primary) return null;
+  if (primary === "Brick") return "Brick Accent";
+  if (primary === "Natural Stone" || primary === "Manufactured Stone") return "Stone Accent";
+  if (primary === "Wood Siding") return "Wood Trim";
+  if (primary === "Metal Siding") return "Metal Trim";
+  if (primary === "Stucco") return "Stucco Accent";
+  if (primary === "Vinyl Siding") return "Vinyl Accent";
+  if (primary === "Concrete Block") return "Decorative Block";
+  return null;
+}
+
 function mapInteriorWallMaterial(value) {
   const v = valueOrNull(value);
   if (!v) return null;
@@ -1887,6 +1902,23 @@ function mapInteriorWallMaterial(value) {
   if (upper.includes("GLASS")) return "Glass Panels";
   if (upper.includes("CONCRETE")) return "Concrete";
   return null;
+}
+
+function mapInteriorWallMaterialSecondary(value) {
+  const v = valueOrNull(value);
+  if (!v) return null;
+  const upper = v.toUpperCase();
+  if (upper.includes("WAINSCOT")) return "Wainscoting";
+  if (upper.includes("CHAIR") && upper.includes("RAIL")) return "Chair Rail";
+  if (upper.includes("CROWN") && upper.includes("MOLD")) return "Crown Molding";
+  if (upper.includes("BASEBOARD")) return "Baseboards";
+  if (upper.includes("WOOD") && upper.includes("TRIM")) return "Wood Trim";
+  if (upper.includes("STONE")) return "Stone Accent";
+  if (upper.includes("TILE")) return "Tile Accent";
+  if (upper.includes("METAL")) return "Metal Accent";
+  if (upper.includes("GLASS")) return "Glass Insert";
+  if (upper.includes("DECORATIVE") && upper.includes("PANEL")) return "Decorative Panels";
+  return "Feature Wall Material";
 }
 
 function mapFlooringMaterialPrimary(material) {
@@ -2067,13 +2099,13 @@ function buildStructureFromBuilding(building, parcelId, idx) {
   structure.exterior_wall_material_primary = mapExteriorWallMaterial(
     building["Primary Exterior Wall"],
   );
-  structure.exterior_wall_material_secondary = mapExteriorWallMaterial(
+  structure.exterior_wall_material_secondary = mapExteriorWallMaterialSecondary(
     building["Second Exterior Wall"],
   );
   structure.interior_wall_surface_material_primary = mapInteriorWallMaterial(
     building["Primary Interior Wall"],
   );
-  structure.interior_wall_surface_material_secondary = mapInteriorWallMaterial(
+  structure.interior_wall_surface_material_secondary = mapInteriorWallMaterialSecondary(
     building["Second Interior Wall"],
   );
   structure.flooring_material_primary = mapFlooringMaterialPrimary(

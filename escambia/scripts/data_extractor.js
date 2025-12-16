@@ -39,16 +39,16 @@ function toTitleCase(str) {
         if (firstLetterIdx < rest.length) {
           // Add any non-letters before the first letter
           result += rest.slice(0, firstLetterIdx);
-          // Capitalize the first letter and add the rest
-          result += rest.charAt(firstLetterIdx).toUpperCase() + rest.slice(firstLetterIdx + 1);
+          // Capitalize the first letter and lowercase the rest
+          result += rest.charAt(firstLetterIdx).toUpperCase() + rest.slice(firstLetterIdx + 1).toLowerCase();
         } else {
           // No letters found, just add as is
           result += rest;
         }
       }
     } else {
-      // No separator at start - capitalize first letter
-      result += part.charAt(0).toUpperCase() + part.slice(1);
+      // No separator at start - capitalize first letter and lowercase the rest
+      result += part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     }
   }
 
@@ -62,11 +62,9 @@ function validatePersonName(name) {
   // Remove any leading/trailing special characters that might have been left
   const cleaned = trimmed.replace(/^[^A-Za-z]+|[^A-Za-z\s\-',.]+$/g, '').trim();
   if (!cleaned) return null;
-  // Pattern from Elephant schema: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  // Must be in proper title case:
-  // - Start with uppercase letter followed by lowercase letters
-  // - Then optionally: separator + one letter (any case) + lowercase letters
-  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  // Pattern from Elephant schema: ^[A-Z][a-zA-Z\s\-',.]*$
+  // Must start with uppercase letter, then any mix of letters, spaces, and allowed punctuation
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   if (!pattern.test(cleaned)) {
     return null;
   }
@@ -448,6 +446,27 @@ function formatAddressHtml(htmlContent) {
   return joined.replace(/\s{2,}/g, " ");
 }
 
+function normalizeAddressValue(value) {
+  if (!value) return null;
+  const normalized = value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  return normalized || null;
+}
+
+const INVALID_SITUS_PATTERNS = [
+  /Location Address:/i,
+  /Owner Name:/i,
+  /Complex Name:/i,
+  /Parcel ID/i,
+  /Account Number/i,
+  /16-Digit Parcel ID/i,
+];
+
+function isLikelyValidAddress(value) {
+  if (!value) return false;
+  if (/^(n\/a|none|null|unknown)$/i.test(value)) return false;
+  return !INVALID_SITUS_PATTERNS.some((pattern) => pattern.test(value));
+}
+
 const getBookPageInfo = (text) => {
   if (!text) return { book: null, page: null, volume: null, instrumentNumber: null };
   const bookMatch = text.match(/Books+([0-9A-Za-z]+)/i);
@@ -710,7 +729,10 @@ function main() {
   // Inputs
   const html = fs.readFileSync("input.html", "utf8");
   const $ = cheerio.load(html);
-  // const unnormalized = readJSON("unnormalized_address.json"); // No longer needed
+  const unnormalizedAddressPath = "unnormalized_address.json";
+  const unnormalizedFromInput = fs.existsSync(unnormalizedAddressPath)
+    ? readJSON(unnormalizedAddressPath)
+    : null;
   const seed = readJSON("property_seed.json");
 
   // Owners, utilities, layout
@@ -1570,10 +1592,10 @@ function main() {
       {
         escambia_property_type: "LEASEHOLD INTEREST",
         ownership_estate_type: "Leasehold",
-        build_status: null,
+        build_status: "Improved",
         structure_form: null,
-        property_usage_type: "Unknown",
-        property_type: "LandParcel",
+        property_usage_type: "Commercial",
+        property_type: "Building",
       },
       {
         escambia_property_type: "UTILITY, GAS, ELECT.",
@@ -2059,7 +2081,63 @@ function main() {
     return null;
   }
 
-  const propertyInfo = mapPropertyType($);
+  let propertyInfo = mapPropertyType($);
+  const hasBuildings = buildings.length > 0;
+
+  if (
+    !propertyInfo ||
+    !propertyInfo.propertyType ||
+    propertyInfo.propertyType === "MAPPING NOT AVAILABLE"
+  ) {
+    propertyInfo = {
+      propertyType: hasBuildings ? "Building" : "LandParcel",
+      ownershipEstateType: propertyInfo?.ownershipEstateType || null,
+      buildStatus: hasBuildings ? "Improved" : "VacantLand",
+      structureForm: hasBuildings ? propertyInfo?.structureForm || null : null,
+      propertyUsageType: propertyInfo?.propertyUsageType || null,
+    };
+  }
+
+  propertyInfo = {
+    propertyType: validateEnum(
+      propertyInfo.propertyType,
+      ALLOWED_PROPERTY_TYPES,
+      "Property",
+      "property_type",
+    ),
+    ownershipEstateType: propertyInfo.ownershipEstateType
+      ? validateEnum(
+          propertyInfo.ownershipEstateType,
+          ALLOWED_OWNERSHIP_ESTATE_TYPES,
+          "Property",
+          "ownership_estate_type",
+        )
+      : null,
+    buildStatus: propertyInfo.buildStatus
+      ? validateEnum(
+          propertyInfo.buildStatus,
+          ALLOWED_BUILD_STATUS,
+          "Property",
+          "build_status",
+        )
+      : null,
+    structureForm: propertyInfo.structureForm
+      ? validateEnum(
+          propertyInfo.structureForm,
+          ALLOWED_STRUCTURE_FORMS,
+          "Property",
+          "structure_form",
+        )
+      : null,
+    propertyUsageType: propertyInfo.propertyUsageType
+      ? validateEnum(
+          propertyInfo.propertyUsageType,
+          ALLOWED_PROPERTY_USAGE_TYPES,
+          "Property",
+          "property_usage_type",
+        )
+      : null,
+  };
   const units = totalUnits && totalUnits > 0 ? totalUnits : null;
 
   const property = {
@@ -2086,8 +2164,8 @@ function main() {
     JSON.stringify(property, null, 2),
   );
 
-    // ---------------- Address ----------------
-  let situsAddress = null;
+  // ---------------- Address ----------------
+  let situsAddressRaw = null;
   let mailingAddressString = null;
   const generalInfoTable = $('th:contains("General Information")').closest(
     "table",
@@ -2099,7 +2177,10 @@ function main() {
         const label = $(tds.get(0)).text().trim();
         const valueCell = $(tds.get(1));
         if (/Situs:/i.test(label)) {
-          situsAddress = valueCell.text().replace(/\u00a0/g, " ").trim().replace(/\s{2,}/g, " ");
+          const textValue = normalizeAddressValue(valueCell.text());
+          if (textValue) {
+            situsAddressRaw = textValue;
+          }
         }
         if (/Mail:/i.test(label)) {
           mailingAddressString = formatAddressHtml(valueCell.html());
@@ -2109,20 +2190,22 @@ function main() {
   }
 
   const requestIdentifier = seed.request_identifier || parcelId;
+  const fallbackUnnormalizedAddress = normalizeAddressValue(
+    unnormalizedFromInput && unnormalizedFromInput.full_address
+      ? unnormalizedFromInput.full_address
+      : null,
+  );
+  const unnormalizedAddressValue = isLikelyValidAddress(situsAddressRaw)
+    ? situsAddressRaw
+    : fallbackUnnormalizedAddress;
 
   const propertyAddress = {
+    unnormalized_address: unnormalizedAddressValue || null,
     source_http_request: seed.source_http_request || null,
     request_identifier: requestIdentifier,
     county_name: "Escambia",
-    latitude: null,
-    longitude: null,
-    unnormalized_address: situsAddress || null,
-    municipality_name: null,
-    township: township || null,
-    range: range || null,
-    section: section || null,
-    lot: lot || null,
-    block: block || null,
+    country_code:
+      (unnormalizedFromInput && unnormalizedFromInput.country_code) || "US",
   };
 
   fs.writeFileSync(
@@ -2137,7 +2220,7 @@ function main() {
       request_identifier: requestIdentifier,
       latitude: null,
       longitude: null,
-      unnormalized_address: mailingAddressString,
+      unnormalized_address: normalizeAddressValue(mailingAddressString),
     };
     // Note: The actual file creation is deferred until we know there are person/company files to relate it to
     // See lines below where relationships are created
@@ -2334,6 +2417,14 @@ function main() {
         }
       });
     }
+  }
+
+  // Create property->layout relationships for building layouts
+  if (layoutBuildingIndices.length > 0) {
+    layoutBuildingIndices.forEach((layoutIdx) => {
+      const layoutFile = `layout_${layoutIdx}.json`;
+      writeRelationship("property.json", layoutFile);
+    });
   }
 
   const mapStructureToSource = (structureFile, layoutIdx) => {
@@ -2624,7 +2715,13 @@ function main() {
           if (middleTrimmed && middleTrimmed.length > 0 && middleTrimmed.length < 50) {
             // Check if middle name contains digits - if so, it's probably malformed data
             if (!/\d/.test(middleTrimmed)) {
-              middle = validatePersonName(toTitleCase(middleTrimmed));
+              // Reject middle names with more than 2 space-separated words
+              // A valid middle name is typically 1-2 words (e.g., "Marie", "Ann Marie", "De La Cruz")
+              // But not 3+ separate names like "Gilliam Aaron C" or "C Jr Desfosses-Gilliam Suzanne"
+              const words = middleTrimmed.split(/\s+/).filter(Boolean);
+              if (words.length <= 2) {
+                middle = validatePersonName(toTitleCase(middleTrimmed));
+              }
             }
           }
         }
