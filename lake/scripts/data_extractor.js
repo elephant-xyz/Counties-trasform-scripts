@@ -57,6 +57,16 @@ function properCaseName(s) {
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
+function cleanName(s) {
+  if (!s) return null;
+  // Remove characters not allowed by pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  // Keep only: letters, spaces, hyphens, apostrophes, commas, and periods
+  const cleaned = String(s).replace(/[^a-zA-Z\s\-',.]/g, '').trim();
+  if (!cleaned) return null;
+  // Apply proper case
+  return properCaseName(cleaned);
+}
+
 function canonicalDeedKey(str) {
   return String(str || "")
     .toLowerCase()
@@ -1170,9 +1180,9 @@ function main() {
       let personIndex = 1;
       owners.forEach((o) => {
         if (o.type !== "person") return;
-        const first = properCaseName(o.first_name || null);
-        const last = properCaseName(o.last_name || null);
-        const middle = o.middle_name ? o.middle_name : null;
+        const first = cleanName(o.first_name);
+        const last = cleanName(o.last_name);
+        const middle = cleanName(o.middle_name);
         const person = {
           birth_date: null,
           first_name: first,
