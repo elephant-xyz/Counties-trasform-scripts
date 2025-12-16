@@ -1880,6 +1880,25 @@ function main() {
     // Apply the normalized improvement_type
     cleanedImprovement.improvement_type = normalizedImprovementType;
 
+    // FINAL VALIDATION: Ensure improvement_type is either null or a valid enum value
+    // Never allow empty strings, whitespace-only strings, or other invalid values
+    if (cleanedImprovement.improvement_type !== null) {
+      const finalValue = cleanedImprovement.improvement_type;
+      // Check if it's a string
+      if (typeof finalValue !== "string") {
+        cleanedImprovement.improvement_type = null;
+      } else {
+        // Trim and check if empty
+        const trimmedFinal = finalValue.trim();
+        if (trimmedFinal === "" || !validImprovementTypes.includes(trimmedFinal)) {
+          cleanedImprovement.improvement_type = null;
+        } else {
+          // Ensure the stored value is trimmed
+          cleanedImprovement.improvement_type = trimmedFinal;
+        }
+      }
+    }
+
     // Skip if no valid improvement_type and no permit_number
     if (cleanedImprovement.improvement_type === null && !cleanedImprovement.permit_number) {
       return;
