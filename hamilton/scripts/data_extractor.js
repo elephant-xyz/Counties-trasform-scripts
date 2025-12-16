@@ -1445,10 +1445,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   });
 
   // Second pass: check if current owners need to be linked to first sale
+  const currentOwners = ownersByDate["current"] || [];
   if (sales.length > 0) {
     const firstSaleDate = parseDateToISO(sales[0].saleDate);
     const ownersOnFirstSale = ownersByDate[firstSaleDate] || [];
-    const currentOwners = ownersByDate["current"] || [];
 
     currentOwners.forEach((owner) => {
       if (owner.type === "person" && (owner.first_name || "").trim() && (owner.last_name || "").trim()) {
@@ -1474,6 +1474,26 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             if (!existing.middle_name && owner.middle_name)
               existing.middle_name = owner.middle_name;
           }
+        }
+      }
+    });
+  } else {
+    // No sales, but still process current owners for mailing address relationships
+    currentOwners.forEach((owner) => {
+      if (owner.type === "person" && (owner.first_name || "").trim() && (owner.last_name || "").trim()) {
+        const key = `${(owner.first_name || "").trim().toUpperCase()}|${(owner.last_name || "").trim().toUpperCase()}`;
+        if (!personRelationshipsMap.has(key)) {
+          personRelationshipsMap.set(key, {
+            first_name: owner.first_name,
+            middle_name: owner.middle_name,
+            last_name: owner.last_name,
+            prefix_name: owner.prefix_name,
+            suffix_name: owner.suffix_name
+          });
+        } else {
+          const existing = personRelationshipsMap.get(key);
+          if (!existing.middle_name && owner.middle_name)
+            existing.middle_name = owner.middle_name;
         }
       }
     });
@@ -1519,12 +1539,12 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   });
 
   // Second pass: check if current owners need to be linked to first sale
+  const currentOwnersForCompanies = ownersByDate["current"] || [];
   if (sales.length > 0) {
     const firstSaleDate = parseDateToISO(sales[0].saleDate);
     const ownersOnFirstSale = ownersByDate[firstSaleDate] || [];
-    const currentOwners = ownersByDate["current"] || [];
 
-    currentOwners.forEach((owner) => {
+    currentOwnersForCompanies.forEach((owner) => {
       if (owner.type === "company" && (owner.name || "").trim()) {
         const key = (owner.name || "").trim().toUpperCase();
         // Check if this company already appears on the first sale date
@@ -1539,6 +1559,18 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           }
           companyRelationshipsMap.get(key).push({ type: 'current_to_first_sale' });
         }
+      }
+    });
+  } else {
+    // No sales, but still process current owners for mailing address relationships
+    currentOwnersForCompanies.forEach((owner) => {
+      if (owner.type === "company" && (owner.name || "").trim()) {
+        const key = (owner.name || "").trim().toUpperCase();
+        if (!companyRelationshipsMap.has(key)) {
+          companyRelationshipsMap.set(key, []);
+        }
+        // Mark that this company needs to be created (even without sales)
+        companyRelationshipsMap.get(key).push({ type: 'current_owner' });
       }
     });
   }
@@ -2096,6 +2128,11 @@ function main() {
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
 
+  // Get the formatted parcel identifier for owner lookups (e.g., "6019-000")
+  const parcelIdentifierForOwners =
+    (propertySeed?.source_http_request?.multiValueQueryString?.KeyValue?.[0]) ||
+    parcelId;
+
   if (parcelId) writeProperty($, parcelId);
 
   const sales = extractSales($);
@@ -2105,7 +2142,7 @@ function main() {
   writeTaxes($, parcelId);
 
   if (parcelId) {
-    writePersonCompaniesSalesRelationships(parcelId, sales);
+    writePersonCompaniesSalesRelationships(parcelIdentifierForOwners, sales);
     // writeOwnersCurrentAndRelationships(parcelId);
     // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
     // writeUtility(parcelId);
@@ -2113,13 +2150,13 @@ function main() {
     // writeStructure(parcelId);
 
     //-------Structure (owners/structures_data.json)--------------
-    createStructureFiles(seed,parcelId);
+    createStructureFiles(seed,parcelIdentifierForOwners);
 
     // ---------- Utilities (owners/utilities_data.json) ----------
-    createUtilitiesFiles(seed,parcelId);
+    createUtilitiesFiles(seed,parcelIdentifierForOwners);
 
     // ---------- Layouts (owners/layout_data.json) ----------
-    createLayoutFiles(seed,parcelId);
+    createLayoutFiles(seed,parcelIdentifierForOwners);
 
     
   }
@@ -2141,7 +2178,7 @@ function main() {
   // Create mailing address relationships with current owners
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (owners) {
-    const key = `property_${parcelId}`;
+    const key = `property_${parcelIdentifierForOwners}`;
     const record = owners[key];
     if (record && record.owners_by_date && record.owners_by_date['current']) {
       const currentOwners = record.owners_by_date['current'];
