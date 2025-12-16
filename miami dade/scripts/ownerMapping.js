@@ -167,7 +167,7 @@ function toPerson(name) {
   first = first.replace(/[^A-Za-z\-']/g, "").trim();
   last = last.replace(/[^A-Za-z\-']/g, "").trim();
   if (middle) {
-    middle = middle.replace(/[^A-Za-z\-']/g, "").trim();
+    middle = middle.replace(/[^A-Za-z\-' ]/g, "").trim();
   }
   
   // Reject names that are empty, start with numbers, or contain only special characters
@@ -176,8 +176,32 @@ function toPerson(name) {
     return null;
   }
   
+  // Reject names with multiple consecutive special characters (e.g., "NC---")
+  if (/[-']{2,}/.test(first) || /[-']{2,}/.test(last)) {
+    return null;
+  }
+  
+  // Reject names that are too short (less than 2 letters)
+  const firstLetters = first.replace(/[^A-Za-z]/g, "");
+  const lastLetters = last.replace(/[^A-Za-z]/g, "");
+  if (firstLetters.length < 2 || lastLetters.length < 2) {
+    return null;
+  }
+  
   // Reject if middle name is empty or only special characters
   if (middle && (!middle || /^[^A-Za-z]+$/.test(middle))) {
+    middle = null;
+  }
+  
+  // Ensure the name would pass the validation pattern used in data_extractor.js
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // This means: Start with uppercase, followed by lowercase letters, 
+  // then optionally more words separated by space/dash/apostrophe/comma/period
+  const validationPattern = /^[A-Za-z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/i;
+  if (!validationPattern.test(first) || !validationPattern.test(last)) {
+    return null;
+  }
+  if (middle && !validationPattern.test(middle)) {
     middle = null;
   }
   
