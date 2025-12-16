@@ -201,6 +201,26 @@ function classifyOwner(rawName) {
     return { owner: { type: "company", name: name }, reason: null };
   }
 
+  // Check for government entities and other organizational patterns
+  const upperName = name.toUpperCase();
+  if (
+    /^CITY OF\b/i.test(name) ||
+    /^TOWN OF\b/i.test(name) ||
+    /^COUNTY OF\b/i.test(name) ||
+    /^STATE OF\b/i.test(name) ||
+    /\bMUNICIPALITY\b/i.test(name) ||
+    /\bGOVERNMENT\b/i.test(name) ||
+    /\bDEPARTMENT\b/i.test(name) ||
+    /\bAUTHORITY\b/i.test(name) ||
+    /\bAGENCY\b/i.test(name) ||
+    upperName.includes("PROPERTIES") ||
+    upperName.includes("DEVELOPMENT") ||
+    upperName.includes("ENTERPRISES") ||
+    upperName.includes("INVESTMENTS")
+  ) {
+    return { owner: { type: "company", name: name }, reason: null };
+  }
+
   if (isCompany(name)) {
     return { owner: { type: "company", name: name }, reason: null };
   }

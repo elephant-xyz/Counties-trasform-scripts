@@ -2536,11 +2536,22 @@ function main() {
     let companyIdx = 1;
     for (const o of currentOwners) {
       if (o.type === "person") {
+        const firstName = formatNameForValidation(o.first_name);
+        const lastName = formatNameForValidation(o.last_name);
+        const middleName = formatNameForValidation(o.middle_name);
+
+        // Skip person if first_name or last_name are invalid (null)
+        // These are required fields and validation will fail without them
+        if (!firstName || !lastName) {
+          console.warn(`Skipping invalid person: first="${o.first_name}", last="${o.last_name}"`);
+          continue;
+        }
+
         const person = {
           birth_date: null,
-          first_name: formatNameForValidation(o.first_name),
-          last_name: formatNameForValidation(o.last_name),
-          middle_name: formatNameForValidation(o.middle_name),
+          first_name: firstName,
+          last_name: lastName,
+          middle_name: middleName,
           prefix_name: null,
           suffix_name: null,
           us_citizenship_status: null,
@@ -2563,40 +2574,41 @@ function main() {
     const usedCompanyIdx = new Set();
 
     if (lastSales) {
-      let relIdx = 1;
+      let relPersonCounter = 0;
+      let relCompanyCounter = 0;
       let p = 1;
       while (fs.existsSync(path.join("data", `person_${p}.json`))) {
+        relPersonCounter++;
         const rel = {
-          to: { "/": `./person_${p}.json` },
           from: { "/": `./${lastSales}` },
+          to: { "/": `./person_${p}.json` },
         };
         writeJson(
           path.join(
             "data",
-            `relationship_sales_history_buyer_person_${p}.json`,
+            `relationship_sales_person_${relPersonCounter}.json`,
           ),
           rel,
         );
         usedPersonIdx.add(p);
         p++;
-        relIdx++;
       }
       let c = 1;
       while (fs.existsSync(path.join("data", `company_${c}.json`))) {
+        relCompanyCounter++;
         const rel = {
-          to: { "/": `./company_${c}.json` },
           from: { "/": `./${lastSales}` },
+          to: { "/": `./company_${c}.json` },
         };
         writeJson(
           path.join(
             "data",
-            `relationship_sales_history_buyer_company_${c}.json`,
+            `relationship_sales_company_${relCompanyCounter}.json`,
           ),
           rel,
         );
         usedCompanyIdx.add(c);
         c++;
-        relIdx++;
       }
     }
 
