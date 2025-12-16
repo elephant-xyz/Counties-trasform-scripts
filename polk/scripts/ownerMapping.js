@@ -180,11 +180,12 @@ function normalizeNameKey(owner) {
 
 // Map for suffix formatting to match schema enum (e.g., "Jr" -> "Jr.")
 // Valid suffixes: Jr., Sr., II, III, IV, PhD, MD, Esq., JD, LLM, MBA, RN, DDS, DVM, CFA, CPA, PE, PMP, Emeritus, Ret.
+// NOTE: Keys must match what toTitleCase produces (e.g., "Ii" not "II", "Phd" not "PhD")
 const suffixFormatMap = {
-  "Jr": "Jr.", "Sr": "Sr.", "II": "II", "III": "III", "IV": "IV",
-  "PhD": "PhD", "MD": "MD", "Esq": "Esq.", "JD": "JD", "LLM": "LLM",
-  "MBA": "MBA", "RN": "RN", "DDS": "DDS", "DVM": "DVM", "CFA": "CFA",
-  "CPA": "CPA", "PE": "PE", "PMP": "PMP", "Emeritus": "Emeritus", "Ret": "Ret."
+  "Jr": "Jr.", "Sr": "Sr.", "Ii": "II", "Iii": "III", "Iv": "IV",
+  "Phd": "PhD", "Md": "MD", "Esq": "Esq.", "Jd": "JD", "Llm": "LLM",
+  "Mba": "MBA", "Rn": "RN", "Dds": "DDS", "Dvm": "DVM", "Cfa": "CFA",
+  "Cpa": "CPA", "Pe": "PE", "Pmp": "PMP", "Emeritus": "Emeritus", "Ret": "Ret."
 };
 
 function parsePersonName(raw) {
@@ -202,8 +203,9 @@ function parsePersonName(raw) {
   let middleName = null;
   let suffixName = null;
 
-  // Common suffixes to check for (case-insensitive)
-  const suffixes = ["JR", "SR", "II", "III", "IV", "ESQ", "MD", "PHD"];
+  // Common suffixes to check for (case-insensitive) - MUST match all valid schema suffixes
+  const suffixes = ["JR", "SR", "II", "III", "IV", "PHD", "MD", "ESQ", "JD", "LLM",
+                    "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "EMERITUS", "RET"];
   // Create a regex that matches whole words for suffixes
   const suffixRegex = new RegExp(`\\b(${suffixes.join("|")})\\b`, "i");
 
