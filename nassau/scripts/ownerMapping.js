@@ -101,12 +101,17 @@ function formatMiddleName(str) {
     .filter(Boolean) // Remove empty strings
     .join(" ");
 
+  // Remove any trailing special characters that might have been left
+  const finalResult = result.replace(/[\s\-',.]+$/, "").trim();
+
+  if (!finalResult || finalResult.length === 0) return "";
+
   // Validate against the middle name pattern ^[A-Z][a-zA-Z\s\-',.]*$
-  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(finalResult)) {
     return "";
   }
 
-  return result;
+  return finalResult;
 }
 
 // Extract property id

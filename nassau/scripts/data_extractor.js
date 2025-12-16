@@ -1561,13 +1561,18 @@ function formatMiddleName(name) {
     .filter(Boolean) // Remove empty strings from array
     .join(" ");
 
+  // Remove any trailing special characters that might have been left
+  const finalResult = result.replace(/[\s\-',.]+$/, "").trim();
+
+  if (!finalResult || finalResult.length === 0) return null;
+
   // Validate against the middle name pattern
-  if (!MIDDLE_NAME_PATTERN.test(result)) {
-    console.log(`Warning: formatMiddleName produced invalid result: "${result}" from input: "${name}"`);
+  if (!MIDDLE_NAME_PATTERN.test(finalResult)) {
+    console.log(`Warning: formatMiddleName produced invalid result: "${finalResult}" from input: "${name}"`);
     return null;
   }
 
-  return result;
+  return finalResult;
 }
 
 function formatName(name) {
