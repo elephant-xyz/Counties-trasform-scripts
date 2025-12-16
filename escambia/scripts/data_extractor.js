@@ -39,16 +39,16 @@ function toTitleCase(str) {
         if (firstLetterIdx < rest.length) {
           // Add any non-letters before the first letter
           result += rest.slice(0, firstLetterIdx);
-          // Capitalize the first letter and add the rest
-          result += rest.charAt(firstLetterIdx).toUpperCase() + rest.slice(firstLetterIdx + 1);
+          // Capitalize the first letter and lowercase the rest
+          result += rest.charAt(firstLetterIdx).toUpperCase() + rest.slice(firstLetterIdx + 1).toLowerCase();
         } else {
           // No letters found, just add as is
           result += rest;
         }
       }
     } else {
-      // No separator at start - capitalize first letter
-      result += part.charAt(0).toUpperCase() + part.slice(1);
+      // No separator at start - capitalize first letter and lowercase the rest
+      result += part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     }
   }
 
