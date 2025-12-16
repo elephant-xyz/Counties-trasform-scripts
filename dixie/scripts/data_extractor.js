@@ -2099,14 +2099,9 @@ function buildStructureFromBuilding(building, parcelId, idx) {
   structure.exterior_wall_material_primary = mapExteriorWallMaterial(
     building["Primary Exterior Wall"],
   );
-  const secondaryWallMaterial = mapExteriorWallMaterialSecondary(
+  structure.exterior_wall_material_secondary = mapExteriorWallMaterialSecondary(
     building["Second Exterior Wall"],
   );
-  if (secondaryWallMaterial !== null) {
-    structure.exterior_wall_material_secondary = secondaryWallMaterial;
-  } else {
-    delete structure.exterior_wall_material_secondary;
-  }
   structure.interior_wall_surface_material_primary = mapInteriorWallMaterial(
     building["Primary Interior Wall"],
   );
