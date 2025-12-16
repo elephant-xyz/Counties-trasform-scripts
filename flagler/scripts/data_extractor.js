@@ -2284,6 +2284,7 @@ function main() {
 
   const baseUtility = {
     heating_system_type: null,
+    heating_fuel_type: null,
     cooling_system_type: null,
     public_utility_type: null,
     sewer_type: null,
@@ -2306,6 +2307,7 @@ function main() {
 
   const UTILITY_ALLOWED_KEYS = new Set([
     "heating_system_type",
+    "heating_fuel_type",
     "cooling_system_type",
     "public_utility_type",
     "sewer_type",
@@ -2330,6 +2332,7 @@ function main() {
 
   const UTILITY_VALUE_KEYS = [
     "heating_system_type",
+    "heating_fuel_type",
     "cooling_system_type",
     "public_utility_type",
     "sewer_type",
