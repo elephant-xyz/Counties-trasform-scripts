@@ -2156,6 +2156,115 @@ function pruneRawAddressOneOfSurface(addressPath) {
   writeJSON(addressPath, pruned);
 }
 
+// Final normalization for County addresses: if we have full normalized coverage
+// emit the normalized branch and drop the raw string; otherwise prefer the raw
+// branch anchored on the unnormalized string while keeping the full schema
+// surface (nullable) so required fields are never missing.
+function finalizeCountyAddressOneOfShape(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...payload })
+      : { ...payload };
+  const hasNormalizedStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) => hasMeaningfulAddressValue(normalizedSurface[field]),
+  );
+  const hasNormalizedCoords = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
+    (coord) => Number.isFinite(parseCoordinate(normalizedSurface[coord])),
+  );
+
+  if (hasNormalizedStrings && hasNormalizedCoords) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = normalizedSurface[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (field === "source_http_request") {
+        value = prepareSourceHttpRequest(value) || null;
+      } else if (field === "request_identifier") {
+        value = safeNullIfEmpty(value);
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      rawOut[field] = rawValue;
+      return;
+    }
+    if (field === "source_http_request") {
+      rawOut[field] = prepareSourceHttpRequest(payload.source_http_request) || null;
+      return;
+    }
+    if (field === "request_identifier") {
+      rawOut[field] = safeNullIfEmpty(payload.request_identifier);
+      return;
+    }
+    let value = payload[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rawOut[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    rawOut[field] = value === undefined ? null : value;
+  });
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = "US";
+  }
+  writeJSON(addressPath, rawOut);
+}
+
 function finalizeAddressOneOfSelection(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
 
@@ -23235,6 +23344,7 @@ async function main() {
     sourceHttpRequest: resolvedSourceHttp,
   });
   pruneRawAddressOneOfSurface(addressOutputPath);
+  finalizeCountyAddressOneOfShape(addressOutputPath);
 
   // Guarantee relationships are left for downstream population (no local URs).
   enforcePropertyRelationshipNulls(propertyFilePath);
