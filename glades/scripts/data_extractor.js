@@ -1557,6 +1557,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   veteran_status: null,
   }));
   const validPeople = validateAndFilterPeople(people);
+  // Update the global people array to match the filtered valid people
+  // This ensures findPersonIndexByName searches the same array used to write person files
+  people = validPeople;
   validPeople.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
