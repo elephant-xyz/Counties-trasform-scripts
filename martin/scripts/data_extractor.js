@@ -589,6 +589,9 @@ const PERSON_FRAGMENT_BLOCKLIST = new Set([
 function splitPartySegments(raw) {
   const cleaned = normalizePartyName(raw);
   if (!cleaned) return [];
+  if (isCompanyName(cleaned)) {
+    return [cleaned];
+  }
   const parts = cleaned
     .split(/\s*&\s*|\s+AND\s+|\s*\+\s*|;/i)
     .map((p) => normalizePartyName(p))
@@ -2172,8 +2175,45 @@ function main() {
     });
   }
 
-  persons.forEach((p) => writeJson(path.join("data", p.file), p.data));
-  companies.forEach((c) => writeJson(path.join("data", c.file), c.data));
+  const personFilesWithSalesRelation = new Set(
+    relSalesPersons
+      .map((rel) => rel?.to?.["/"])
+      .filter(Boolean)
+      .map((relPath) => path.basename(relPath)),
+  );
+  const companyFilesWithSalesRelation = new Set(
+    relSalesCompanies
+      .map((rel) => rel?.to?.["/"])
+      .filter(Boolean)
+      .map((relPath) => path.basename(relPath)),
+  );
+
+  const personsToWrite = persons.filter((p) =>
+    personFilesWithSalesRelation.has(p.file),
+  );
+  const companiesToWrite = companies.filter((c) =>
+    companyFilesWithSalesRelation.has(c.file),
+  );
+
+  const mailingPersonRelationshipsFiltered = mailingPersonRelationships.filter(
+    (rel) => {
+      const fromPath = rel?.from?.["/"];
+      if (!fromPath) return false;
+      const fileName = path.basename(fromPath);
+      return personFilesWithSalesRelation.has(fileName);
+    },
+  );
+
+  const mailingCompanyRelationshipsFiltered =
+    mailingCompanyRelationships.filter((rel) => {
+      const fromPath = rel?.from?.["/"];
+      if (!fromPath) return false;
+      const fileName = path.basename(fromPath);
+      return companyFilesWithSalesRelation.has(fileName);
+    });
+
+  personsToWrite.forEach((p) => writeJson(path.join("data", p.file), p.data));
+  companiesToWrite.forEach((c) => writeJson(path.join("data", c.file), c.data));
 
   writeRelationshipFiles(relSalesHistoryDeed, (rel) => {
     const fromPath = rel?.from?.["/"];
@@ -2211,14 +2251,14 @@ function main() {
     return `relationship_sales_history_${saleIdx}_company_${companyIdx}.json`;
   });
 
-  writeRelationshipFiles(mailingPersonRelationships, (rel) => {
+  writeRelationshipFiles(mailingPersonRelationshipsFiltered, (rel) => {
     const fromPath = rel?.from?.["/"];
     const personIdx = getIndexFromRelPath(fromPath, "person_");
     if (!personIdx) return null;
     return `relationship_person_${personIdx}_has_mailing_address.json`;
   });
 
-  writeRelationshipFiles(mailingCompanyRelationships, (rel) => {
+  writeRelationshipFiles(mailingCompanyRelationshipsFiltered, (rel) => {
     const fromPath = rel?.from?.["/"];
     const companyIdx = getIndexFromRelPath(fromPath, "company_");
     if (!companyIdx) return null;
