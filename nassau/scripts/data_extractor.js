@@ -2446,46 +2446,60 @@ function main() {
     }
   });
   
-  const mailingAddress = {
-    source_http_request: {
-      method: "GET",
-      url: seed.source_http_request.url
-    },
-    request_identifier: parcelIdentifier || seed.parcel_id || "",
-    // county_name: null,
-    unnormalized_address: mailingAddr,
-    longitude: null,
-    latitude: null
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
-  
   // Track if relationships were created for initial owners
   let initialRelationshipsCreated = false;
-  
-  // Create relationships between owners and mailing address
-  if (personCounter > 0 || companyCounter > 0) {
-    initialRelationshipsCreated = true;
-    
-    for (let i = 1; i <= personCounter; i++) {
-      const rel = {
-        from: { "/": `./person_${i}.json` },
-        to: { "/": `./mailing_address.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_person_${i}_has_mailing_address.json`),
-        rel,
-      );
-    }
-    
-    for (let i = 1; i <= companyCounter; i++) {
-      const rel = {
-        from: { "/": `./company_${i}.json` },
-        to: { "/": `./mailing_address.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_company_${i}_has_mailing_address.json`),
-        rel,
-      );
+
+  // Only create mailing_address.json if there are owners to reference it
+  // Check if we have initial owners OR if we might have current owners from ownersData later
+  const hasInitialOwners = personCounter > 0 || companyCounter > 0;
+  let hasCurrentOwners = false;
+  if (ownersData && parcelIdentifier) {
+    const propertyKey = `property_${parcelIdentifier}`;
+    const ownersByDate = ownersData[propertyKey]?.owners_by_date || {};
+    const currentOwners = ownersByDate["current"] || [];
+    hasCurrentOwners = currentOwners.length > 0;
+  }
+
+  // Only create mailing address and relationships if there are owners
+  if (hasInitialOwners || hasCurrentOwners) {
+    const mailingAddress = {
+      source_http_request: {
+        method: "GET",
+        url: seed.source_http_request.url
+      },
+      request_identifier: parcelIdentifier || seed.parcel_id || "",
+      // county_name: null,
+      unnormalized_address: mailingAddr,
+      longitude: null,
+      latitude: null
+    };
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
+
+    // Create relationships between owners and mailing address
+    if (personCounter > 0 || companyCounter > 0) {
+      initialRelationshipsCreated = true;
+
+      for (let i = 1; i <= personCounter; i++) {
+        const rel = {
+          from: { "/": `./person_${i}.json` },
+          to: { "/": `./mailing_address.json` },
+        };
+        writeJSON(
+          path.join("data", `relationship_person_${i}_has_mailing_address.json`),
+          rel,
+        );
+      }
+
+      for (let i = 1; i <= companyCounter; i++) {
+        const rel = {
+          from: { "/": `./company_${i}.json` },
+          to: { "/": `./mailing_address.json` },
+        };
+        writeJSON(
+          path.join("data", `relationship_company_${i}_has_mailing_address.json`),
+          rel,
+        );
+      }
     }
   }
   
