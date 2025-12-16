@@ -3101,32 +3101,13 @@ function main() {
   );
 
 
+  // Parse mailing address but don't create file yet - will only create if there are owners to link it to
   let mailingAddressFile = null;
   const mailingAddressRaw = input.mailingAddress || "";
   const mailingAddressParsed = parseAddressComponents(
     mailingAddressRaw,
     mailingAddressRaw,
   );
-  if (
-    mailingAddressParsed &&
-    (mailingAddressParsed.streetNumber ||
-      mailingAddressParsed.streetName ||
-      mailingAddressParsed.city ||
-      mailingAddressParsed.state ||
-      mailingAddressParsed.postal_code) // Use postal_code here
-  ) {
-    mailingAddressFile = "mailing_address.json";
-    const mailingAddressObj = {
-      unnormalized_address: normalizeAddressString(mailingAddressRaw) || null,
-      request_identifier: requestIdentifier,
-      latitude : null,
-      longitude : null,
-    };
-    fs.writeFileSync(
-      path.join("data", mailingAddressFile),
-      JSON.stringify(mailingAddressObj, null, 2),
-    );
-  }
   const primaryLand =
     Array.isArray(input.landDetails) && input.landDetails.length
       ? input.landDetails[0]
@@ -3381,7 +3362,28 @@ function main() {
         });
       }
 
-      if (mailingAddressFile) {
+      // Create mailing address file only if there are owners to link it to
+      if (
+        (personEntries.length > 0 || companyEntries.length > 0) &&
+        mailingAddressParsed &&
+        (mailingAddressParsed.streetNumber ||
+          mailingAddressParsed.streetName ||
+          mailingAddressParsed.city ||
+          mailingAddressParsed.state ||
+          mailingAddressParsed.postal_code)
+      ) {
+        mailingAddressFile = "mailing_address.json";
+        const mailingAddressObj = {
+          unnormalized_address: normalizeAddressString(mailingAddressRaw) || null,
+          request_identifier: requestIdentifier,
+          latitude: null,
+          longitude: null,
+        };
+        fs.writeFileSync(
+          path.join("data", mailingAddressFile),
+          JSON.stringify(mailingAddressObj, null, 2),
+        );
+
         personEntries.forEach((entry) => {
           const rel = {
             from: { "/": `./${entry.file}` },
