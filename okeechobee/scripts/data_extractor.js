@@ -2994,13 +2994,13 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
 
   if (hasLotData) {
     writeJson(path.join("data", "lot.json"), lotData);
-    // writeJson(
-    //   path.join("data", "relationship_property_has_lot.json"),
-    //   {
-    //     from: { "/": "./property.json" },
-    //     to: { "/": "./lot.json" },
-    //   }
-    // );
+    writeJson(
+      path.join("data", "relationship_property_has_lot.json"),
+      {
+        from: { "/": "./property.json" },
+        to: { "/": "./lot.json" },
+      }
+    );
     console.log("Created lot.json and relationship_property_has_lot.json");
   }
   //Lot modifications
@@ -3741,6 +3741,27 @@ function main() {
         build_status: propertyMapping?.build_status || "Improved"
       };
 
+      // Validate and ensure property_type is a valid string
+      const validPropertyTypes = [
+        "Cooperative", "Condominium", "Modular", "ManufacturedHousingMultiWide", "Pud", "Timeshare",
+        "2Units", "DetachedCondominium", "Duplex", "SingleFamily", "MultipleFamily", "3Units",
+        "ManufacturedHousing", "ManufacturedHousingSingleWide", "4Units", "Townhouse",
+        "NonWarrantableCondo", "VacantLand", "Retirement", "MiscellaneousResidential",
+        "ResidentialCommonElementsAreas", "MobileHome", "Apartment", "MultiFamilyMoreThan10",
+        "MultiFamilyLessThan10", "LandParcel", "Building", "Unit", "ManufacturedHome"
+      ];
+      let finalPropertyType = propertyFields.property_type;
+      if (!finalPropertyType || typeof finalPropertyType !== 'string' || !validPropertyTypes.includes(finalPropertyType)) {
+        finalPropertyType = "Building";
+      }
+
+      // Validate and ensure build_status is a valid string
+      const validBuildStatuses = ["VacantLand", "Improved", "UnderConstruction"];
+      let finalBuildStatus = propertyFields.build_status;
+      if (!finalBuildStatus || typeof finalBuildStatus !== 'string' || !validBuildStatuses.includes(finalBuildStatus)) {
+        finalBuildStatus = "Improved";
+      }
+
       const prop = {
         ...appendSourceInfo(seed),
         parcel_identifier: parcelIdentifier || null,
@@ -3751,11 +3772,11 @@ function main() {
         number_of_units: null,
         subdivision: null,
         zoning: null,
-        property_type: propertyFields.property_type,
+        property_type: finalPropertyType,
         property_usage_type: propertyFields.property_usage_type,
         ownership_estate_type: propertyFields.ownership_estate_type,
         structure_form: propertyFields.structure_form,
-        build_status: propertyFields.build_status,
+        build_status: finalBuildStatus,
 
       };
       writeJson(path.join("data", "property.json"), prop);
