@@ -264,7 +264,7 @@ function classifyOwner(raw) {
 
         const firstName = titleCase(tokens[0]);
         const middleName =
-          tokens.length > 1 ? tokens.slice(1).map(titleCase).join(" ") : null;
+          tokens.length > 1 ? (tokens.slice(1).map(titleCase).join(" ") || null) : null;
 
         persons.push({
           type: "person",
@@ -288,7 +288,7 @@ function classifyOwner(raw) {
     const firstName = titleCase(firstMiddleTokens[0]);
     const middleName =
       firstMiddleTokens.length > 1
-        ? firstMiddleTokens.slice(1).map(titleCase).join(" ")
+        ? (firstMiddleTokens.slice(1).map(titleCase).join(" ") || null)
         : null;
 
     const person = {
@@ -397,7 +397,7 @@ function classifyOwner(raw) {
         const firstName1 = titleCase(beforeAmp[0]);
         const middleName1 =
           beforeAmp.length > 1
-            ? beforeAmp.slice(1).map(titleCase).join(" ")
+            ? (beforeAmp.slice(1).map(titleCase).join(" ") || null)
             : null;
         persons.push({
           type: "person",
@@ -413,7 +413,7 @@ function classifyOwner(raw) {
         const firstName2 = titleCase(afterAmp[0]);
         const middleName2 =
           afterAmp.length > 1
-            ? afterAmp.slice(1).map(titleCase).join(" ")
+            ? (afterAmp.slice(1).map(titleCase).join(" ") || null)
             : null;
         persons.push({
           type: "person",
@@ -447,7 +447,7 @@ function classifyOwner(raw) {
 
     // Everything in between is middle name
     const middleName =
-      tokens.length > 2 ? tokens.slice(1, -1).map(titleCase).join(" ") : null;
+      tokens.length > 2 ? (tokens.slice(1, -1).map(titleCase).join(" ") || null) : null;
 
     const person = {
       type: "person",
