@@ -3945,7 +3945,7 @@ function main() {
 
 
   // ---------- Parse Property ----------
-  const parcelId = $("#divDetails_Pid").text().trim() || null;
+  const parcelId = $("#divDetails_Pid").text().trim() || seed?.parcel_id || null;
 
   // Legal description
   let legalDesc = null;
@@ -3983,13 +3983,13 @@ function main() {
   // console.log(useText)
   // const cleanedUseCodeText = useText.replace(/-/g, '').replace(/\s+/g, ' ').trim();
   // console.log(cleanedUseCodeText)
-  
-  const property_type = mapPropertyTypeFromUseCode(useText || "");
+
+  let property_type = mapPropertyTypeFromUseCode(useText || "");
   // console.log("property_type>>",property_type);
-  const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(useText || "");
-  const build_status= mapBuildStatusFromUseCode(useText || "");
-  const structure_form = mapStructureFormFromUseCode(useText || "");
-  const property_usage_type = mapPropertyUsageTypeFromUseCode(useText || "");
+  let ownership_estate_type=mapOwnershipEstateTypeFromUseCode(useText || "");
+  let build_status= mapBuildStatusFromUseCode(useText || "");
+  let structure_form = mapStructureFormFromUseCode(useText || "");
+  let property_usage_type = mapPropertyUsageTypeFromUseCode(useText || "");
   console.log(useText,property_type,ownership_estate_type,build_status,structure_form,property_usage_type)
 
   // Acres
@@ -4023,7 +4023,30 @@ function main() {
   });
   bldgDetails.numberOfUnits = totalResidentialUnits + totalCommercialUnits;
 
+  // property_type is required (cannot be null) - set default if mapping fails
+  if (!property_type) {
+    // Default to Building if there are units and a built year, otherwise LandParcel
+    if (bldgDetails.numberOfUnits > 0 || bldgDetails.yearBuilt) {
+      property_type = "Building";
+    } else {
+      property_type = "LandParcel";
+    }
+  }
 
+  // build_status - set default if mapping fails
+  if (!build_status) {
+    // Default to Improved if there are units or a built year, otherwise VacantLand
+    if (bldgDetails.numberOfUnits > 0 || bldgDetails.yearBuilt) {
+      build_status = "Improved";
+    } else {
+      build_status = "VacantLand";
+    }
+  }
+
+  // ownership_estate_type can be null per schema, but set default FeeSimple if missing
+  if (!ownership_estate_type) {
+    ownership_estate_type = "FeeSimple";
+  }
 
   // Sub-areas: Total Base Area, Total Sub Area
 
