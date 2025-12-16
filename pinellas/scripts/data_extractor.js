@@ -3123,15 +3123,27 @@ function extract() {
   const property_usage_type = mapPropertyUsageTypeFromUseCode(propertyUseText || "");
 
   // CRITICAL: property_type is REQUIRED by schema and cannot be null
-  // If mapping fails, default to "Building" as a reasonable fallback
-  if (!property_type) {
-    property_type = "Building";
+  // If mapping fails, default to "LandParcel" as a reasonable fallback (works with VacantLand status)
+  if (!property_type || typeof property_type !== 'string' || property_type.trim() === '') {
+    property_type = "LandParcel";
   }
 
-  // CRITICAL: Ensure build_status is valid enum value
-  // If mapping fails or returns null, default to "Improved" for properties with structures
-  if (!build_status) {
-    build_status = "Improved";
+  // CRITICAL: Ensure build_status is valid enum value: VacantLand, Improved, or UnderConstruction
+  // If mapping fails or returns null, default to "VacantLand" to match LandParcel property type
+  if (!build_status || typeof build_status !== 'string' || build_status.trim() === '') {
+    build_status = "VacantLand";
+  }
+
+  // Validate that build_status is one of the allowed enum values
+  const validBuildStatuses = ["VacantLand", "Improved", "UnderConstruction"];
+  if (!validBuildStatuses.includes(build_status)) {
+    build_status = "VacantLand";
+  }
+
+  // Validate that property_type is a valid string
+  const validPropertyTypes = ["Cooperative", "Condominium", "Modular", "ManufacturedHousingMultiWide", "Pud", "Timeshare", "2Units", "DetachedCondominium", "Duplex", "SingleFamily", "MultipleFamily", "3Units", "ManufacturedHousing", "ManufacturedHousingSingleWide", "4Units", "Townhouse", "NonWarrantableCondo", "VacantLand", "Retirement", "MiscellaneousResidential", "ResidentialCommonElementsAreas", "MobileHome", "Apartment", "MultiFamilyMoreThan10", "MultiFamilyLessThan10", "LandParcel", "Building", "Unit", "ManufacturedHome"];
+  if (!validPropertyTypes.includes(property_type)) {
+    property_type = "LandParcel";
   }
 
   // Attempt to extract subdivision from legal description
