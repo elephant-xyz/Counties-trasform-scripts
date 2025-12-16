@@ -565,6 +565,26 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
     }
   }
 
+  // Always sanitize property relationships so downstream can safely populate URIs.
+  if (baseName === "property.json") {
+    try {
+      const payload =
+        typeof data === "string"
+          ? JSON.parse(data)
+          : JSON.parse(data.toString("utf8"));
+      const relationships =
+        payload && typeof payload.relationships === "object"
+          ? { ...payload.relationships }
+          : {};
+      relationships.property_has_address = null;
+      relationships.address_has_fact_sheet = null;
+      payload.relationships = relationships;
+      data = `${JSON.stringify(payload, null, 2)}\n`;
+    } catch {
+      // If we can't safely parse, fall back to the original write.
+    }
+  }
+
   return originalWriteFileSync.call(fs, targetPath, data, ...args);
 };
 
@@ -19854,6 +19874,7 @@ async function main() {
   purgeAddressRelationshipArtifacts(relationshipsDir);
   removeAddressRelationshipFiles(dataDir);
   removeAddressRelationshipFiles(relationshipsDir);
+  nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
   const propertyFilePath = path.join(dataDir, "property.json");
   const propertyFileRelative = "./property.json";
   const addressFileRelative = "./address.json";
@@ -22826,6 +22847,7 @@ async function main() {
     path.join(relationshipsDir, "address_has_fact_sheet.json"),
     path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
   ].forEach(removeFileIfExists);
+  nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
