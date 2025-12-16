@@ -1049,7 +1049,8 @@ function mapPermitImprovementType(typeText) {
   if (txt.includes("WELL")) return "WellPermit";
   if (txt.includes("SITE") || txt.includes("DEV")) return "SiteDevelopment";
   if (txt.includes("GENERAL") || txt.includes("BUILD")) return "GeneralBuilding";
-  return null;
+  // Return GeneralBuilding as a safe default for any unrecognized permit types
+  return "GeneralBuilding";
 }
 
 function mapPermitImprovementAction(typeText) {
