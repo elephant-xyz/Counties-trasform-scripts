@@ -3945,7 +3945,7 @@ function main() {
 
 
   // ---------- Parse Property ----------
-  const parcelId = $("#divDetails_Pid").text().trim() || null;
+  const parcelId = $("#divDetails_Pid").text().trim() || seed?.parcel_id || null;
 
   // Legal description
   let legalDesc = null;
@@ -4031,7 +4031,7 @@ function main() {
   const property = {
     ...appendSourceInfo(seed),
     number_of_units: bldgDetails.numberOfUnits ?? null,
-    parcel_identifier: parcelId || "",
+    parcel_identifier: parcelId || "MAPPING NOT AVAILABLE",
     property_legal_description_text: legalDesc || null,
     property_structure_built_year: bldgDetails.yearBuilt ?? null,
     property_type: property_type || null, // Now extracted from Property Use
