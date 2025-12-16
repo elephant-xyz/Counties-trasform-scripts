@@ -3190,7 +3190,6 @@ function main() {
                   file_format: null,
                   ipfs_url: null,
                   name: "Deed Document",
-                  original_url: fileLink,
                 });
               }
             }
