@@ -3614,9 +3614,23 @@ function main() {
   }
   const tax2024 = buildTaxFromSection("2024 Certified Values", 2024);
   // console.log("tax2024", tax2024);
-  if (tax2024) writeJson(path.join("data", "tax_2024.json"), tax2024);
+  if (tax2024) {
+    writeJson(path.join("data", "tax_2024.json"), tax2024);
+    // Create relationship between property and tax_2024
+    writeJson(path.join("data", "relationship_property_has_tax_2024.json"), {
+      from: { "/": "./property.json" },
+      to: { "/": "./tax_2024.json" }
+    });
+  }
   const tax2025 = buildTaxFromSection("2025 Certified Values", 2025);
-  if (tax2025) writeJson(path.join("data", "tax_2025.json"), tax2025);
+  if (tax2025) {
+    writeJson(path.join("data", "tax_2025.json"), tax2025);
+    // Create relationship between property and tax_2025
+    writeJson(path.join("data", "relationship_property_has_tax_2025.json"), {
+      from: { "/": "./property.json" },
+      to: { "/": "./tax_2025.json" }
+    });
+  }
 
 
 
