@@ -119,6 +119,8 @@ function parsePersonName(raw, inferredLastName) {
       const sufRx = /\b(jr|sr|ii|iii|iv|v)\.?$/i;
       middle = normWS(middle.replace(sufRx, "").trim()) || null;
     }
+    const middleValid =
+      middle && isValidName(middle) ? normWS(middle) : null;
 
     // Validate first and last names
     if (!isValidName(first) || !isValidName(lastPart)) {
@@ -149,6 +151,8 @@ function parsePersonName(raw, inferredLastName) {
   const last = tokens[tokens.length - 1];
   const middleTokens = tokens.slice(1, -1);
   const middle = middleTokens.length ? middleTokens.join(" ") : null;
+  const middleValid =
+    middle && isValidName(middle) ? normWS(middle) : null;
 
   // Validate first and last names
   if (!isValidName(first) || !isValidName(last)) {

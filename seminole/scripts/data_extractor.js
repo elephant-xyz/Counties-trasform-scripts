@@ -2888,6 +2888,146 @@ const propertyMappingMap = new Map(
   propertyMapping.map((item) => [item.dor_code, item]),
 );
 
+const PROPERTY_USAGE_ALLOWED_VALUES = new Set([
+  "Residential",
+  "Commercial",
+  "Industrial",
+  "Agricultural",
+  "Recreational",
+  "Conservation",
+  "Retirement",
+  "ResidentialCommonElementsAreas",
+  "DrylandCropland",
+  "HayMeadow",
+  "CroplandClass2",
+  "CroplandClass3",
+  "TimberLand",
+  "GrazingLand",
+  "OrchardGroves",
+  "Poultry",
+  "Ornamentals",
+  "Church",
+  "PrivateSchool",
+  "PrivateHospital",
+  "HomesForAged",
+  "NonProfitCharity",
+  "MortuaryCemetery",
+  "ClubsLodges",
+  "SanitariumConvalescentHome",
+  "CulturalOrganization",
+  "Military",
+  "ForestParkRecreation",
+  "PublicSchool",
+  "PublicHospital",
+  "GovernmentProperty",
+  "RetailStore",
+  "DepartmentStore",
+  "Supermarket",
+  "ShoppingCenterRegional",
+  "ShoppingCenterCommunity",
+  "OfficeBuilding",
+  "MedicalOffice",
+  "TransportationTerminal",
+  "Restaurant",
+  "FinancialInstitution",
+  "ServiceStation",
+  "AutoSalesRepair",
+  "MobileHomePark",
+  "WholesaleOutlet",
+  "Theater",
+  "Entertainment",
+  "Hotel",
+  "RaceTrack",
+  "GolfCourse",
+  "LightManufacturing",
+  "HeavyManufacturing",
+  "LumberYard",
+  "PackingPlant",
+  "Cannery",
+  "MineralProcessing",
+  "Warehouse",
+  "OpenStorage",
+  "Utility",
+  "RiversLakes",
+  "SewageDisposal",
+  "Railroad",
+  "TransitionalProperty",
+  "ReferenceParcel",
+  "NurseryGreenhouse",
+  "AgriculturalPackingFacility",
+  "LivestockFacility",
+  "Aquaculture",
+  "VineyardWinery",
+  "DataCenter",
+  "TelecommunicationsFacility",
+  "SolarFarm",
+  "WindFarm",
+  "NativePasture",
+  "ImprovedPasture",
+  "Rangeland",
+  "PastureWithTimber",
+  "Unknown",
+]);
+
+const PROPERTY_USAGE_FALLBACK_MAP = {
+  ResidentialWaterfront: "Residential",
+  PlannedUnitDevelopment: "Residential",
+  AgriculturalResidential: "Agricultural",
+  ResidentialGolfCourse: "GolfCourse",
+  Office: "OfficeBuilding",
+  MultiFamily: "Residential",
+  ConvenienceStore: "RetailStore",
+  ConvenienceStoreWithGas: "ServiceStation",
+  DiscountStore: "RetailStore",
+  ShoppingCenterPower: "ShoppingCenterCommunity",
+  ShoppingCenterTown: "ShoppingCenterCommunity",
+  MixedUse: "Commercial",
+  FlexSpace: "Commercial",
+  VeterinaryClinic: "MedicalOffice",
+  CommunicationFacility: "TelecommunicationsFacility",
+  FastFoodRestaurant: "Restaurant",
+  RepairServiceShop: "AutoSalesRepair",
+  DryCleanerLaundromat: "Commercial",
+  AutoService: "AutoSalesRepair",
+  CarWash: "AutoSalesRepair",
+  AutoDealership: "AutoSalesRepair",
+  MarineSalesRepair: "AutoSalesRepair",
+  VehicleSales: "AutoSalesRepair",
+  VehicleRental: "AutoSalesRepair",
+  ParkingLot: "Commercial",
+  NightclubBar: "Entertainment",
+  RecreationalFacility: "Recreational",
+  HealthFitnessClub: "Recreational",
+  Camp: "Recreational",
+  Motel: "Hotel",
+  LuxuryHotel: "Hotel",
+  ExtendedStayHotel: "Hotel",
+  BedAndBreakfast: "Hotel",
+  MiniWarehouse: "Warehouse",
+  FoodProcessing: "Industrial",
+  HorseFarm: "LivestockFacility",
+  DairyFarm: "LivestockFacility",
+  Institutional: "GovernmentProperty",
+  DaycarePreschool: "PrivateSchool",
+  GroupHome: "HomesForAged",
+  RehabilitationFacility: "SanitariumConvalescentHome",
+  Cemetery: "MortuaryCemetery",
+  ClubLodge: "ClubsLodges",
+  VolunteerFireDepartment: "GovernmentProperty",
+  PublicCollege: "PublicSchool",
+  Airport: "TransportationTerminal",
+  WasteManagement: "SewageDisposal",
+  CentrallyAssessed: "Unknown",
+};
+
+function sanitizePropertyUsageType(value) {
+  if (!value) return null;
+  if (PROPERTY_USAGE_ALLOWED_VALUES.has(value)) return value;
+  const remapped = PROPERTY_USAGE_FALLBACK_MAP[value];
+  if (remapped && PROPERTY_USAGE_ALLOWED_VALUES.has(remapped)) return remapped;
+  return "Unknown";
+}
+
 // Function to get property mapping based on DOR code
 function getPropertyMapping(dorCode) {
   if (dorCode === null || dorCode === undefined) return null;
@@ -2929,8 +3069,12 @@ function main() {
   cleanupLegacyArtifacts();
 
   const input = readInputHtml();
-  const unaddr = readJSON("unnormalized_address.json");
-  const propSeed = readJSON("property_seed.json");
+  const unaddr = fs.existsSync("unnormalized_address.json")
+    ? readJSON("unnormalized_address.json")
+    : {};
+  const propSeed = fs.existsSync("property_seed.json")
+    ? readJSON("property_seed.json")
+    : {};
 
   const ownersPath = path.join("owners", "owner_data.json");
   const utilitiesPath = path.join("owners", "utilities_data.json");
@@ -2977,6 +3121,10 @@ function main() {
   const mappedProperty = getPropertyMapping(input.dor);
 
   const propertyFileName = "property.json";
+  const propertyUsageRaw = mappedProperty
+    ? mappedProperty.property_usage_type
+    : null;
+  const propertyUsageType = sanitizePropertyUsageType(propertyUsageRaw);
   const propertyObj = {
     parcel_identifier: parcelNumber,
     property_legal_description_text: legal,
@@ -2995,9 +3143,7 @@ function main() {
       : null,
     build_status: mappedProperty ? mappedProperty.build_status : null,
     structure_form: mappedProperty ? mappedProperty.structure_form : null,
-    property_usage_type: mappedProperty
-      ? mappedProperty.property_usage_type
-      : null,
+    property_usage_type: propertyUsageType,
     zoning: input.zoning || null,
     subdivision: input.subName || input.platName || null,
     number_of_units: 1,
@@ -3060,40 +3206,40 @@ function main() {
     
   });
 
-  const situsAddressRaw = unaddr.full_address || input.situsAddress || "";
-  const situsAddress = parseAddressComponents(
-    situsAddressRaw,
-    input.mailingAddress || "",
-  );
+  const situsAddressCandidate = pickFirstString(input, [
+    "situsAddress",
+    "siteAddress",
+    "siteAddr",
+    "propertyAddress",
+    "physicalAddress",
+    "locationAddress",
+    "address",
+  ]);
+  let unnormalizedSitusAddress =
+    normalizeAddressString(situsAddressCandidate) || null;
+  if (!unnormalizedSitusAddress) {
+    const unaddrFallback = pickFirstString(unaddr || {}, [
+      "full_address",
+      "unnormalized_address",
+      "address",
+      "siteAddress",
+    ]);
+    const fallbackNormalized = normalizeAddressString(unaddrFallback);
+    unnormalizedSitusAddress = fallbackNormalized || null;
+  }
+  const addressSourceRequest =
+    (unaddr && unaddr.source_http_request) ||
+    (propSeed && propSeed.source_http_request) ||
+    (input && input.source_http_request) ||
+    null;
+
   const addressFileName = "address.json";
   const addressObj = {
-    street_number: situsAddress ? situsAddress.streetNumber : null,
-    street_pre_directional_text: situsAddress
-      ? situsAddress.streetPreDirectional
-      : null,
-    street_name: situsAddress ? situsAddress.streetName : null,
-    street_suffix_type: situsAddress ? situsAddress.streetSuffix : null,
-    street_post_directional_text: situsAddress
-      ? situsAddress.streetPostDirectional
-      : null,
-    unit_identifier: null,
-    city_name: situsAddress ? situsAddress.city : null,
-    municipality_name: null,
-    state_code: situsAddress ? situsAddress.state : null,
-    postal_code: situsAddress ? situsAddress.postal_code : null, // Use postal_code from parsed object
-    plus_four_postal_code: situsAddress ? situsAddress.plus4 : null,
+    unnormalized_address: unnormalizedSitusAddress,
+    source_http_request: addressSourceRequest || null,
+    request_identifier: requestIdentifier,
     county_name: "Seminole",
     country_code: "US",
-    latitude: typeof unaddr.latitude === "number" ? unaddr.latitude : null,
-    longitude: typeof unaddr.longitude === "number" ? unaddr.longitude : null,
-    route_number: null,
-    township: null,
-    range: null,
-    section: null,
-    block: null,
-    lot: null,
-    // unnormalized_address: normalizeAddressString(situsAddressRaw) || null,
-    request_identifier: requestIdentifier,
   };
   fs.writeFileSync(
     path.join("data", addressFileName),
