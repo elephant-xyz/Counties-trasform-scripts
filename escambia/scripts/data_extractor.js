@@ -108,7 +108,37 @@ function isoDateFromMDY(mdy) {
   return null;
 }
 
-const ALLOWED_PROPERTY_TYPES = ["LandParcel", "Building", "Unit", "ManufacturedHome"];
+const ALLOWED_PROPERTY_TYPES = [
+  "Cooperative",
+  "Condominium",
+  "Modular",
+  "ManufacturedHousingMultiWide",
+  "Pud",
+  "Timeshare",
+  "2Units",
+  "DetachedCondominium",
+  "Duplex",
+  "SingleFamily",
+  "MultipleFamily",
+  "3Units",
+  "ManufacturedHousing",
+  "ManufacturedHousingSingleWide",
+  "4Units",
+  "Townhouse",
+  "NonWarrantableCondo",
+  "VacantLand",
+  "Retirement",
+  "MiscellaneousResidential",
+  "ResidentialCommonElementsAreas",
+  "MobileHome",
+  "Apartment",
+  "MultiFamilyMoreThan10",
+  "MultiFamilyLessThan10",
+  "LandParcel",
+  "Building",
+  "Unit",
+  "ManufacturedHome",
+];
 const ALLOWED_BUILD_STATUS = ["VacantLand", "Improved", "UnderConstruction", null];
 const ALLOWED_OWNERSHIP_ESTATE_TYPES = [
   "Condominium",
@@ -333,22 +363,10 @@ function cleanUseCode(str) {
 
 function normalizePropertyType(raw) {
   if (!raw) return null;
-  const map = {
-    LandParcel: "LandParcel",
-    VacantLand: "LandParcel",
-    Building: "Building",
-    SingleFamily: "Building",
-    MultiFamilyLessThan10: "Building",
-    MultiFamilyMoreThan10: "Building",
-    MiscellaneousResidential: "Building",
-    Retirement: "Building",
-    MobileHome: "ManufacturedHome",
-    ManufacturedHome: "ManufacturedHome",
-    Condominium: "Unit",
-    Cooperative: "Unit",
-  };
+  // Return the value as-is if it's in the allowed list
   if (ALLOWED_PROPERTY_TYPES.includes(raw)) return raw;
-  return map[raw] || null;
+  // Otherwise return null
+  return null;
 }
 
 function firstNonNull(...values) {
@@ -867,7 +885,7 @@ function main() {
         build_status: "VacantLand",
         structure_form: null,
         property_usage_type: "Residential",
-        property_type: "LandParcel",
+        property_type: "VacantLand",
       },
       {
         escambia_property_type: "SINGLE FAMILY RESID",
@@ -875,7 +893,7 @@ function main() {
         build_status: "Improved",
         structure_form: "SingleFamilyDetached",
         property_usage_type: "Residential",
-        property_type: "Building",
+        property_type: "SingleFamily",
       },
       {
         escambia_property_type: "MOBILE HOME",
@@ -883,7 +901,7 @@ function main() {
         build_status: "Improved",
         structure_form: "MobileHome",
         property_usage_type: "Residential",
-        property_type: "ManufacturedHome",
+        property_type: "MobileHome",
       },
       {
         escambia_property_type: "MULTI-FAMILY >=10",
@@ -891,7 +909,7 @@ function main() {
         build_status: "Improved",
         structure_form: "MultiFamilyMoreThan10",
         property_usage_type: "Residential",
-        property_type: "Building",
+        property_type: "MultiFamilyMoreThan10",
       },
       {
         escambia_property_type: "CONDOMINIUM",
@@ -899,7 +917,7 @@ function main() {
         build_status: "Improved",
         structure_form: "ApartmentUnit",
         property_usage_type: "Residential",
-        property_type: "Unit",
+        property_type: "Condominium",
       },
       {
         escambia_property_type: "CONDO-RES UNIT",
@@ -907,7 +925,7 @@ function main() {
         build_status: "Improved",
         structure_form: "ApartmentUnit",
         property_usage_type: "Residential",
-        property_type: "Unit",
+        property_type: "Condominium",
       },
       {
         escambia_property_type: "COOPERATIVE",
@@ -915,7 +933,7 @@ function main() {
         build_status: "Improved",
         structure_form: "ApartmentUnit",
         property_usage_type: "Residential",
-        property_type: "Unit",
+        property_type: "Cooperative",
       },
       {
         escambia_property_type: "RETIREMENT HOME",
@@ -923,7 +941,7 @@ function main() {
         build_status: "Improved",
         structure_form: null,
         property_usage_type: "Retirement",
-        property_type: "Building",
+        property_type: "Retirement",
       },
       {
         escambia_property_type: "MISC. RESIDENTIAL",
@@ -931,7 +949,7 @@ function main() {
         build_status: "Improved",
         structure_form: null,
         property_usage_type: "Residential",
-        property_type: "Building",
+        property_type: "MiscellaneousResidential",
       },
       {
         escambia_property_type: "MULTI-FAMILY <=9",
@@ -939,7 +957,7 @@ function main() {
         build_status: "Improved",
         structure_form: "MultiFamilyLessThan10",
         property_usage_type: "Residential",
-        property_type: "Building",
+        property_type: "MultiFamilyLessThan10",
       },
       {
         escambia_property_type: "* NOT USED *",
@@ -1467,7 +1485,7 @@ function main() {
         build_status: "Improved",
         structure_form: null,
         property_usage_type: "Retirement",
-        property_type: "Building",
+        property_type: "Retirement",
       },
       {
         escambia_property_type: "CHARITABLE",
@@ -1756,7 +1774,7 @@ function main() {
         build_status: "Improved",
         structure_form: null, // No direct mapping, could be a type of warehouse/storage
         property_usage_type: "Commercial",
-        property_type: "Unit",
+        property_type: "Condominium",
       },
       {
         escambia_property_type: "CONDO-NON-RES UNIT",
@@ -1764,7 +1782,7 @@ function main() {
         build_status: "Improved",
         structure_form: "ApartmentUnit", // Generic unit form
         property_usage_type: "Commercial",
-        property_type: "Unit",
+        property_type: "Condominium",
       },
       {
         escambia_property_type: "CONDO-TIMESHARE",
@@ -1772,7 +1790,7 @@ function main() {
         build_status: "Improved",
         structure_form: "ApartmentUnit", // Assuming it's a unit in a building
         property_usage_type: "Residential",
-        property_type: "Unit",
+        property_type: "Timeshare",
       },
       {
         escambia_property_type: "FIRE DEPARTMENT",
@@ -1828,7 +1846,7 @@ function main() {
         build_status: "Improved",
         structure_form: "TownhouseRowhouse",
         property_usage_type: "Residential",
-        property_type: "Building",
+        property_type: "Townhouse",
       },
       {
         escambia_property_type: "PARKING LOTS",
@@ -1860,7 +1878,7 @@ function main() {
         build_status: "Improved",
         structure_form: null,
         property_usage_type: "ResidentialCommonElementsAreas",
-        property_type: "LandParcel",
+        property_type: "ResidentialCommonElementsAreas",
       },
       {
         escambia_property_type: "RV PARKS",
@@ -1876,7 +1894,7 @@ function main() {
         build_status: "Improved",
         structure_form: "TownhouseRowhouse",
         property_usage_type: "Residential",
-        property_type: "Building",
+        property_type: "Townhouse",
       },
       {
         escambia_property_type: "SINGLE FAMILY IN MULTI-FAM COMPLEX",
@@ -1908,7 +1926,7 @@ function main() {
         build_status: "VacantLand", // Vacant unit
         structure_form: "ApartmentUnit",
         property_usage_type: "Residential",
-        property_type: "Unit",
+        property_type: "Condominium",
       },
       {
         escambia_property_type: "VACANT RESIDENTIAL - IMPROVED",
@@ -1917,6 +1935,14 @@ function main() {
         structure_form: null,
         property_usage_type: "Residential",
         property_type: "LandParcel",
+      },
+      {
+        escambia_property_type: "CONDO-COMMERCIAL",
+        ownership_estate_type: "Condominium",
+        build_status: "Improved",
+        structure_form: "ApartmentUnit",
+        property_usage_type: "Commercial",
+        property_type: "Condominium",
       },
     ];
 
@@ -2091,8 +2117,35 @@ function main() {
     !propertyInfo.propertyType ||
     propertyInfo.propertyType === "MAPPING NOT AVAILABLE"
   ) {
+    // Determine a more specific property type based on available information
+    let fallbackPropertyType = "LandParcel";
+
+    if (hasBuildings) {
+      // If we have structure form information, try to use a more specific type
+      const structureForm = propertyInfo?.structureForm;
+      if (structureForm === "SingleFamilyDetached" || structureForm === "SingleFamilySemiDetached") {
+        fallbackPropertyType = "SingleFamily";
+      } else if (structureForm === "MobileHome" || structureForm === "ManufacturedHomeOnLand" || structureForm === "ManufacturedHomeInPark") {
+        fallbackPropertyType = "MobileHome";
+      } else if (structureForm === "ApartmentUnit") {
+        fallbackPropertyType = "Apartment";
+      } else if (structureForm === "TownhouseRowhouse") {
+        fallbackPropertyType = "Townhouse";
+      } else if (structureForm === "Duplex") {
+        fallbackPropertyType = "Duplex";
+      } else if (structureForm === "MultiFamilyMoreThan10") {
+        fallbackPropertyType = "MultiFamilyMoreThan10";
+      } else if (structureForm === "MultiFamilyLessThan10") {
+        fallbackPropertyType = "MultiFamilyLessThan10";
+      } else {
+        fallbackPropertyType = "Building";
+      }
+    } else {
+      fallbackPropertyType = "VacantLand";
+    }
+
     propertyInfo = {
-      propertyType: hasBuildings ? "Building" : "LandParcel",
+      propertyType: fallbackPropertyType,
       ownershipEstateType: propertyInfo?.ownershipEstateType || null,
       buildStatus: hasBuildings ? "Improved" : "VacantLand",
       structureForm: hasBuildings ? propertyInfo?.structureForm || null : null,
