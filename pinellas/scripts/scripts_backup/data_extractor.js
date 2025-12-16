@@ -224,14 +224,6 @@ const propertyTypeMapping=[
     "property_type": "Building"
   },
   {
-    "property_usecode": "0111 SINGLE FAMILY COMMUNITY LAND TRUST",
-    "ownership_estate_type": "FeeSimple",
-    "build_status": "Improved",
-    "structure_form": "SingleFamilyDetached",
-    "property_usage_type": "Residential",
-    "property_type": "Building"
-  },
-  {
     "property_usecode": "0133 PLANNED UNIT DEVELOPMENT",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -1599,19 +1591,9 @@ const propertyUsageTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) =>
 }, {});
 function mapPropertyTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const codeStr = String(code).trim();
-  
-  // First try matching by 4-digit code prefix
-  const codeMatch = codeStr.match(/^(\d{4})/);
-  if (codeMatch) {
-    const codePrefix = codeMatch[1];
-    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
-    if (entry) return entry.property_type;
-  }
-  
-  // Fallback to full normalization matching
-  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
-  if (normalizedInput && Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
+  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
     return propertyTypeByUseCode[normalizedInput];
   }
   return null;
@@ -1619,19 +1601,9 @@ function mapPropertyTypeFromUseCode(code) {
 
 function mapOwnershipEstateTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const codeStr = String(code).trim();
-  
-  // First try matching by 4-digit code prefix
-  const codeMatch = codeStr.match(/^(\d{4})/);
-  if (codeMatch) {
-    const codePrefix = codeMatch[1];
-    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
-    if (entry) return entry.ownership_estate_type;
-  }
-  
-  // Fallback to full normalization matching
-  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
-  if (normalizedInput && Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
+  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
     return ownershipEstateTypeByUseCode[normalizedInput];
   }
   return null;
@@ -1639,19 +1611,9 @@ function mapOwnershipEstateTypeFromUseCode(code) {
 
 function mapBuildStatusFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const codeStr = String(code).trim();
-  
-  // First try matching by 4-digit code prefix
-  const codeMatch = codeStr.match(/^(\d{4})/);
-  if (codeMatch) {
-    const codePrefix = codeMatch[1];
-    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
-    if (entry) return entry.build_status;
-  }
-  
-  // Fallback to full normalization matching
-  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
-  if (normalizedInput && Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
+  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
     return buildStatusByUseCode[normalizedInput];
   }
   return null;
@@ -1659,19 +1621,9 @@ function mapBuildStatusFromUseCode(code) {
 
 function mapStructureFormFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const codeStr = String(code).trim();
-  
-  // First try matching by 4-digit code prefix
-  const codeMatch = codeStr.match(/^(\d{4})/);
-  if (codeMatch) {
-    const codePrefix = codeMatch[1];
-    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
-    if (entry) return entry.structure_form;
-  }
-  
-  // Fallback to full normalization matching
-  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
-  if (normalizedInput && Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
+  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
     return structureFormByUseCode[normalizedInput];
   }
   return null;
@@ -1679,19 +1631,9 @@ function mapStructureFormFromUseCode(code) {
 
 function mapPropertyUsageTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const codeStr = String(code).trim();
-  
-  // First try matching by 4-digit code prefix
-  const codeMatch = codeStr.match(/^(\d{4})/);
-  if (codeMatch) {
-    const codePrefix = codeMatch[1];
-    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
-    if (entry) return entry.property_usage_type;
-  }
-  
-  // Fallback to full normalization matching
-  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
-  if (normalizedInput && Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
+  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
     return propertyUsageTypeByUseCode[normalizedInput];
   }
   return null;
@@ -2301,14 +2243,6 @@ function extractSalesHistoryFiles($, dataDir, requestIdentifier, sourceHttpReque
       ipfs_url: null,
     };
     writeJSON(path.join(dataDir, fileName), payload);
-
-    // Create property_has_file relationship
-    const relationshipFileName = `relationship_property_has_file_${idx + 1}.json`;
-    const relationship = {
-      from: { "/": "./property.json" },
-      to: { "/": `./${fileName}` }
-    };
-    writeJSON(path.join(dataDir, relationshipFileName), relationship);
   });
 }
 
@@ -3107,24 +3041,25 @@ function extract() {
   // const buildingType = structuralElementsBuilding1["Building Type"] || null;
 
   // console.log("usecode",useCodeText);
-  let property_type = mapPropertyTypeFromUseCode(propertyUseText || "");
+  const property_type = mapPropertyTypeFromUseCode(propertyUseText || "");
   // console.log("property_type>>",property_type);
   const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(propertyUseText || "");
-  let build_status= mapBuildStatusFromUseCode(propertyUseText || "");
+  const build_status= mapBuildStatusFromUseCode(propertyUseText || "");
   const structure_form = mapStructureFormFromUseCode(propertyUseText || "");
   const property_usage_type = mapPropertyUsageTypeFromUseCode(propertyUseText || "");
 
-  // CRITICAL: property_type is REQUIRED by schema and cannot be null
-  // If mapping fails, default to "Building" as a reasonable fallback
-  if (!property_type) {
-    property_type = "Building";
-  }
 
-  // CRITICAL: Ensure build_status is valid enum value
-  // If mapping fails or returns null, default to "Improved" for properties with structures
-  if (!build_status) {
-    build_status = "Improved";
-  }
+
+  // For aquaculture/submerged land, default to VacantLand if no type determined
+  // if (!property_type && property_legal_description_text && 
+  //     property_legal_description_text.toLowerCase().includes('aquaculture')) {
+  //   property_type = 'VacantLand';
+  // }
+  
+  // Ensure property_type is never null - default to VacantLand
+  // if (!property_type) {
+  //   property_type = 'VacantLand';
+  // }
 
   // Attempt to extract subdivision from legal description
   let subdivision = null;
@@ -3178,15 +3113,28 @@ function extract() {
 
     const country_code = "US";
 
-    // CRITICAL: Address schema uses oneOf - provide EITHER unnormalized_address OR normalized fields
-    // Since we have unnormalized_address from input, use that. Do NOT include latitude/longitude (deprecated)
-    // Do NOT mix unnormalized with normalized fields - it's one OR the other
     const address = {
       source_http_request: source_http_request,
       request_identifier: requestIdentifier,
+      // block: block,
+      // city_name: city ? city.toUpperCase() : null,
+      // country_code: country_code,
+      county_name: county_name,
+      latitude: unAddr.latitude ?? null,
+      longitude: unAddr.longitude ?? null,
+      // plus_four_postal_code: null,
+      // postal_code: zip,
+      // range: null,
+      // route_number: null,
+      // section: null,
+      // township: null,
       unnormalized_address: unAddr.full_address
-      // Note: latitude and longitude are deprecated in address schema
-      // Note: county_name should only be included in normalized address form, not with unnormalized_address
+      // state_code: state,
+      // // street_name: street_name ? street_name : null,
+      // // street_post_directional_text: null,
+      // // street_pre_directional_text: null,
+      // // street_number: street_number,
+      // // street_suffix_type: street_suffix_type,
     };
 
     writeJSON(path.join(dataDir, "address.json"), address);
@@ -3241,16 +3189,6 @@ function extract() {
       const file = path.join(dataDir, saleFileName);
       // Remove _rawIndex and grantee_text before writing to file
       const { _rawIndex, grantee_text, ...saleData } = s;
-
-      // CRITICAL: purchase_price_amount must be a number (not null) per schema
-      // Since it's optional, omit it entirely if not a valid number
-      if (saleData.purchase_price_amount === null ||
-          saleData.purchase_price_amount === undefined ||
-          typeof saleData.purchase_price_amount !== 'number' ||
-          !Number.isFinite(saleData.purchase_price_amount)) {
-        delete saleData.purchase_price_amount;
-      }
-
       writeJSON(file, saleData);
       s._file = `./${saleFileName}`; // Keep _file for relationship linking
       saleFileMap.set(s.ownership_transfer_date, s._file);
@@ -3449,29 +3387,27 @@ function extract() {
         unnormalized_address: mailing_address_text
       };
       writeJSON(path.join(dataDir, "mailing_address.json"), mailing_address);
-
-      // Create relationships for person → mailing_address
-      mailingPersonRefs.forEach((personRef) => {
-        const relFile = `relationship_person_${personRef
-          .replace("./", "")
-          .replace(".json", "")}_has_mailing_address.json`;
-        writeJSON(path.join(dataDir, relFile), {
-          from: { "/": personRef },
-          to: { "/": "./mailing_address.json" },
-        });
-      });
-
-      // Create relationships for company → mailing_address
-      mailingCompanyRefs.forEach((companyRef) => {
-        const relFile = `relationship_company_${companyRef
-          .replace("./", "")
-          .replace(".json", "")}_has_mailing_address.json`;
-        writeJSON(path.join(dataDir, relFile), {
-          from: { "/": companyRef },
-          to: { "/": "./mailing_address.json" },
-        });
-      });
     }
+
+    mailingPersonRefs.forEach((personRef) => {
+      const relFile = `relationship_person_${personRef
+        .replace("./", "")
+        .replace(".json", "")}_has_mailing_address.json`;
+      writeJSON(path.join(dataDir, relFile), {
+        from: { "/": personRef },
+        to: { "/": "./mailing_address.json" },
+      });
+    });
+
+    mailingCompanyRefs.forEach((companyRef) => {
+      const relFile = `relationship_company_${companyRef
+        .replace("./", "")
+        .replace(".json", "")}_has_mailing_address.json`;
+      writeJSON(path.join(dataDir, relFile), {
+        from: { "/": companyRef },
+        to: { "/": "./mailing_address.json" },
+      });
+    });
   } catch (e) {
     console.error("Error extracting sales/owner data:", e);
   }
