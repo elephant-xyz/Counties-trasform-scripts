@@ -2,6 +2,9 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const SCRIPT_DIR = __dirname;
+const WORKING_DIR = process.cwd();
+
 function ensureDir(outDir) {
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 }
@@ -1340,28 +1343,66 @@ function createGeometryInstances(csvContent) {
   return records.flatMap((record) => splitGeometry(record));
 }
 
-function createGeometryClass(geometryInstances) {
+function loadGeometryCsvContent() {
+  const parentDir = path.dirname(SCRIPT_DIR);
+  const candidates = [
+    path.join(WORKING_DIR, "input.csv"),
+    path.join(SCRIPT_DIR, "input.csv"),
+    path.join(parentDir, "input.csv"),
+    path.join(WORKING_DIR, "seed.csv"),
+    path.join(SCRIPT_DIR, "seed.csv"),
+    path.join(parentDir, "seed.csv"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        return fs.readFileSync(candidate, "utf8");
+      } catch (err) {
+        console.warn(`Unable to read geometry CSV at ${candidate}: ${err.message}`);
+      }
+    }
+  }
+
+  return null;
+}
+
+function geometry_parcel(geometryInstances) {
   let geomIndex = 1;
-  for(let geom of geometryInstances) {
-    let polygon = [];
-    if (!geom || !geom.polygon) {
+  for (let geom of geometryInstances || []) {
+    if (!geom) {
       continue;
     }
-    for (const coordinate of geom.polygon.coordinates[0]) {
-      polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
-    }
+
     const geometry = {
-      "latitude": geom.latitude,
-      "longitude": geom.longitude,
-      "polygon": polygon,
+      latitude: geom.latitude ?? null,
+      longitude: geom.longitude ?? null,
+    };
+
+    if (geom.polygon && Array.isArray(geom.polygon.coordinates)) {
+      const exteriorRing = geom.polygon.coordinates[0] || [];
+      const polygon = exteriorRing.map((coordinate) => ({
+        longitude: coordinate[0],
+        latitude: coordinate[1],
+      }));
+      if (polygon.length) {
+        geometry.polygon = polygon;
+      }
     }
-    writeOut(`geometry_${geomIndex}.json`, geometry);
-    writeOut(`relationship_parcel_to_geometry_${geomIndex}.json`, {
-        from: { "/": `./parcel.json` },
-        to: { "/": `./geometry_${geomIndex}.json` },
+
+    const geometryFile = `geometry_parcel_${geomIndex}.json`;
+    const relationshipFile = `relationship_parcel_has_geometry_parcel_${geomIndex}.json`;
+    writeOut(geometryFile, geometry);
+    writeOut(relationshipFile, {
+      from: { "/": `./parcel.json` },
+      to: { "/": `./${geometryFile}` },
     });
     geomIndex++;
   }
+}
+
+function createGeometryClass(geometryInstances) {
+  geometry_parcel(geometryInstances);
 }
 
 function titleCaseName(s) {
@@ -1381,18 +1422,46 @@ function main() {
   const htmlPath = path.join(".", "input.html");
 
   const html = fs.readFileSync(htmlPath, "utf8");
-  const seedCsvPath = path.join(".", "input.csv");
-
-  const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
-  createGeometryClass(createGeometryInstances(seedCsv));
   let unnorm = readJson("address.json");
   if (!unnorm) {
     unnorm = readJson("unnormalized_address.json");
   }
   let parcel = readJson("parcel.json");
   if (!parcel) {
-    parcel = readJson("property_seed.json");
-    parcel.parcel_identifier = parcel.parcel_id;
+    parcel = readJson("property_seed.json") || {};
+    parcel.parcel_identifier = parcel.parcel_identifier || parcel.parcel_id || null;
+  }
+
+  const geometryCsv = loadGeometryCsvContent();
+  let geometryCreated = false;
+  if (geometryCsv) {
+    try {
+      const geometryInstances = createGeometryInstances(geometryCsv);
+      if (geometryInstances.length) {
+        createGeometryClass(geometryInstances);
+        geometryCreated = true;
+      }
+    } catch (err) {
+      console.warn(`Unable to build geometry from CSV: ${err.message}`);
+    }
+  }
+  if (!geometryCreated) {
+    const latitude =
+      (unnorm && unnorm.latitude) ||
+      (parcel && parcel.latitude) ||
+      null;
+    const longitude =
+      (unnorm && unnorm.longitude) ||
+      (parcel && parcel.longitude) ||
+      null;
+    if (latitude && longitude) {
+      const coordinate = new Geometry({
+        latitude,
+        longitude,
+      });
+      createGeometryClass([coordinate]);
+      geometryCreated = true;
+    }
   }
   const ownersData = readJson(path.join("owners", "owner_data.json"));
   const utilitiesData = readJson(
