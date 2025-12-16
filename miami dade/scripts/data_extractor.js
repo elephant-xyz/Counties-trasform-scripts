@@ -2049,51 +2049,43 @@ function main() {
     postal = /(\d{5})/.exec(unAddr.full_address)[1];
   }
 
+  // Build full address string from components
+  let fullAddressStr = "";
+  if (siteAddr.StreetNumber) fullAddressStr += String(siteAddr.StreetNumber) + " ";
+  if (siteAddr.StreetPrefix) fullAddressStr += siteAddr.StreetPrefix + " ";
+  if (siteAddr.StreetName) fullAddressStr += String(siteAddr.StreetName) + " ";
+  if (siteAddr.StreetSuffix) fullAddressStr += siteAddr.StreetSuffix + " ";
+  if (siteAddr.StreetSuffixDirection) fullAddressStr += siteAddr.StreetSuffixDirection + " ";
+  if (siteAddr.Unit) fullAddressStr += "Unit " + String(siteAddr.Unit) + " ";
+  fullAddressStr = fullAddressStr.trim();
+
+  // Add city, state, zip
+  const cityName = (
+    siteAddr.City ||
+    pInfo.Municipality ||
+    (unAddr.full_address ? unAddr.full_address.split(",")[1] : null) ||
+    ""
+  ).toString().trim().toUpperCase();
+
+  if (cityName) fullAddressStr += ", " + cityName;
+  if (mailing.State || "FL") fullAddressStr += ", " + (mailing.State || "FL");
+  if (postal) {
+    fullAddressStr += " " + postal;
+    if (plus4) fullAddressStr += "-" + plus4;
+  }
+
+  // Use unnormalized_address approach as per verified examples
   const address = {
-    street_number:
-      siteAddr.StreetNumber != null ? String(siteAddr.StreetNumber) : null,
-    street_pre_directional_text: siteAddr.StreetPrefix || null,
-    street_name:
-      siteAddr.StreetName != null && String(siteAddr.StreetName).trim().length > 0 
-        ? String(siteAddr.StreetName).trim() 
-        : null,
-    street_suffix_type: normalizeSuffix(siteAddr.StreetSuffix) || null,
-    street_post_directional_text: siteAddr.StreetSuffixDirection
-      ? siteAddr.StreetSuffixDirection
-      : null,
-    unit_identifier: siteAddr.Unit ? String(siteAddr.Unit) : null,
-    city_name:
-      (
-        siteAddr.City ||
-        pInfo.Municipality ||
-        (unAddr.full_address ? unAddr.full_address.split(",")[1] : null) ||
-        ""
-      )
-        .toString()
-        .trim()
-        .toUpperCase() || null,
-    state_code: mailing.State || "FL",
-    postal_code: postal || null,
-    plus_four_postal_code: plus4 || null,
-    country_code: "US",
     county_name: unAddr.county_jurisdiction || "Miami Dade",
-    latitude: null,
-    longitude: null,
-    route_number: null,
-    township: null,
-    range: null,
-    section: null,
-    block: null,
-    lot: null,
-    municipality_name: pInfo.Municipality || null,
+    unnormalized_address: fullAddressStr || unAddr.full_address || null,
   };
 
-  // Check if street name is extractable - throw error if not
-  if (!address.street_name || address.street_name.trim().length === 0) {
+  // Check if address is extractable - throw error if not
+  if (!address.unnormalized_address || address.unnormalized_address.trim().length === 0) {
     const err = {
       type: "error",
-      message: "Street name is not extractable from property data",
-      path: "address.street_name",
+      message: "Address is not extractable from property data",
+      path: "address.unnormalized_address",
       value: siteAddr.StreetName || "null",
       folio: pInfo.FolioNumber || "unknown"
     };
@@ -2102,6 +2094,13 @@ function main() {
   }
 
   writeJson(path.join("data", "address.json"), address);
+
+  // Create property_has_address relationship
+  const relPropertyAddress = {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" },
+  };
+  writeJson(path.join("data", "relationship_property_has_address.json"), relPropertyAddress);
 
   // LOT
   const lotSizeRaw = pInfo.LotSize;
