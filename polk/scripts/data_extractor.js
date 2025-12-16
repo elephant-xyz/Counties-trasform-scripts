@@ -4158,6 +4158,20 @@ function main() {
   // Write person files for sales grantees
   salesPersons.forEach((person, i) => {
     const personIdx = i + 1;
+    // Final validation: ensure suffix_name is either null or a valid enum value
+    // Convert empty strings to null
+    if (person.suffix_name === "" || person.suffix_name === undefined) {
+      person.suffix_name = null;
+    }
+    // Validate against allowed values
+    if (person.suffix_name !== null && !VALID_SUFFIXES.includes(person.suffix_name)) {
+      person.suffix_name = null; // Set to null if invalid
+    }
+    // Ensure all name fields are properly formatted (trim and convert empty to null)
+    if (typeof person.first_name === "string") person.first_name = person.first_name.trim() || null;
+    if (typeof person.last_name === "string") person.last_name = person.last_name.trim() || null;
+    if (typeof person.middle_name === "string") person.middle_name = person.middle_name.trim() || null;
+    if (person.middle_name === "") person.middle_name = null;
     writeJSON(path.join("data", `person_${personIdx}.json`), person);
   });
 
