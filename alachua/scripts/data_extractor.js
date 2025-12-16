@@ -1033,7 +1033,7 @@ function mapPermitImprovementType(typeText) {
   if (txt.includes("WINDOW") || txt.includes("DOOR") || txt.includes("OPENING")) {
     return "ExteriorOpeningsAndFinishes";
   }
-  if (txt.includes("HVAC") || txt.includes("A/C") || txt.includes("AIR")) {
+  if (txt.includes("HVAC") || txt.includes("A/C") || txt.includes("AIR") || txt.includes("MECH")) {
     return "MechanicalHVAC";
   }
   if (txt.includes("ELECTR")) return "Electrical";
