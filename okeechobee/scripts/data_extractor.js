@@ -3407,8 +3407,15 @@ function main() {
         ownership_transfer_date: parseDateToISO(row.dateTxt),
         purchase_price_amount: parseCurrencyToNumber(row.priceTxt),
       };
-      writeJson(path.join("data", `sales_${saleIndex}.json`), sale);
-      salesFiles.push(`./sales_${saleIndex}.json`);
+      writeJson(path.join("data", `sales_history_${saleIndex}.json`), sale);
+      salesFiles.push(`./sales_history_${saleIndex}.json`);
+
+      // Create relationship between property and sales_history
+      writeJson(path.join("data", `relationship_property_has_sales_history_${saleIndex}.json`), {
+        from: { "/": "./property.json" },
+        to: { "/": `./sales_history_${saleIndex}.json` }
+      });
+
       // Extract book and page from bookPageTxt
       let book = null, page = null;
       if (row.bookPageTxt) {
@@ -3436,8 +3443,8 @@ function main() {
         }
         writeJson(path.join("data", `deed_${deedIndex}.json`), deed);
 
-        writeJson(path.join("data", `relationship_sales_deed_${saleIndex}.json`), {
-          from: { "/": `./sales_${saleIndex}.json` },
+        writeJson(path.join("data", `relationship_sales_history_${saleIndex}_has_deed.json`), {
+          from: { "/": `./sales_history_${saleIndex}.json` },
           to: { "/": `./deed_${deedIndex}.json` }
         });
       }
@@ -3488,8 +3495,8 @@ function main() {
             path.join(
               "data",
               idx === 0
-                ? "relationship_sales_company.json"
-                : `relationship_sales_company_${idx + 1}.json`,
+                ? "relationship_sales_history_company.json"
+                : `relationship_sales_history_company_${idx + 1}.json`,
             ),
             {  from: { "/": mostRecentSale },to: { "/": companyPath } },
           ),
@@ -3500,8 +3507,8 @@ function main() {
             path.join(
               "data",
               idx === 0
-                ? "relationship_sales_person.json"
-                : `relationship_sales_person_${idx + 1}.json`,
+                ? "relationship_sales_history_person.json"
+                : `relationship_sales_history_person_${idx + 1}.json`,
             ),
             {  from: { "/": mostRecentSale },to: { "/": personPath }},
           ),
