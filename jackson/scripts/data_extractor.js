@@ -2476,6 +2476,8 @@ function main() {
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
 
+  if (parcelId) writeProperty($, parcelId);
+
   const sales = extractSales($);
   // console.log("Sales:", sales);
   writeSalesDeedsFilesAndRelationships($);
@@ -2521,28 +2523,6 @@ function main() {
 
     // Create layout files with relationships
     createLayoutFiles(seed, parcelId);
-  }
-
-  // CRITICAL: Only generate property.json if there are sales_history files or related entities
-  // Otherwise property.json will be orphaned (not referenced by any relationship)
-  // Check if any sales_history files were created
-  const salesHistoryExists = fs.existsSync("data") &&
-    fs.readdirSync("data").some(f => /^sales_history_\d+\.json$/.test(f));
-
-  // Only write property.json if we have sales_history or other related entities
-  if (parcelId && salesHistoryExists) {
-    writeProperty($, parcelId);
-
-    // Create property -> sales_history relationships
-    const salesHistoryFiles = fs.readdirSync("data").filter(f => /^sales_history_\d+\.json$/.test(f));
-    salesHistoryFiles.forEach((file) => {
-      const relFilename = `relationship_property_has_${file.replace('.json', '')}.json`;
-      const rel = {
-        from: { "/": "./property.json" },
-        to: { "/": `./${file}` }
-      };
-      writeJSON(path.join("data", relFilename), rel);
-    });
   }
 
   // DISABLED: Address class is not supported in Sales_History data group
