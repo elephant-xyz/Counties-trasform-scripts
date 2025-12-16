@@ -101,7 +101,7 @@ function parsePersonName(raw, inferredLastName) {
   if (!s) return null;
 
   // Helper to validate that a name starts with a letter
-  const startsWithLetter = (name) => {
+  const isValidName = (name) => {
     if (!name) return false;
     const trimmed = normWS(name);
     // Must start with a letter (not number or special char)
@@ -121,12 +121,9 @@ function parsePersonName(raw, inferredLastName) {
     }
 
     // Validate first and last names
-    if (!startsWithLetter(first) || !startsWithLetter(lastPart)) {
+    if (!isValidName(first) || !isValidName(lastPart)) {
       return null;
     }
-
-    // Validate middle name against strict pattern
-    const middleValid = middle && isValidName(middle) ? middle : null;
 
     return {
       type: "person",
@@ -138,7 +135,7 @@ function parsePersonName(raw, inferredLastName) {
 
   const tokens = s.split(" ").filter(Boolean);
   if (tokens.length === 1) {
-    if (inferredLastName && startsWithLetter(tokens[0]) && startsWithLetter(inferredLastName)) {
+    if (inferredLastName && isValidName(tokens[0]) && isValidName(inferredLastName)) {
       return {
         type: "person",
         first_name: tokens[0],
@@ -154,12 +151,9 @@ function parsePersonName(raw, inferredLastName) {
   const middle = middleTokens.length ? middleTokens.join(" ") : null;
 
   // Validate first and last names
-  if (!startsWithLetter(first) || !startsWithLetter(last)) {
+  if (!isValidName(first) || !isValidName(last)) {
     return null;
   }
-
-  // Validate middle name against strict pattern
-  const middleValid = middle && isValidName(middle) ? middle : null;
 
   return {
     type: "person",

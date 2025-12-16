@@ -66,15 +66,6 @@ function properCaseName(s) {
   return result;
 }
 
-function isValidName(s) {
-  if (!s) return false;
-  const str = String(s).trim();
-  if (!str) return false;
-  // Pattern: must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, or periods
-  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  return namePattern.test(str);
-}
-
 function normalizeLookupString(value) {
   return String(value || "")
     .trim()
