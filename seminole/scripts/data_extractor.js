@@ -3413,23 +3413,6 @@ function main() {
     }
   }
 
-  // If mailing_address exists but no person/company relationships were created,
-  // create a relationship from property to mailing_address
-  if (mailingAddressFile && personEntries.length === 0 && companyEntries.length === 0) {
-    const rel = {
-      from: { "/": "./property.json" },
-      to: { "/": `./${mailingAddressFile}` },
-    };
-    const relationshipFileName = createRelationshipFileName(
-      "property.json",
-      mailingAddressFile,
-    );
-    fs.writeFileSync(
-      path.join("data", relationshipFileName),
-      JSON.stringify(rel, null, 2),
-    );
-  }
-
   const utilityOutputs = [];
   if (utilitiesData) {
     const utilityKeyCandidates = [
