@@ -96,6 +96,90 @@ function isValidName(s) {
   return namePattern.test(str);
 }
 
+function normalizeSuffix(suffix) {
+  if (!suffix) return null;
+  const s = String(suffix).trim().toUpperCase();
+  if (!s) return null;
+
+  // Mapping of common variations to allowed enum values
+  const suffixMap = {
+    "JR": "Jr.",
+    "JR.": "Jr.",
+    "JUNIOR": "Jr.",
+    "SR": "Sr.",
+    "SR.": "Sr.",
+    "SENIOR": "Sr.",
+    "II": "II",
+    "2ND": "II",
+    "SECOND": "II",
+    "III": "III",
+    "3RD": "III",
+    "THIRD": "III",
+    "IV": "IV",
+    "4TH": "IV",
+    "FOURTH": "IV",
+    "PHD": "PhD",
+    "PH.D.": "PhD",
+    "PH.D": "PhD",
+    "MD": "MD",
+    "M.D.": "MD",
+    "M.D": "MD",
+    "ESQ": "Esq.",
+    "ESQ.": "Esq.",
+    "ESQUIRE": "Esq.",
+    "JD": "JD",
+    "J.D.": "JD",
+    "J.D": "JD",
+    "LLM": "LLM",
+    "LL.M.": "LLM",
+    "LL.M": "LLM",
+    "MBA": "MBA",
+    "M.B.A.": "MBA",
+    "M.B.A": "MBA",
+    "RN": "RN",
+    "R.N.": "RN",
+    "R.N": "RN",
+    "DDS": "DDS",
+    "D.D.S.": "DDS",
+    "D.D.S": "DDS",
+    "DVM": "DVM",
+    "D.V.M.": "DVM",
+    "D.V.M": "DVM",
+    "CFA": "CFA",
+    "C.F.A.": "CFA",
+    "C.F.A": "CFA",
+    "CPA": "CPA",
+    "C.P.A.": "CPA",
+    "C.P.A": "CPA",
+    "PE": "PE",
+    "P.E.": "PE",
+    "P.E": "PE",
+    "PMP": "PMP",
+    "P.M.P.": "PMP",
+    "P.M.P": "PMP",
+    "EMERITUS": "Emeritus",
+    "RET": "Ret.",
+    "RET.": "Ret.",
+    "RETIRED": "Ret.",
+  };
+
+  const mapped = suffixMap[s];
+  if (mapped) return mapped;
+
+  // If already in correct format, return as-is
+  const allowedValues = [
+    "Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM",
+    "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."
+  ];
+
+  for (const allowed of allowedValues) {
+    if (allowed.toUpperCase() === s) return allowed;
+  }
+
+  // Return null if no match found - validation will catch this
+  return null;
+}
+
 function parsePersonName(raw, inferredLastName) {
   const s = normWS(raw);
   if (!s) return null;
@@ -247,7 +331,9 @@ function processOwnerObject(obj, options = {}) {
       last_name: normWS(last),
       middle_name: middleValid,
     };
-    if (suffix) person.suffix_name = normWS(suffix);
+    // Normalize suffix to match allowed enum values
+    const normalizedSuffix = suffix ? normalizeSuffix(suffix) : null;
+    if (normalizedSuffix) person.suffix_name = normalizedSuffix;
     if (ownershipPercentage !== null)
       person.ownership_percentage = ownershipPercentage;
     if (ownershipCode)
