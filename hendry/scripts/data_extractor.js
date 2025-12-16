@@ -1904,10 +1904,8 @@ function writePersonCompaniesSalesRelationships(
 ) {
   removeMatchingDataFiles(/^person_\d+\.json$/);
   removeMatchingDataFiles(/^company_\d+\.json$/);
-  removeMatchingDataFiles(/^relationship_sales_history_\d+_person_\d+\.json$/);
-  removeMatchingDataFiles(/^relationship_sales_history_\d+_company_\d+\.json$/);
-  removeMatchingDataFiles(/^relationship_sales_person_\d+\.json$/);
-  removeMatchingDataFiles(/^relationship_sales_company_\d+\.json$/);
+  removeMatchingDataFiles(/^relationship_sales_history_\d+_has_person_\d+\.json$/);
+  removeMatchingDataFiles(/^relationship_sales_history_\d+_has_company_\d+\.json$/);
 
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (!owners) return;
@@ -2137,6 +2135,7 @@ function writePersonCompaniesSalesRelationships(
   sales.forEach((rec, idx) => {
     const saleFile = saleFiles ? saleFiles[idx] : null;
     if (!saleFile) return;
+    const saleIdx = idx + 1;
     const linkedTargets = new Set();
     const addRelationshipForOwner = (owner) => {
       if (!owner) return;
@@ -2152,7 +2151,13 @@ function writePersonCompaniesSalesRelationships(
           const relKey = `person_${pIdx}`;
           if (!linkedTargets.has(relKey)) {
             linkedTargets.add(relKey);
-            writeRelationship(saleFile, `person_${pIdx}.json`);
+            writeJSON(
+              path.join("data", `relationship_sales_history_${saleIdx}_has_person_${pIdx}.json`),
+              {
+                from: { "/": `./${saleFile}` },
+                to: { "/": `./person_${pIdx}.json` }
+              }
+            );
             linkedPersonIds.add(pIdx);
           }
         }
@@ -2163,7 +2168,13 @@ function writePersonCompaniesSalesRelationships(
           const relKey = `company_${cIdx}`;
           if (!linkedTargets.has(relKey)) {
             linkedTargets.add(relKey);
-            writeRelationship(saleFile, `company_${cIdx}.json`);
+            writeJSON(
+              path.join("data", `relationship_sales_history_${saleIdx}_has_company_${cIdx}.json`),
+              {
+                from: { "/": `./${saleFile}` },
+                to: { "/": `./company_${cIdx}.json` }
+              }
+            );
             linkedCompanyIds.add(cIdx);
           }
         }
@@ -2255,9 +2266,7 @@ function writeUtility(parcelId, buildingLayouts, propertySeed, unnormalized) {
   removeMatchingDataFiles(/^utility_\d+\.json$/);
   removeMatchingDataFiles(/^utility\.json$/);
   removeMatchingDataFiles(/^relationship_layout_\d+_has_utility_\d+\.json$/);
-  removeMatchingDataFiles(/^relationship_layout_\d+_utility_\d+\.json$/);
   removeMatchingDataFiles(/^relationship_property_has_utility_\d+\.json$/);
-  removeMatchingDataFiles(/^relationship_property_utility_\d+\.json$/);
 
   const buildingMap = new Map();
   (buildingLayouts || []).forEach((b) => {
@@ -2344,11 +2353,23 @@ function writeUtility(parcelId, buildingLayouts, propertySeed, unnormalized) {
   };
 
   const linkUtilityToLayout = (layoutId, utilityId) => {
-    writeRelationship(`layout_${layoutId}.json`, `utility_${utilityId}.json`);
+    writeJSON(
+      path.join("data", `relationship_layout_${layoutId}_has_utility_${utilityId}.json`),
+      {
+        from: { "/": `./layout_${layoutId}.json` },
+        to: { "/": `./utility_${utilityId}.json` }
+      }
+    );
   };
 
   const linkUtilityToProperty = (utilityId) => {
-    writeRelationship("property.json", `utility_${utilityId}.json`);
+    writeJSON(
+      path.join("data", `relationship_property_has_utility_${utilityId}.json`),
+      {
+        from: { "/": "./property.json" },
+        to: { "/": `./utility_${utilityId}.json` }
+      }
+    );
   };
 
   buildingEntries.forEach((entry) => {
@@ -2415,8 +2436,7 @@ function writeLayout(parcelId, propertySeed, unnormalized) {
 
   removeMatchingDataFiles(/^layout_\d+\.json$/);
   removeMatchingDataFiles(/^relationship_layout_\d+_has_layout_\d+\.json$/);
-  removeMatchingDataFiles(/^relationship_layout_\d+_layout_\d+\.json$/);
-  removeMatchingDataFiles(/^relationship_property_layout_\d+\.json$/);
+  removeMatchingDataFiles(/^relationship_property_has_layout_\d+\.json$/);
 
   if (buildingEntries.length === 0) {
     return { buildingLayouts: [] };
@@ -2438,7 +2458,13 @@ function writeLayout(parcelId, propertySeed, unnormalized) {
   };
 
   const writeLayoutRelationship = (parentId, childId) => {
-    writeRelationship(`layout_${parentId}.json`, `layout_${childId}.json`);
+    writeJSON(
+      path.join("data", `relationship_layout_${parentId}_has_layout_${childId}.json`),
+      {
+        from: { "/": `./layout_${parentId}.json` },
+        to: { "/": `./layout_${childId}.json` }
+      }
+    );
   };
 
   buildingEntries.forEach((entry, idx) => {
@@ -2590,7 +2616,13 @@ function writeLayout(parcelId, propertySeed, unnormalized) {
 
   // Create relationships from property to building layouts
   buildingLayouts.forEach((layout) => {
-    writeRelationship("property.json", layout.layout_file);
+    writeJSON(
+      path.join("data", `relationship_property_has_layout_${layout.layout_id}.json`),
+      {
+        from: { "/": "./property.json" },
+        to: { "/": `./${layout.layout_file}` }
+      }
+    );
   });
 
   return { buildingLayouts };
@@ -2771,8 +2803,13 @@ function writeGeometry(unnorm, propertySeed) {
   writeJSON(path.join("data", "geometry.json"), geometry);
 
   removeMatchingDataFiles(/^relationship_address_has_geometry\.json$/);
-  removeMatchingDataFiles(/^relationship_address_geometry\.json$/);
-  writeRelationship("address.json", "geometry.json");
+  writeJSON(
+    path.join("data", "relationship_address_has_geometry.json"),
+    {
+      from: { "/": "./address.json" },
+      to: { "/": "./geometry.json" }
+    }
+  );
   return true;
 }
 
@@ -2786,9 +2823,7 @@ function writeStructures(parcelId, buildingLayouts, propertySeed, unnormalized) 
   removeMatchingDataFiles(/^structure_\d+\.json$/);
   removeMatchingDataFiles(/^structure\.json$/);
   removeMatchingDataFiles(/^relationship_layout_\d+_has_structure_\d+\.json$/);
-  removeMatchingDataFiles(/^relationship_layout_\d+_structure_\d+\.json$/);
   removeMatchingDataFiles(/^relationship_property_has_structure_\d+\.json$/);
-  removeMatchingDataFiles(/^relationship_property_structure_\d+\.json$/);
 
   const buildingMap = new Map();
   (buildingLayouts || []).forEach((b) => {
@@ -2826,11 +2861,23 @@ function writeStructures(parcelId, buildingLayouts, propertySeed, unnormalized) 
   };
 
   const linkStructureToLayout = (layoutId, structureId) => {
-    writeRelationship(`layout_${layoutId}.json`, `structure_${structureId}.json`);
+    writeJSON(
+      path.join("data", `relationship_layout_${layoutId}_has_structure_${structureId}.json`),
+      {
+        from: { "/": `./layout_${layoutId}.json` },
+        to: { "/": `./structure_${structureId}.json` }
+      }
+    );
   };
 
   const linkStructureToProperty = (structureId) => {
-    writeRelationship("property.json", `structure_${structureId}.json`);
+    writeJSON(
+      path.join("data", `relationship_property_has_structure_${structureId}.json`),
+      {
+        from: { "/": "./property.json" },
+        to: { "/": `./structure_${structureId}.json` }
+      }
+    );
   };
 
   buildingEntries.forEach((entry) => {
@@ -2915,14 +2962,18 @@ function writePropertyImprovements($, parcelId, propertySeed, unnormalized) {
   removeMatchingDataFiles(
     /^relationship_property_has_property_improvement_\d+\.json$/,
   );
-  removeMatchingDataFiles(
-    /^relationship_property_property_improvement_\d+\.json$/,
-  );
 
   improvements.forEach((imp, idx) => {
-    const fileName = `property_improvement_${idx + 1}.json`;
+    const improvementIdx = idx + 1;
+    const fileName = `property_improvement_${improvementIdx}.json`;
     writeJSON(path.join("data", fileName), imp);
-    writeRelationship("property.json", fileName);
+    writeJSON(
+      path.join("data", `relationship_property_has_property_improvement_${improvementIdx}.json`),
+      {
+        from: { "/": "./property.json" },
+        to: { "/": `./${fileName}` }
+      }
+    );
   });
 }
 
