@@ -4096,6 +4096,10 @@ function main() {
   pc.persons.forEach((p, i) => {
     const personIdx = i + 1;
     if (usedPersonIndices.has(personIdx)) {
+      // Final validation: ensure suffix_name is either null or a valid enum value
+      if (p.suffix_name !== null && !VALID_SUFFIXES.includes(p.suffix_name)) {
+        p.suffix_name = null; // Set to null if invalid
+      }
       writeJSON(path.join("data", `person_${personIdx}.json`), p);
     }
   });
