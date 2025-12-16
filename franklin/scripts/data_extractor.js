@@ -3386,7 +3386,7 @@ function main() {
 
     const fileObj = {
       file_format: null,
-      name: fileName,
+      name: (fileName && fileName.trim().length > 0) ? fileName : "Deed Document",
       original_url: deedUrl,
       ipfs_url: null,
       document_type: mapDocumentType(deedType),
