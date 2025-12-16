@@ -2558,6 +2558,10 @@ function main() {
     // relationships for sales → owners (use latest sales_history_1.json if exists)
     const lastSales = salesFiles[0]; // if only last is desired; spec does not define matching by date; link available sale
 
+    // Track which entities are used in relationships
+    const usedPersonIdx = new Set();
+    const usedCompanyIdx = new Set();
+
     if (lastSales) {
       let relIdx = 1;
       let p = 1;
@@ -2573,6 +2577,7 @@ function main() {
           ),
           rel,
         );
+        usedPersonIdx.add(p);
         p++;
         relIdx++;
       }
@@ -2589,9 +2594,27 @@ function main() {
           ),
           rel,
         );
+        usedCompanyIdx.add(c);
         c++;
         relIdx++;
       }
+    }
+
+    // Remove unused person and company files that have no relationships
+    let checkPersonIdx = 1;
+    while (fs.existsSync(path.join("data", `person_${checkPersonIdx}.json`))) {
+      if (!usedPersonIdx.has(checkPersonIdx)) {
+        fs.unlinkSync(path.join("data", `person_${checkPersonIdx}.json`));
+      }
+      checkPersonIdx++;
+    }
+
+    let checkCompanyIdx = 1;
+    while (fs.existsSync(path.join("data", `company_${checkCompanyIdx}.json`))) {
+      if (!usedCompanyIdx.has(checkCompanyIdx)) {
+        fs.unlinkSync(path.join("data", `company_${checkCompanyIdx}.json`));
+      }
+      checkCompanyIdx++;
     }
   }
 
