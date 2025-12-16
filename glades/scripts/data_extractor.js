@@ -1519,11 +1519,29 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   const ownersByDate = record.owners_by_date;
   // console.log("ownersByDate",ownersByDate);
 
+  // Determine which dates will be used for relationships
+  const usedDates = new Set();
+
+  // Add all sale dates
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    if (d) usedDates.add(d);
+  });
+
+  // Add 'current' date for mailing address relationships
+  if (ownersByDate['current']) {
+    usedDates.add('current');
+  }
+
   //Person processing and mapping creation.
+  // Only create persons that appear at dates that will be used for relationships
   const personMap = new Map();
   Object.entries(ownersByDate).forEach(([date, arr]) => {
     // Skip owners with unknown dates as they can't be linked to sales
     if (date.startsWith('unknown_date')) return;
+
+    // Only process dates that will be used for relationships
+    if (!usedDates.has(date)) return;
 
     (arr || []).forEach((o) => {
       if (o.type === "person") {
@@ -1565,10 +1583,14 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   });
 
   //Company processing and mapping creation.
+  // Only create companies that appear at dates that will be used for relationships
   const companyNames = new Set();
   Object.entries(ownersByDate).forEach(([date, arr]) => {
     // Skip owners with unknown dates as they can't be linked to sales or other entities
     if (date.startsWith('unknown_date')) return;
+
+    // Only process dates that will be used for relationships
+    if (!usedDates.has(date)) return;
 
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
