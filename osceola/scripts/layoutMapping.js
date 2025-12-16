@@ -193,6 +193,48 @@ function baseLayoutDefaults() {
       is_finished: true,
     });
     layouts.push(buildingLayout);
+    const numberOfBedrooms = building?.Bedrooms || 0;
+    const numberOfBathrooms = building?.Bathrooms || 0;
+    const numberOfHalfbathrooms = building?.HalfBathrooms || 0;
+    for (let index = 0; index < numberOfBedrooms; index++) {
+      const roomLayout = Object.assign(baseLayoutDefaults(), {
+        space_type: "Bedroom",
+        space_type_index: `${(buildIndex + 1).toString()}.${index+1}`,
+        size_square_feet: null,
+        heated_area_sq_ft: null,
+        total_area_sq_ft: null,
+        built_year: null,
+        building_number: (buildIndex + 1),
+        is_finished: true,
+      });
+      layouts.push(roomLayout);
+    }
+    for (let index = 0; index < numberOfBathrooms; index++) {
+      const roomLayout = Object.assign(baseLayoutDefaults(), {
+        space_type: "Full Bathroom",
+        space_type_index: `${(buildIndex + 1).toString()}.${index+1}`,
+        size_square_feet: null,
+        heated_area_sq_ft: null,
+        total_area_sq_ft: null,
+        built_year: null,
+        building_number: (buildIndex + 1),
+        is_finished: true,
+      });
+      layouts.push(roomLayout);
+    }
+    for (let index = 0; index < numberOfHalfbathrooms; index++) {
+      const roomLayout = Object.assign(baseLayoutDefaults(), {
+        space_type: "Half Bathroom / Powder Room",
+        space_type_index: `${(buildIndex + 1).toString()}.${index+1}`,
+        size_square_feet: null,
+        heated_area_sq_ft: null,
+        total_area_sq_ft: null,
+        built_year: null,
+        building_number: (buildIndex + 1),
+        is_finished: true,
+      });
+      layouts.push(roomLayout);
+    }
   });
 
   // Sub-area derived layouts

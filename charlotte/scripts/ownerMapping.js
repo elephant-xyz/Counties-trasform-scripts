@@ -1,319 +1,407 @@
-// ownerMapping.js
-// Transform input.html into structured owners JSON using cheerio only for HTML parsing.
-// No input validation, error handling, or logging beyond emitting JSON.
-
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-// Read HTML
-const html = fs.readFileSync(path.join(process.cwd(), "input.html"), "utf8");
+// Load input HTML
+const inputPath = path.resolve("input.html");
+const html = fs.readFileSync(inputPath, "utf8");
 const $ = cheerio.load(html);
 
-// Helpers
-const toTitle = (s) =>
-  s.replace(
-    /\S+/g,
-    (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
-  );
-const normalizeSpaces = (s) => s.replace(/\s+/g, " ").trim();
-const stripPunct = (s) => s.replace(/[\.,]+$/g, "").replace(/^\W+|\W+$/g, "");
+// Utility: normalize name for deduplication
+function normalizeName(str) {
+  return (str || "")
+    .replace(/\s+/g, " ")
+    .replace(/[\.,]+$/g, "")
+    .trim()
+    .toLowerCase();
+}
 
-// Detect company by keyword list (case-insensitive)
-const companyIndicators = [
-  "inc",
-  "llc",
-  "l.l.c",
-  "ltd",
-  "limited",
-  "foundation",
-  "alliance",
-  "solutions",
-  "corp",
-  "co",
-  "company",
-  "services",
-  "service",
-  "trust",
-  "tr",
-  "associates",
-  "association",
-  "hoa",
-  "pllc",
-  "pc",
-  "lp",
-  "llp",
-  "partners",
-  "partnership",
-  "bank",
-  "church",
-  "ministries",
-  "university",
-  "school",
-  "club",
-  "holdings",
-  "properties",
-  "property",
-  "management",
-  "group",
-  "enterprises",
-  "investment",
-  "investments",
-];
+function normalizeWhitespace(str) {
+  return (str || "")
+    .replace(/\s+/g, " ")
+    .replace(/[\u00A0\s]+/g, " ")
+    .trim();
+}
 
-const isCompany = (name) => {
-  const n = name.toLowerCase();
-  return companyIndicators.some((kw) =>
-    new RegExp(`(^|[^a-z])${kw}([^a-z]|$)`, "i").test(n),
-  );
-};
-
-// Remove trailing ownership/suffix tokens not part of a personal name
-const removeTrailingOwnershipTokens = (name) => {
-  let n = normalizeSpaces(name.replace(/&amp;/gi, "&"));
-  // tokens to strip if they appear as trailing separate words
-  const trailingTokens = [
-    "L/E",
-    "LE",
-    "ET AL",
-    "ETAL",
-    "JTROS",
-    "JT ROS",
-    "H/W",
-    "H & W",
-    "H/W",
-    "C/O",
-    "AKA",
-    "FKA",
-    "NKA",
-  ];
-  let parts = n.split(" ");
-  while (parts.length > 0) {
-    const lastTwo = parts.slice(-2).join(" ").toUpperCase();
-    const lastOne = parts[parts.length - 1].toUpperCase();
-    if (trailingTokens.includes(lastTwo)) {
-      parts = parts.slice(0, -2);
-      continue;
-    }
-    if (trailingTokens.includes(lastOne)) {
-      parts = parts.slice(0, -1);
-      continue;
-    }
-    break;
+function cleanInvalidCharsFromName(raw) {
+  let parsedName = normalizeWhitespace(raw)
+    .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
+    .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .trim();
+  while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(1);
   }
-  return normalizeSpaces(parts.join(" "));
-};
-
-// Build person object from a single-person raw name segment
-const buildPerson = (raw) => {
-  const cleaned = stripPunct(removeTrailingOwnershipTokens(raw));
-  if (!cleaned) return null;
-
-  // If comma format: LAST, FIRST [MIDDLE...]
-  if (/,/.test(cleaned)) {
-    const [lastPart, restPart] = cleaned
-      .split(",")
-      .map((s) => normalizeSpaces(s));
-    const restTokens = restPart.split(" ").filter(Boolean);
-    const first = restTokens[0] || "";
-    const middle = restTokens.slice(1).join(" ");
-    if (!first || !lastPart) return null;
-    const obj = {
-      type: "person",
-      first_name: toTitle(first),
-      last_name: toTitle(lastPart.replace(/\./g, "")),
-    };
-    if (normalizeSpaces(middle)) obj.middle_name = toTitle(middle);
-    return obj;
+  while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(0, parsedName.length - 1);
   }
+  return parsedName;
+}
 
-  // Assume common property appraiser format: LAST FIRST [MIDDLE...]
-  const tokens = cleaned.split(" ").filter(Boolean);
-  if (tokens.length === 1) {
-    // Single token insufficient to confidently split
+function parseAccountNumber($) {
+  const heading = $('h1')
+    .filter((_, el) => /property record information for/i.test($(el).text()))
+    .first();
+  if (!heading.length) {
     return null;
   }
+  const text = cleanText(heading.text());
+  const match = text.match(/for\s+([A-Za-z0-9-]+)/i);
+  return match ? match[1] : null;
+}
 
-  const last = tokens[0];
-  const first = tokens[1];
-  const middle = tokens.slice(2).join(" ");
-  if (!first || !last) return null;
-  const person = {
-    type: "person",
-    first_name: toTitle(first.replace(/\./g, "")),
-    last_name: toTitle(last.replace(/\./g, "")),
+function parseOwnerInformation($) {
+  const defaultOwner = {
+    name: null,
+    addressLines: [],
+    formattedAddress: null,
+    footnote: null,
   };
-  if (normalizeSpaces(middle))
-    person.middle_name = toTitle(middle.replace(/\./g, ""));
-  return person;
-};
 
-// Parse owner line into zero or more owners, with invalids captured
-const parseOwnersFromString = (raw) => {
-  const owners = [];
-  const invalids = [];
-
-  let s = normalizeSpaces(raw.replace(/\u00A0/g, " ").replace(/&amp;/gi, "&"));
-  if (!s) return { owners, invalids };
-
-  // Split by clear separators indicating multiple owners
-  const segments = s
-    .split(/\s*&\s*|\s+AND\s+/i)
-    .map(normalizeSpaces)
-    .filter(Boolean);
-
-  segments.forEach((seg) => {
-    const segment = normalizeSpaces(seg);
-    if (!segment) return;
-
-    // Company detection first
-    if (isCompany(segment)) {
-      owners.push({ type: "company", name: normalizeSpaces(segment) });
-      return;
-    }
-
-    const person = buildPerson(segment);
-    if (person) {
-      owners.push(person);
-    } else {
-      invalids.push({ raw: segment, reason: "unable_to_classify_or_split" });
-    }
-  });
-
-  return { owners, invalids };
-};
-
-// Extract property id
-const extractPropertyId = () => {
-  let id = null;
-  $("h1, h2, h3, td, div, span, p").each((_, el) => {
-    const t = $(el).text();
-    const m = t.match(
-      /Property\s+Record\s+Information\s+for\s+([A-Za-z0-9_-]+)/i,
-    );
-    if (m && m[1]) {
-      id = m[1];
-      return false;
-    }
-  });
-
-  if (!id) {
-    // try common labels
-    const text = $("body").text();
-    const m2 = text.match(
-      /\b(Property\s*ID|Account|Parcel|Property\s*Number)\s*[:#]?\s*([A-Za-z0-9_-]{6,})/i,
-    );
-    if (m2 && m2[2]) id = m2[2];
+  const heading = findHeadingByText($, 'Owner:');
+  if (!heading.length) {
+    return defaultOwner;
   }
 
-  return id || "unknown_id";
-};
+  const container = heading.closest('.w3-cell');
+  const addressBlock = container.find('.w3-border').first();
+  const lines = extractLines(addressBlock);
+  const footnote = cleanText(container.find('.prcfootnote').first().text());
 
-// Extract current owner candidate strings from the DOM
-const extractOwnerStrings = () => {
-  const results = [];
-  // Primary heuristic: find the Owner section header and grab the first line of the following bordered box
-  $("h2").each((_, h) => {
-    const ht = $(h).text().trim().toLowerCase();
-    if (ht.includes("owner")) {
-      // find the first block-level container after header
-      const box = $(h).nextAll("div").first();
-      if (box && box.length) {
-        // Convert <br> to newline and split, take first line
-        const rawHtml = box.html() || "";
-        const withNewlines = rawHtml
-          .replace(/<br\s*\/?\s*>/gi, "\n")
-          .replace(/&nbsp;/gi, " ");
-        const lines = withNewlines
-          .split(/\n/)
-          .map((t) => normalizeSpaces(t))
-          .filter(Boolean);
-        if (lines.length > 0) {
-          results.push(lines[0]);
-        } else {
-          const txt = normalizeSpaces(box.text());
-          if (txt) {
-            const firstLine = normalizeSpaces(txt.split(/\n|\r/)[0]);
-            if (firstLine) results.push(firstLine);
-          }
+  return {
+    name: lines[0] || null,
+    addressLines: lines.slice(1),
+    formattedAddress: lines.length ? lines.join(', ') : null,
+    footnote: footnote || null,
+  };
+}
+
+function findHeadingByText($, headingText) {
+  if (!headingText) {
+    return $();
+  }
+  const target = headingText.trim().toLowerCase();
+  return $('h2')
+    .filter((_, el) => cleanText($(el).text()).toLowerCase() === target)
+    .first();
+}
+
+function extractLines(element) {
+  if (!element || !element.length) {
+    return [];
+  }
+
+  const clone = element.clone();
+  clone.find('br').replaceWith('\n');
+  return clone
+    .text()
+    .replace(/\u00A0/g, ' ')
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+}
+
+function cleanText(text) {
+  if (!text) {
+    return '';
+  }
+  return text.replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Collect candidate owner name containers around labels like "Owner"
+function extractOwnerTextBlocks($) {
+  const ownerInfromation = parseOwnerInformation($);
+  return ownerInfromation.name
+}
+
+// Split a names HTML block into raw name strings
+function splitNamesFromHtml(html) {
+  // Replace <br> with newlines, strip tags
+  let tmp = html.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, " ");
+  // Split into lines; also split by semicolons
+  let parts = tmp
+    .split(/\n|;+/)
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  // Some lines may contain slashes or pipes
+  let expanded = [];
+  parts.forEach((p) => {
+    const subs = p
+      .split(/\s*\|\s*|\s*\/\s*/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    expanded.push(...subs);
+  });
+  return expanded;
+}
+
+// Classification helpers
+function isCompanyName(name) {
+  const n = name.trim();
+  const re =
+    /\b(inc|l\.l\.c\.?|llc|ltd|limited|foundation|alliance|solutions?|corp(?:oration)?|co\.?\b|services?|service\b|trust\b|tr\b|holding(?:s)?\b|partner(?:s|ship)?\b|associates?\b|lp\b|pllc\b|pc\b|bank\b|n\.?a\.?\b|credit\s*union\b|association\b|church\b|minist(?:ry|ries)\b|university\b|college\b|hospital\b|group\b|industries\b|properties\b|enterprises\b|management\b|realty\b|investment(?:s)?\b)/i;
+  return re.test(n);
+}
+
+function cleanOwnerRaw(name) {
+  return (
+    name
+      // Remove explicit care-of prefixes only when clearly marked (e.g., "c/o" or "c.o.")
+      .replace(/^(?:c\s*\/\s*o\.?|c\.\s*o\.|care\s*of)\s*/i, "")
+      .replace(/\s{2,}/g, " ")
+      .replace(/[\u00A0]/g, " ")
+      .trim()
+  );
+}
+
+function splitAmpersandNames(name) {
+  // Split on & or ' and '
+  const parts = name
+    .split(/\s*&\s*|\s+and\s+/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length <= 1) return null;
+
+  // If last segment contains a surname, use it for preceding first names
+  const lastSeg = parts[parts.length - 1];
+  const tokens = lastSeg.split(/\s+/);
+  let lastName = tokens.slice(-1).join(" ");
+  // Handle comma style in last segment
+  if (lastSeg.includes(",")) {
+    // "Last, First Middle" style
+    const [last, rest] = lastSeg.split(",").map((s) => s.trim());
+    if (last) lastName = last;
+  }
+
+  const individuals = [];
+  parts.forEach((seg, idx) => {
+    if (seg.includes(",")) {
+      // Already "Last, First" style; parse directly
+      const [last, rest] = seg.split(",").map((s) => s.trim());
+      const nameTokens = (rest || "").split(/\s+/).filter(Boolean);
+      if (nameTokens.length >= 1) {
+        const first = nameTokens[0];
+        const middle = nameTokens.slice(1).join(" ") || null;
+        if (cleanInvalidCharsFromName(first) && cleanInvalidCharsFromName(last)) {
+          individuals.push({
+            type: "person",
+            first_name: cleanInvalidCharsFromName(first),
+            last_name: cleanInvalidCharsFromName(last),
+            middle_name: cleanInvalidCharsFromName(middle) || null,
+          });
+        }
+      }
+    } else {
+      const toks = seg.split(/\s+/).filter(Boolean);
+      if (toks.length === 1 && idx < parts.length - 1) {
+        // Likely just a first name, use shared last name
+        if (cleanInvalidCharsFromName(toks[0]) && cleanInvalidCharsFromName(lastName)) {
+          individuals.push({
+            type: "person",
+            first_name: cleanInvalidCharsFromName(toks[0]),
+            last_name: cleanInvalidCharsFromName(lastName),
+            middle_name: null,
+          });
+        }
+      } else if (toks.length >= 2) {
+        const first = toks[0];
+        const last = toks.slice(1).join(" ");
+        if (cleanInvalidCharsFromName(first) && cleanInvalidCharsFromName(last)) {
+          individuals.push({
+            type: "person",
+            first_name: cleanInvalidCharsFromName(first),
+            last_name: cleanInvalidCharsFromName(last),
+            middle_name: null,
+          });
         }
       }
     }
   });
-
-  // Secondary heuristic: any strong label that includes Owner then the sibling text
-  $("strong").each((_, el) => {
-    const t = $(el).text().trim().toLowerCase();
-    if (t.startsWith("owner")) {
-      const parent = $(el).closest("div");
-      const txt = normalizeSpaces(parent.text());
-      if (txt) {
-        const afterLabel = normalizeSpaces(txt.replace(/^owner\s*:?/i, ""));
-        if (afterLabel && afterLabel.length < 200) results.push(afterLabel);
-      }
-    }
-  });
-
-  // Deduplicate raw strings by normalized value
-  const seen = new Set();
-  const deduped = [];
-  for (const r of results) {
-    const k = normalizeSpaces(r).toLowerCase();
-    if (!seen.has(k) && k) {
-      seen.add(k);
-      deduped.push(r);
-    }
-  }
-  return deduped;
-};
-
-// Build owners_by_date structure
-const ownersByDate = {};
-const invalidOwners = [];
-
-const ownerStrings = extractOwnerStrings();
-const currentOwners = [];
-const currentSeen = new Set();
-
-ownerStrings.forEach((s) => {
-  const { owners, invalids } = parseOwnersFromString(s);
-  // Deduplicate within current by normalized printable name
-  owners.forEach((o) => {
-    const key =
-      o.type === "company"
-        ? normalizeSpaces(o.name).toLowerCase()
-        : normalizeSpaces(
-            [o.first_name, o.middle_name, o.last_name]
-              .filter(Boolean)
-              .join(" "),
-          ).toLowerCase();
-    if (!currentSeen.has(key)) {
-      currentSeen.add(key);
-      currentOwners.push(o);
-    }
-  });
-  invalids.forEach((inv) => invalidOwners.push(inv));
-});
-
-if (currentOwners.length > 0) {
-  ownersByDate["current"] = currentOwners;
+  return individuals;
 }
 
-// Compose final output
-const propertyId = extractPropertyId();
-const out = {};
-out[`property_${propertyId}`] = {
+function parsePersonName(raw) {
+  let name = raw.trim();
+
+  // Remove honorifics/suffixes common
+  name = name
+    .replace(
+      /\b(Mr\.?|Mrs\.?|Ms\.?|Dr\.?|Prof\.?|Rev\.?|Hon\.?|Sr\.?|Jr\.?|II|III|IV)\b/gi,
+      "",
+    )
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  // Handle comma style: Last, First Middle
+  if (/,/.test(name)) {
+    const [last, rest] = name.split(",").map((s) => s.trim());
+    const toks = (rest || "").split(/\s+/).filter(Boolean);
+    if (last && toks.length >= 1) {
+      const first = toks[0];
+      const middle = toks.slice(1).join(" ") || null;
+      
+      if (cleanInvalidCharsFromName(first) && cleanInvalidCharsFromName(last)) {
+        return {
+          type: "person",
+          first_name: cleanInvalidCharsFromName(first),
+          last_name: cleanInvalidCharsFromName(last),
+          middle_name: cleanInvalidCharsFromName(middle) || null,
+        };
+      }
+    }
+  }
+
+  // Standard First Middle Last
+  const tokens = name.split(/\s+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    const first = tokens[0];
+    const last = tokens.slice(1).join(" ");
+    // Try to detect middle name when there are 3+ tokens
+    let middle = null;
+    if (tokens.length >= 3) {
+      middle = tokens.slice(1, -1).join(" ");
+      // Reassign last as last token only
+      
+      if (cleanInvalidCharsFromName(tokens[0]) && cleanInvalidCharsFromName(tokens[tokens.length - 1])) {
+        return {
+          type: "person",
+          first_name: cleanInvalidCharsFromName(tokens[0]),
+          last_name: cleanInvalidCharsFromName(tokens[tokens.length - 1]),
+          middle_name: cleanInvalidCharsFromName(middle) || null,
+        };
+      }
+    }
+    if (cleanInvalidCharsFromName(first) && cleanInvalidCharsFromName(last)) {
+      return {
+        type: "person",
+        first_name: cleanInvalidCharsFromName(first),
+        last_name: cleanInvalidCharsFromName(last),
+        middle_name: null,
+      };
+    }
+  }
+  return null;
+}
+
+function classifyOwnersFromRaw(rawNames) {
+  const valid = [];
+  const invalid = [];
+
+  rawNames.forEach((raw0) => {
+    let raw = cleanOwnerRaw(raw0);
+    if (!raw) return;
+
+    // Ignore lines that look like addresses or pure numbers
+    if (
+      /\d{2,}/.test(raw) &&
+      /\b(st|ave|rd|dr|blvd|ln|ct|hwy|suite|floor|fl)\b/i.test(raw)
+    )
+      return;
+
+    // Company check
+    if (isCompanyName(raw)) {
+      valid.push({ type: "company", name: raw });
+      return;
+    }
+
+    // Handle ampersand or 'and' combined names
+    if (/[&]|\band\b/i.test(raw)) {
+      const people = splitAmpersandNames(raw);
+      if (people && people.length) {
+        valid.push(...people);
+        return;
+      }
+    }
+
+    // Try person parsing
+    const person = parsePersonName(raw);
+    if (person) {
+      valid.push(person);
+    } else {
+      invalid.push({
+        raw: raw0,
+        reason: "Unclassifiable or insufficient tokens",
+      });
+    }
+  });
+
+  // Deduplicate
+  const seen = new Set();
+  const deduped = [];
+  valid.forEach((v) => {
+    let key;
+    if (v.type === "company") {
+      key = "company:" + normalizeName(v.name);
+    } else {
+      key =
+        "person:" +
+        normalizeName(`${v.first_name} ${v.middle_name || ""} ${v.last_name}`);
+    }
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    deduped.push(v);
+  });
+
+  // Remove empty names
+  const filtered = deduped.filter((v) => {
+    if (v.type === "company") return !!v.name && v.name.trim().length > 0;
+    return !!v.first_name && !!v.last_name;
+  });
+
+  return { valid: filtered, invalid };
+}
+
+// Extract potential date strings near historical sections (heuristic; may be unused if none)
+function extractHistoricalDateGroups($) {
+  const groups = [];
+  $("table").each((_, table) => {
+    const headers = $(table).find("tr").first().text().toLowerCase();
+    if (/date\s*of\s*sale/.test(headers) || /sale\s*date/.test(headers)) {
+      $(table)
+        .find("tr")
+        .slice(1)
+        .each((__, tr) => {
+          const tds = $(tr).find("td");
+          if (tds.length) {
+            const dateText = $(tds).eq(1).text().trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+              groups.push({ date: dateText, contextEl: tr });
+            }
+          }
+        });
+    }
+  });
+  return groups;
+}
+
+// Main extraction
+const propertyId = parseAccountNumber($);
+const ownerName = extractOwnerTextBlocks($);
+let rawNames = [];
+rawNames.push(...splitNamesFromHtml(ownerName));
+
+const { valid: validOwners, invalid: invalidOwners } =
+  classifyOwnersFromRaw(rawNames);
+
+// Group owners by date - current only by default
+const ownersByDate = {};
+ownersByDate["current"] = validOwners;
+
+// Attempt to detect historical dates and associate owners near them (heuristic)
+// Since owners are not listed in the provided HTML for those dates, we won't attach owners to historical dates.
+
+const output = {};
+output[`property_${propertyId}`] = {
   owners_by_date: ownersByDate,
   invalid_owners: invalidOwners,
 };
 
-// Ensure output directory and write file
-fs.mkdirSync(path.join(process.cwd(), "owners"), { recursive: true });
-fs.writeFileSync(
-  path.join(process.cwd(), "owners", "owner_data.json"),
-  JSON.stringify(out, null, 2),
-  "utf8",
-);
+const jsonStr = JSON.stringify(output, null, 2);
 
-// Print JSON
-console.log(JSON.stringify(out, null, 2));
+// Ensure output directory and write file
+const outDir = path.resolve("owners");
+fs.mkdirSync(outDir, { recursive: true });
+const outPath = path.join(outDir, "owner_data.json");
+fs.writeFileSync(outPath, jsonStr, "utf8");
+
+// Print JSON to stdout
+console.log(jsonStr);
