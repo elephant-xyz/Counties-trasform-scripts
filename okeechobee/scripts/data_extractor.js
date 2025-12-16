@@ -220,7 +220,7 @@ const propertyTypeMapping=[
     "property_type": "Building"
   },
   {
-    "property_usecode": "RV/MH PK ,PK/LOT",
+    "property_usecode": "RV/MH,PK LOT",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
@@ -3074,10 +3074,7 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng, seed, appendSourceInf
   const address = {
       ...appendSourceInfo(seed),
       county_name,
-      unnormalized_address: full,
-      township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
-      range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
-      section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
+      unnormalized_address: full
     };
   writeJson(path.join("data", "address.json"), address);
   // console.log("----ADDRESS--",address);
@@ -3715,13 +3712,13 @@ function main() {
         return false;
       });
       console.log(">>>",propertyMapping)
-      
+
       const propertyFields = {
-        property_type: propertyMapping?.property_type || null,
+        property_type: propertyMapping?.property_type || "Building",
         property_usage_type: propertyMapping?.property_usage_type || null,
-        ownership_estate_type: propertyMapping?.ownership_estate_type || null,
+        ownership_estate_type: propertyMapping?.ownership_estate_type || "FeeSimple",
         structure_form: propertyMapping?.structure_form || null,
-        build_status: propertyMapping?.build_status || null
+        build_status: propertyMapping?.build_status || "Improved"
       };
 
       const prop = {
