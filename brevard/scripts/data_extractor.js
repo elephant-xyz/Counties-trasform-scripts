@@ -4024,7 +4024,8 @@ function main() {
   bldgDetails.numberOfUnits = totalResidentialUnits + totalCommercialUnits;
 
   // property_type is required (cannot be null) - set default if mapping fails
-  if (!property_type) {
+  // Ensure it's always a valid string
+  if (!property_type || typeof property_type !== 'string') {
     // Default to Building if there are units and a built year, otherwise LandParcel
     if (bldgDetails.numberOfUnits > 0 || bldgDetails.yearBuilt) {
       property_type = "Building";
@@ -4034,7 +4035,8 @@ function main() {
   }
 
   // build_status - set default if mapping fails
-  if (!build_status) {
+  // Ensure it's always a valid string (VacantLand, Improved, or UnderConstruction)
+  if (!build_status || typeof build_status !== 'string') {
     // Default to Improved if there are units or a built year, otherwise VacantLand
     if (bldgDetails.numberOfUnits > 0 || bldgDetails.yearBuilt) {
       build_status = "Improved";
@@ -4044,7 +4046,7 @@ function main() {
   }
 
   // ownership_estate_type can be null per schema, but set default FeeSimple if missing
-  if (!ownership_estate_type) {
+  if (!ownership_estate_type || typeof ownership_estate_type !== 'string') {
     ownership_estate_type = "FeeSimple";
   }
 
@@ -4057,13 +4059,13 @@ function main() {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legalDesc || null,
     property_structure_built_year: bldgDetails.yearBuilt ?? null,
-    property_type: property_type || null, // Now extracted from Property Use
+    property_type: property_type, // Always a valid string after validation above
     subdivision: subdivision,
     zoning: null,
-    ownership_estate_type: ownership_estate_type,
-    build_status: build_status,
-    structure_form:structure_form,
-    property_usage_type:property_usage_type    
+    ownership_estate_type: ownership_estate_type, // Always a valid string after validation above
+    build_status: build_status, // Always a valid string after validation above
+    structure_form: structure_form,
+    property_usage_type: property_usage_type
   };
   writeJSON(path.join(dataDir, "property.json"), property);
 
@@ -4504,6 +4506,26 @@ function main() {
 
   createLayoutFiles(seed,propertyId);
 
+  // ---------- Create property_has_layout relationships ----------
+  if (layoutsData && propertyId) {
+    const key = `property_${propertyId}`;
+    const layouts = layoutsData[key]?.layouts || [];
+
+    // Create relationships for each Building layout
+    layouts.forEach((layout, idx) => {
+      if (layout.space_type === "Building") {
+        const layoutIndex = idx + 1;
+        const relationship = {
+          from: { "/": "./property.json" },
+          to: { "/": `./layout_${layoutIndex}.json` }
+        };
+        writeJSON(
+          path.join(dataDir, `relationship_property_has_layout_${layoutIndex}.json`),
+          relationship
+        );
+      }
+    });
+  }
 
   // ---------- Lot ----------
   const lotExtras = extractLotFeaturesFromExtra($);
