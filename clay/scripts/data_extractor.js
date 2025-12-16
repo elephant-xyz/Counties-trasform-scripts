@@ -1498,12 +1498,16 @@ function writeProperty($, parcelId) {
   console.log(">>>",propertyMapping)
   
   // Provide fallback defaults if mapping not found
+  // Ensure property_type and build_status are always valid strings
+  const mappedPropertyType = propertyMapping?.property_type;
+  const mappedBuildStatus = propertyMapping?.build_status;
+
   const propertyFields = {
-    property_type: propertyMapping?.property_type || "Building",
+    property_type: (mappedPropertyType && typeof mappedPropertyType === 'string' && mappedPropertyType.length > 0) ? mappedPropertyType : "Building",
     property_usage_type: propertyMapping?.property_usage_type || null,
     ownership_estate_type: propertyMapping?.ownership_estate_type || "FeeSimple",
     structure_form: propertyMapping?.structure_form || null,
-    build_status: propertyMapping?.build_status || "Improved"
+    build_status: (mappedBuildStatus && typeof mappedBuildStatus === 'string' && mappedBuildStatus.length > 0) ? mappedBuildStatus : "Improved"
   };
 
   // const propertyType = mapPropertyTypeFromUseCode(useCode);
@@ -2626,11 +2630,11 @@ function main() {
 
   const acreage = extractAcreage($);
   console.log("Acreage:", acreage);
-  
+
   // Write lot.json only if at least one field has a value
   const lotAreaSqft = acreage ? Math.round(acreage * 43560) : null;
   const lotType = acreage ? (acreage > 0.25 ? "GreaterThanOneQuarterAcre" : "LessThanOrEqualToOneQuarterAcre") : null;
-  
+
   if (lotType || lotAreaSqft) {
     const lot = {
       ...appendSourceInfo(seed),
@@ -2648,6 +2652,13 @@ function main() {
       lot_condition_issues: null
     };
     writeJSON(path.join("data", "lot.json"), lot);
+
+    // Create relationship between property and lot
+    const relPropertyLot = {
+      from: { "/": "./property.json" },
+      to: { "/": "./lot.json" }
+    };
+    writeJSON(path.join("data", "relationship_property_has_lot.json"), relPropertyLot);
   }
   
 
