@@ -2825,10 +2825,16 @@ function mapPropertyTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
   const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
   if (!normalizedInput) return null;
-  // console.log("1",normalizedInput)
-  // console.log(propertyTypeByUseCode)
+  // Try exact match first
   if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
     return propertyTypeByUseCode[normalizedInput];
+  }
+  // If no exact match, try prefix match (handles truncated text)
+  const keys = Object.keys(propertyTypeByUseCode);
+  for (const key of keys) {
+    if (key.startsWith(normalizedInput) || normalizedInput.startsWith(key.substring(0, Math.min(key.length, normalizedInput.length)))) {
+      return propertyTypeByUseCode[key];
+    }
   }
   return null;
 }
@@ -2839,8 +2845,16 @@ function mapOwnershipEstateTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
   const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
   if (!normalizedInput) return null;
+  // Try exact match first
   if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
     return ownershipEstateTypeByUseCode[normalizedInput];
+  }
+  // If no exact match, try prefix match (handles truncated text)
+  const keys = Object.keys(ownershipEstateTypeByUseCode);
+  for (const key of keys) {
+    if (key.startsWith(normalizedInput) || normalizedInput.startsWith(key.substring(0, Math.min(key.length, normalizedInput.length)))) {
+      return ownershipEstateTypeByUseCode[key];
+    }
   }
   return null;
 }
@@ -2849,8 +2863,16 @@ function mapBuildStatusFromUseCode(code) {
   if (!code && code !== 0) return null;
   const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
   if (!normalizedInput) return null;
+  // Try exact match first
   if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
     return buildStatusByUseCode[normalizedInput];
+  }
+  // If no exact match, try prefix match (handles truncated text)
+  const keys = Object.keys(buildStatusByUseCode);
+  for (const key of keys) {
+    if (key.startsWith(normalizedInput) || normalizedInput.startsWith(key.substring(0, Math.min(key.length, normalizedInput.length)))) {
+      return buildStatusByUseCode[key];
+    }
   }
   return null;
 }
@@ -2859,8 +2881,16 @@ function mapStructureFormFromUseCode(code) {
   if (!code && code !== 0) return null;
   const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
   if (!normalizedInput) return null;
+  // Try exact match first
   if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
     return structureFormByUseCode[normalizedInput];
+  }
+  // If no exact match, try prefix match (handles truncated text)
+  const keys = Object.keys(structureFormByUseCode);
+  for (const key of keys) {
+    if (key.startsWith(normalizedInput) || normalizedInput.startsWith(key.substring(0, Math.min(key.length, normalizedInput.length)))) {
+      return structureFormByUseCode[key];
+    }
   }
   return null;
 }
@@ -2869,8 +2899,16 @@ function mapPropertyUsageTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
   const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
   if (!normalizedInput) return null;
+  // Try exact match first
   if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
     return propertyUsageTypeByUseCode[normalizedInput];
+  }
+  // If no exact match, try prefix match (handles truncated text)
+  const keys = Object.keys(propertyUsageTypeByUseCode);
+  for (const key of keys) {
+    if (key.startsWith(normalizedInput) || normalizedInput.startsWith(key.substring(0, Math.min(key.length, normalizedInput.length)))) {
+      return propertyUsageTypeByUseCode[key];
+    }
   }
   return null;
 }
@@ -4468,6 +4506,23 @@ function main() {
   };
 
   writeJSON(path.join(dataDir, "lot.json"), lotOut);
+
+  // ---------- Property Relationships ----------
+  // Create property_has_address relationship
+  const relPropertyAddress = {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" }
+  };
+  writeJSON(path.join(dataDir, "relationship_property_address.json"), relPropertyAddress);
+
+  // Create property_has_file relationships for each file
+  for (let fileIdx = 1; fileIdx < salesFileIndex; fileIdx++) {
+    const relPropertyFile = {
+      from: { "/": "./property.json" },
+      to: { "/": `./file_${fileIdx}.json` }
+    };
+    writeJSON(path.join(dataDir, `relationship_property_file_${fileIdx}.json`), relPropertyFile);
+  }
 }
 
 main();
