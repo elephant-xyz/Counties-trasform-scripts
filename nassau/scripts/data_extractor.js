@@ -1689,6 +1689,16 @@ function parsePerson(name) {
     middleName = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
   }
 
+  // Reject if first or last name is a single letter - these are likely initials or parsing errors
+  if (firstName && firstName.length === 1) {
+    console.log(`Warning: Rejecting name with single-letter firstName: '${name}' (parsed as firstName: '${firstName}')`);
+    return { firstName: null, lastName: null, middleName: null, prefix, suffix };
+  }
+  if (lastName && lastName.length === 1) {
+    console.log(`Warning: Rejecting name with single-letter lastName: '${name}' (parsed as lastName: '${lastName}')`);
+    return { firstName: null, lastName: null, middleName: null, prefix, suffix };
+  }
+
   return { firstName, lastName, middleName, prefix, suffix };
 }
 
@@ -2401,7 +2411,8 @@ function main() {
       }
 
       // Only create person if we have valid first and last names
-      if (firstName && lastName) {
+      // Additional check: ensure names are not single letters (likely initials or parsing errors)
+      if (firstName && lastName && firstName.length > 1 && lastName.length > 1) {
         const person = {
           source_http_request: {
             method: "GET",
@@ -2422,7 +2433,7 @@ function main() {
         writeJSON(path.join("data", personFileName), person);
         initialPersonFiles.push(personFileName);
       } else {
-        console.log(`Warning: Skipping person with invalid name: ${owner.name} (firstName: ${firstName}, lastName: ${lastName})`);
+        console.log(`Warning: Skipping person with invalid name: ${owner.name} (firstName: ${firstName}, lastName: ${lastName}, firstName.length: ${firstName ? firstName.length : 'N/A'}, lastName.length: ${lastName ? lastName.length : 'N/A'})`);
       }
     }
   });
@@ -2726,8 +2737,9 @@ function main() {
         }
 
         // Only create person if we have valid first and last names
-        if (!firstName || !lastName) {
-          console.log(`Warning: Cannot create person with invalid name - firstName: ${firstName}, lastName: ${lastName}`);
+        // Additional check: ensure names are not single letters (likely initials or parsing errors)
+        if (!firstName || !lastName || firstName.length <= 1 || lastName.length <= 1) {
+          console.log(`Warning: Cannot create person with invalid name - firstName: ${firstName}, lastName: ${lastName}, firstName.length: ${firstName ? firstName.length : 'N/A'}, lastName.length: ${lastName ? lastName.length : 'N/A'}, originalName: ${owner.first_name || 'N/A'} ${owner.last_name || 'N/A'}`);
           return null;
         }
 
