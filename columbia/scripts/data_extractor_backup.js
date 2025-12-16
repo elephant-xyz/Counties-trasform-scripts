@@ -1295,6 +1295,7 @@ const layoutData = fs.existsSync(layoutDataPath)
     "Shrf's Deed": "Sheriff's Deed",
     "TD": "Tax Deed",
     "TrD": "Trustee's Deed",
+    "TR": "Trustee's Deed",
     "Trustee Deed": "Trustee's Deed",
     "PRD": "Personal Representative Deed",
     "Pers Rep Deed": "Personal Representative Deed",
@@ -1303,6 +1304,7 @@ const layoutData = fs.existsSync(layoutDataPath)
     "DIL": "Deed in Lieu of Foreclosure",
     "DILF": "Deed in Lieu of Foreclosure",
     "LED": "Life Estate Deed",
+    "LE": "Life Estate Deed",
     "JTD": "Joint Tenancy Deed",
     "TIC": "Tenancy in Common Deed",
     "CPD": "Community Property Deed",
@@ -1344,6 +1346,7 @@ const layoutData = fs.existsSync(layoutDataPath)
       "SHRF'S DEED",
       "TD",
       "TRD",
+      "TR",
       "TRUSTEE DEED",
       "PRD",
       "PERS REP DEED",
@@ -1352,6 +1355,7 @@ const layoutData = fs.existsSync(layoutDataPath)
       "DIL",
       "DILF",
       "LED",
+      "LE",
       "JTD",
       "TIC",
       "CPD",
@@ -2272,6 +2276,15 @@ const specificDocumentTypeMap = {
       });
     }
 
+    // Create property-to-layout relationships for all building layouts
+    buildingLayoutRecords.forEach((buildingRecord) => {
+      const relName = `relationship_property_has_layout_${buildingRecord.index}.json`;
+      writeJson(path.join("data", relName), {
+        from: { "/": "./property.json" },
+        to: { "/": `./layout_${buildingRecord.index}.json` },
+      });
+    });
+
     if (siteFeaturesArr.length) {
       siteFeaturesArr.forEach((feature, featureIdx) => {
         const sizeSqFt =
@@ -2380,9 +2393,11 @@ const specificDocumentTypeMap = {
       return record;
     };
 
-    structuresArr.forEach((structure) => addStructure(structure, false));
-    // Do not create structure entities for extra features (carports, barns, etc.)
-    // extraStructuresArr.forEach((structure) => addStructure(structure, true));
+    // Do not create structure entities when they only contain area measurements
+    // Area data is already captured in layout entities
+    // structuresArr.forEach((structure) => addStructure(structure, false));
+    // Create structure entities for extra features (carports, barns, etc.) and link them via relationships
+    extraStructuresArr.forEach((structure) => addStructure(structure, true));
 
     const createLayoutToUtilityRelationship = (layoutIdx, utilityIdx) => {
       const relName = `relationship_layout_${layoutIdx}_has_utility_${utilityIdx}.json`;
@@ -2411,8 +2426,34 @@ const specificDocumentTypeMap = {
     const assignUtilities = () => {
       if (utilityRecords.length) {
         if (!buildingLayoutRecords.length) {
+          // Create a default building layout for utilities if none exist
+          // Utilities must be connected to layouts, not directly to property
+          const defaultLayoutIndex = addLayout(
+            {
+              space_type: "Building",
+              space_type_index: "1",
+              total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+              livable_area_sq_ft: toNumber(livable) ?? null,
+              area_under_air_sq_ft: toNumber(livable) ?? null,
+              size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+              building_number: 1,
+            },
+            null,
+          );
+          buildingLayoutRecords.push({
+            index: defaultLayoutIndex,
+            building_order: 1,
+            space_type_index: "1",
+          });
+          // Create property to layout relationship
+          const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
+          writeJson(path.join("data", relName), {
+            from: { "/": "./property.json" },
+            to: { "/": `./layout_${defaultLayoutIndex}.json` },
+          });
+          // Connect utilities to the default layout
           utilityRecords.forEach((record) =>
-            createPropertyRelationship("utility", record.index),
+            createLayoutToUtilityRelationship(defaultLayoutIndex, record.index),
           );
         } else if (buildingLayoutRecords.length === 1) {
           const layoutIdx = buildingLayoutRecords[0].index;
@@ -2421,7 +2462,8 @@ const specificDocumentTypeMap = {
           );
         } else {
           if (utilityRecords.length === 1) {
-            createPropertyRelationship("utility", utilityRecords[0].index);
+            const layoutIdx = buildingLayoutRecords[0].index;
+            createLayoutToUtilityRelationship(layoutIdx, utilityRecords[0].index);
           } else {
             const assignCount = Math.min(
               buildingLayoutRecords.length,
@@ -2434,40 +2476,130 @@ const specificDocumentTypeMap = {
               );
             }
             for (let i = assignCount; i < utilityRecords.length; i += 1) {
-              createPropertyRelationship("utility", utilityRecords[i].index);
+              const layoutIdx = buildingLayoutRecords[buildingLayoutRecords.length - 1].index;
+              createLayoutToUtilityRelationship(layoutIdx, utilityRecords[i].index);
             }
           }
         }
       }
-      propertyUtilityRecords.forEach((record) => {
-        if (singleBuildingLayoutIndex) {
-          createLayoutToUtilityRelationship(
-            singleBuildingLayoutIndex,
-            record.index,
+      // Handle propertyUtilityRecords - ensure they have a layout to connect to
+      if (propertyUtilityRecords.length) {
+        // If no building layouts exist, create a default one for propertyUtilityRecords
+        if (!buildingLayoutRecords.length && !singleBuildingLayoutIndex) {
+          const defaultLayoutIndex = addLayout(
+            {
+              space_type: "Building",
+              space_type_index: "1",
+              total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+              livable_area_sq_ft: toNumber(livable) ?? null,
+              area_under_air_sq_ft: toNumber(livable) ?? null,
+              size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+              building_number: 1,
+            },
+            null,
           );
-        } else {
-          createPropertyRelationship("utility", record.index);
+          buildingLayoutRecords.push({
+            index: defaultLayoutIndex,
+            building_order: 1,
+            space_type_index: "1",
+          });
+          // Create property to layout relationship
+          const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
+          writeJson(path.join("data", relName), {
+            from: { "/": "./property.json" },
+            to: { "/": `./layout_${defaultLayoutIndex}.json` },
+          });
         }
-      });
+
+        propertyUtilityRecords.forEach((record) => {
+          if (singleBuildingLayoutIndex) {
+            createLayoutToUtilityRelationship(
+              singleBuildingLayoutIndex,
+              record.index,
+            );
+          } else if (buildingLayoutRecords.length) {
+            const layoutIdx = buildingLayoutRecords[0].index;
+            createLayoutToUtilityRelationship(layoutIdx, record.index);
+          }
+        });
+      }
     };
 
     const assignStructures = () => {
       if (!structureRecords.length) {
-        propertyStructureRecords.forEach((record) => {
-          if (singleBuildingLayoutIndex) {
-            createLayoutToStructureRelationship(
-              singleBuildingLayoutIndex,
-              record.index,
+        // Handle propertyStructureRecords when no structureRecords exist
+        if (propertyStructureRecords.length) {
+          // Check if we need to create a default layout
+          if (!singleBuildingLayoutIndex && !buildingLayoutRecords.length) {
+            // Create a default building layout for propertyStructureRecords
+            const defaultLayoutIndex = addLayout(
+              {
+                space_type: "Building",
+                space_type_index: "1",
+                total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+                livable_area_sq_ft: toNumber(livable) ?? null,
+                area_under_air_sq_ft: toNumber(livable) ?? null,
+                size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+                building_number: 1,
+              },
+              null,
             );
-          } else {
-            createPropertyRelationship("structure", record.index);
+            buildingLayoutRecords.push({
+              index: defaultLayoutIndex,
+              building_order: 1,
+              space_type_index: "1",
+            });
+            // Create property to layout relationship
+            const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
+            writeJson(path.join("data", relName), {
+              from: { "/": "./property.json" },
+              to: { "/": `./layout_${defaultLayoutIndex}.json` },
+            });
           }
-        });
+          // Now create relationships for all propertyStructureRecords
+          propertyStructureRecords.forEach((record) => {
+            if (singleBuildingLayoutIndex) {
+              createLayoutToStructureRelationship(
+                singleBuildingLayoutIndex,
+                record.index,
+              );
+            } else if (buildingLayoutRecords.length) {
+              const layoutIdx = buildingLayoutRecords[0].index;
+              createLayoutToStructureRelationship(layoutIdx, record.index);
+            }
+          });
+        }
         return;
       }
       if (!buildingLayoutRecords.length) {
+        // Create a default building layout for structures if none exist
+        // Structures must be connected to layouts, not directly to property
+        const defaultLayoutIndex = addLayout(
+          {
+            space_type: "Building",
+            space_type_index: "1",
+            total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+            livable_area_sq_ft: toNumber(livable) ?? null,
+            area_under_air_sq_ft: toNumber(livable) ?? null,
+            size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+            building_number: 1,
+          },
+          null,
+        );
+        buildingLayoutRecords.push({
+          index: defaultLayoutIndex,
+          building_order: 1,
+          space_type_index: "1",
+        });
+        // Create property to layout relationship
+        const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
+        writeJson(path.join("data", relName), {
+          from: { "/": "./property.json" },
+          to: { "/": `./layout_${defaultLayoutIndex}.json` },
+        });
+        // Connect structures to the default layout
         structureRecords.forEach((record) =>
-          createPropertyRelationship("structure", record.index),
+          createLayoutToStructureRelationship(defaultLayoutIndex, record.index),
         );
       } else if (buildingLayoutRecords.length === 1) {
         const layoutIdx = buildingLayoutRecords[0].index;
@@ -2476,7 +2608,8 @@ const specificDocumentTypeMap = {
         );
       } else {
         if (structureRecords.length === 1) {
-          createPropertyRelationship("structure", structureRecords[0].index);
+          const layoutIdx = buildingLayoutRecords[0].index;
+          createLayoutToStructureRelationship(layoutIdx, structureRecords[0].index);
         } else {
           const assignCount = Math.min(
             buildingLayoutRecords.length,
@@ -2489,20 +2622,52 @@ const specificDocumentTypeMap = {
             );
           }
           for (let i = assignCount; i < structureRecords.length; i += 1) {
-            createPropertyRelationship("structure", structureRecords[i].index);
+            const layoutIdx = buildingLayoutRecords[buildingLayoutRecords.length - 1].index;
+            createLayoutToStructureRelationship(layoutIdx, structureRecords[i].index);
           }
         }
       }
-      propertyStructureRecords.forEach((record) => {
-        if (singleBuildingLayoutIndex) {
-          createLayoutToStructureRelationship(
-            singleBuildingLayoutIndex,
-            record.index,
+      // Handle propertyStructureRecords - ensure they have a layout to connect to
+      if (propertyStructureRecords.length) {
+        // If no building layouts exist, create a default one for propertyStructureRecords
+        if (!buildingLayoutRecords.length && !singleBuildingLayoutIndex) {
+          const defaultLayoutIndex = addLayout(
+            {
+              space_type: "Building",
+              space_type_index: "1",
+              total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+              livable_area_sq_ft: toNumber(livable) ?? null,
+              area_under_air_sq_ft: toNumber(livable) ?? null,
+              size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+              building_number: 1,
+            },
+            null,
           );
-        } else {
-          createPropertyRelationship("structure", record.index);
+          buildingLayoutRecords.push({
+            index: defaultLayoutIndex,
+            building_order: 1,
+            space_type_index: "1",
+          });
+          // Create property to layout relationship
+          const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
+          writeJson(path.join("data", relName), {
+            from: { "/": "./property.json" },
+            to: { "/": `./layout_${defaultLayoutIndex}.json` },
+          });
         }
-      });
+
+        propertyStructureRecords.forEach((record) => {
+          if (singleBuildingLayoutIndex) {
+            createLayoutToStructureRelationship(
+              singleBuildingLayoutIndex,
+              record.index,
+            );
+          } else if (buildingLayoutRecords.length) {
+            const layoutIdx = buildingLayoutRecords[0].index;
+            createLayoutToStructureRelationship(layoutIdx, record.index);
+          }
+        });
+      }
     };
 
     assignUtilities();

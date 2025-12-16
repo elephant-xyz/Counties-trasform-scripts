@@ -57,6 +57,133 @@ function properCaseName(s) {
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
+function canonicalDeedKey(str) {
+  return String(str || "")
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const ALLOWED_DEED_TYPES = [
+  "Warranty Deed",
+  "Special Warranty Deed",
+  "Quitclaim Deed",
+  "Grant Deed",
+  "Bargain and Sale Deed",
+  "Lady Bird Deed",
+  "Transfer on Death Deed",
+  "Sheriff's Deed",
+  "Tax Deed",
+  "Trustee's Deed",
+  "Personal Representative Deed",
+  "Correction Deed",
+  "Deed in Lieu of Foreclosure",
+  "Life Estate Deed",
+  "Joint Tenancy Deed",
+  "Tenancy in Common Deed",
+  "Community Property Deed",
+  "Gift Deed",
+  "Interspousal Transfer Deed",
+  "Wild Deed",
+  "Special Master's Deed",
+  "Court Order Deed",
+  "Contract for Deed",
+  "Quiet Title Deed",
+  "Administrator's Deed",
+  "Guardian's Deed",
+  "Receiver's Deed",
+  "Right of Way Deed",
+  "Vacation of Plat Deed",
+  "Assignment of Contract",
+  "Release of Contract",
+  "Miscellaneous",
+];
+
+const DEED_TYPE_KEY_MAP = new Map();
+ALLOWED_DEED_TYPES.forEach((type) => {
+  DEED_TYPE_KEY_MAP.set(canonicalDeedKey(type), type);
+});
+
+const DEED_TYPE_SYNONYMS = new Map(
+  [
+    ["general warranty", "Warranty Deed"],
+    ["general warranty deed", "Warranty Deed"],
+    ["warranty", "Warranty Deed"],
+    ["special warranty", "Special Warranty Deed"],
+    ["quit claim", "Quitclaim Deed"],
+    ["quitclaim", "Quitclaim Deed"],
+    ["grant", "Grant Deed"],
+    ["bargain and sale", "Bargain and Sale Deed"],
+    ["ladybird", "Lady Bird Deed"],
+    ["ladybird deed", "Lady Bird Deed"],
+    ["lady bird", "Lady Bird Deed"],
+    ["transfer on death", "Transfer on Death Deed"],
+    ["tod deed", "Transfer on Death Deed"],
+    ["sheriff deed", "Sheriff's Deed"],
+    ["sheriff sale deed", "Sheriff's Deed"],
+    ["trustee deed", "Trustee's Deed"],
+    ["trustees deed", "Trustee's Deed"],
+    ["personal representative", "Personal Representative Deed"],
+    ["personal rep", "Personal Representative Deed"],
+    ["correction", "Correction Deed"],
+    ["deed in lieu", "Deed in Lieu of Foreclosure"],
+    ["life estate", "Life Estate Deed"],
+    ["joint tenancy", "Joint Tenancy Deed"],
+    ["tenancy in common", "Tenancy in Common Deed"],
+    ["community property", "Community Property Deed"],
+    ["gift", "Gift Deed"],
+    ["interspousal transfer", "Interspousal Transfer Deed"],
+    ["wild", "Wild Deed"],
+    ["special master deed", "Special Master's Deed"],
+    ["court order", "Court Order Deed"],
+    ["contract for", "Contract for Deed"],
+    ["quiet title", "Quiet Title Deed"],
+    ["administrator deed", "Administrator's Deed"],
+    ["administratrix deed", "Administrator's Deed"],
+    ["guardian deed", "Guardian's Deed"],
+    ["guardians deed", "Guardian's Deed"],
+    ["receiver deed", "Receiver's Deed"],
+    ["receivers deed", "Receiver's Deed"],
+    ["right of way", "Right of Way Deed"],
+    ["right-of-way", "Right of Way Deed"],
+    ["vacation of plat", "Vacation of Plat Deed"],
+    ["assignment of contract deed", "Assignment of Contract"],
+    ["release of contract deed", "Release of Contract"],
+    ["assignment of contract", "Assignment of Contract"],
+    ["release of contract", "Release of Contract"],
+    ["misc", "Miscellaneous"],
+    ["misc deed", "Miscellaneous"],
+  ].map(([alias, target]) => [canonicalDeedKey(alias), target]),
+);
+
+function normalizeDeedType(rawType) {
+  if (!rawType) return null;
+  const key = canonicalDeedKey(rawType);
+  if (!key) return null;
+
+  if (DEED_TYPE_KEY_MAP.has(key)) {
+    return DEED_TYPE_KEY_MAP.get(key);
+  }
+  if (DEED_TYPE_SYNONYMS.has(key)) {
+    return DEED_TYPE_SYNONYMS.get(key);
+  }
+
+  const keyNoDeed = key.replace(/\bdeed\b$/, "").trim();
+  if (keyNoDeed) {
+    if (DEED_TYPE_SYNONYMS.has(keyNoDeed)) {
+      return DEED_TYPE_SYNONYMS.get(keyNoDeed);
+    }
+    const rebuiltKey = canonicalDeedKey(`${keyNoDeed} deed`);
+    if (DEED_TYPE_KEY_MAP.has(rebuiltKey)) {
+      return DEED_TYPE_KEY_MAP.get(rebuiltKey);
+    }
+  }
+
+  return null;
+}
+
 function mapLandUseToPropertyType(landUseDescription) {
   if (!landUseDescription) return "SingleFamily";
 
@@ -1043,9 +1170,9 @@ function main() {
       let personIndex = 1;
       owners.forEach((o) => {
         if (o.type !== "person") return;
-        const first = properCaseName(o.first_name || null);
-        const last = properCaseName(o.last_name || null);
-        const middle = o.middle_name ? o.middle_name : null;
+        const first = cleanName(o.first_name);
+        const last = cleanName(o.last_name);
+        const middle = cleanName(o.middle_name);
         const person = {
           birth_date: null,
           first_name: first,
@@ -1089,7 +1216,12 @@ function main() {
   });
   bx.deeds.forEach((d, i) => {
     const dName = `deed_${i + 1}.json`;
-    writeJSON(path.join(dataDir, dName), { deed_type: d.deed_type || null });
+    const normalizedDeedType = normalizeDeedType(d.deed_type);
+    const deedObj = {};
+    if (normalizedDeedType) {
+      deedObj.deed_type = normalizedDeedType;
+    }
+    writeJSON(path.join(dataDir, dName), deedObj);
     deedFiles.push(dName);
   });
   bx.files.forEach((f, i) => {
@@ -1099,21 +1231,21 @@ function main() {
     fileFiles.push(fName);
   });
 
-  // relationship_deed_file_*.json (deed ← file)
+  // relationship_deed_file_*.json (deed → file)
   for (let i = 0; i < Math.min(deedFiles.length, fileFiles.length); i++) {
     const rel = {
-      to: { "/": `./${deedFiles[i]}` },
-      from: { "/": `./${fileFiles[i]}` },
+      from: { "/": `./${deedFiles[i]}` },
+      to: { "/": `./${fileFiles[i]}` },
     };
     const relName = `relationship_deed_file_${i + 1}.json`;
     writeJSON(path.join(dataDir, relName), rel);
   }
 
-  // relationship_sales_deed_*.json (sales ← deed)
+  // relationship_sales_deed_*.json (sales → deed)
   for (let i = 0; i < Math.min(salesFiles.length, deedFiles.length); i++) {
     const rel = {
-      to: { "/": `./${salesFiles[i]}` },
-      from: { "/": `./${deedFiles[i]}` },
+      to: { "/": `./${deedFiles[i]}` },
+      from: { "/": `./${salesFiles[i]}` },
     };
     const relName = `relationship_sales_deed_${i + 1}.json`;
     writeJSON(path.join(dataDir, relName), rel);
