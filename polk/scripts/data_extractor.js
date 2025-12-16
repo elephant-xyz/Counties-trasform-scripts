@@ -54,6 +54,53 @@ function toTitleCase(str) {
     .join(" ");
 }
 
+// Valid suffix values according to Elephant schema
+const VALID_SUFFIXES = [
+  "Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM",
+  "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."
+];
+
+// Normalize suffix to match schema enum or return null if invalid
+function normalizeSuffix(suffix) {
+  if (!suffix) return null;
+
+  const trimmed = suffix.trim();
+  if (!trimmed) return null;
+
+  // Check if it's already valid
+  if (VALID_SUFFIXES.includes(trimmed)) {
+    return trimmed;
+  }
+
+  // Try to normalize common variations
+  const normalized = trimmed.toUpperCase().replace(/\./g, "");
+
+  const suffixMap = {
+    "JR": "Jr.",
+    "SR": "Sr.",
+    "II": "II",
+    "III": "III",
+    "IV": "IV",
+    "PHD": "PhD",
+    "MD": "MD",
+    "ESQ": "Esq.",
+    "JD": "JD",
+    "LLM": "LLM",
+    "MBA": "MBA",
+    "RN": "RN",
+    "DDS": "DDS",
+    "DVM": "DVM",
+    "CFA": "CFA",
+    "CPA": "CPA",
+    "PE": "PE",
+    "PMP": "PMP",
+    "EMERITUS": "Emeritus",
+    "RET": "Ret."
+  };
+
+  return suffixMap[normalized] || null;
+}
+
 
 const propertyTypeMapping = [
   {
@@ -3379,7 +3426,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
       const firstName = toTitleCase(o.first_name); // Apply title case
       const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
       const lastName = toTitleCase(o.last_name); // Apply title case
-      const suffixName = o.suffix_name || null; // Preserve suffix from owner data
+      const suffixName = normalizeSuffix(o.suffix_name); // Normalize suffix to match schema
       const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
       if (!res.personIndexByKey.has(personKey)) {
         res.persons.push({
@@ -3413,7 +3460,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
         const firstName = toTitleCase(o.first_name); // Apply title case
         const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
         const lastName = toTitleCase(o.last_name); // Apply title case
-        const suffixName = o.suffix_name || null; // Preserve suffix from owner data
+        const suffixName = normalizeSuffix(o.suffix_name); // Normalize suffix to match schema
         const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
         if (!res.personIndexByKey.has(personKey)) {
           res.persons.push({

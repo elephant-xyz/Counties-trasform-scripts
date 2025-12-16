@@ -179,8 +179,9 @@ function normalizeNameKey(owner) {
 }
 
 // Map for suffix formatting to match schema enum (e.g., "Jr" -> "Jr.")
+// Valid suffixes: Jr., Sr., II, III, IV, PhD, MD, Esq., JD, LLM, MBA, RN, DDS, DVM, CFA, CPA, PE, PMP, Emeritus, Ret.
 const suffixFormatMap = {
-  "Jr": "Jr.", "Sr": "Sr.", "II": "II", "III": "III", "IV": "IV", "V": "V",
+  "Jr": "Jr.", "Sr": "Sr.", "II": "II", "III": "III", "IV": "IV",
   "PhD": "PhD", "MD": "MD", "Esq": "Esq.", "JD": "JD", "LLM": "LLM",
   "MBA": "MBA", "RN": "RN", "DDS": "DDS", "DVM": "DVM", "CFA": "CFA",
   "CPA": "CPA", "PE": "PE", "PMP": "PMP", "Emeritus": "Emeritus", "Ret": "Ret."
@@ -211,7 +212,7 @@ function parsePersonName(raw) {
   const suffixMatch = s.match(suffixRegex);
   if (suffixMatch) {
     const rawSuffix = toTitleCase(suffixMatch[1]);
-    suffixName = suffixFormatMap[rawSuffix] || rawSuffix; // Apply formatting from map
+    suffixName = suffixFormatMap[rawSuffix] || null; // Apply formatting from map, null if not valid
     // Remove the matched suffix from the name string
     nameWithoutSuffix = s.replace(suffixMatch[0], "").trim();
   }
