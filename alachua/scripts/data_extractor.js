@@ -1859,14 +1859,18 @@ function main() {
       "SpecialCertificateOfAppropriateness", "CertificateToDig", "HistoricDesignation",
       "PlanningAdministrativeAppeal", "WellPermit", "Solar", "TestBoring",
       "ExistingWellInspection", "NaturalResourcesComplaint", "NaturalResourcesViolation",
-      "LetterWaterSewer", "UtilitiesConnection", "DrivewayPermit", "RightOfWayPermit", null
+      "LetterWaterSewer", "UtilitiesConnection", "DrivewayPermit", "RightOfWayPermit"
     ];
 
-    // Convert empty string to null, then validate
-    if (cleanedImprovement.improvement_type === "") {
+    // Final validation: ensure improvement_type is valid or null
+    // Convert any invalid value (empty string, undefined, etc.) to null first
+    if (!cleanedImprovement.improvement_type ||
+        typeof cleanedImprovement.improvement_type !== "string" ||
+        cleanedImprovement.improvement_type.trim() === "") {
       cleanedImprovement.improvement_type = null;
     }
 
+    // If not null, must be in valid list
     if (cleanedImprovement.improvement_type !== null &&
         !validImprovementTypes.includes(cleanedImprovement.improvement_type)) {
       cleanedImprovement.improvement_type = "GeneralBuilding";
