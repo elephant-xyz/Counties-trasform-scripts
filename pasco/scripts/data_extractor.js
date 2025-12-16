@@ -2366,6 +2366,15 @@ function main() {
   const persons = [];
   const companies = [];
   const relationshipsSalesPersons = [];
+  const usedPersonIndices = new Set();
+  const usedCompanyIndices = new Set();
+
+  // Cleanup old incorrectly-named relationship files
+  purgeDataFiles([
+    /^relationship_sales_history_person_\d+\.json$/,
+    /^relationship_sales_history_company_\d+\.json$/,
+  ]);
+
   if (ownersData && ownersData[ownersKey]) {
     const ownersByDate = ownersData[ownersKey].owners_by_date || {};
     const currentOwners = Array.isArray(ownersByDate.current)
@@ -2457,11 +2466,21 @@ function main() {
         if (owner.type === "person") {
           const fname = personFileByOwner.get(owner);
           if (fname) {
+            // Extract person index from filename
+            const personIdxMatch = fname.match(/person_(\d+)\.json/);
+            if (personIdxMatch) {
+              usedPersonIndices.add(parseInt(personIdxMatch[1], 10));
+            }
             writeRelationshipFile(fname, mailingAddressFileName);
           }
         } else if (owner.type === "company") {
           const fname = companyFileByOwner.get(owner);
           if (fname) {
+            // Extract company index from filename
+            const companyIdxMatch = fname.match(/company_(\d+)\.json/);
+            if (companyIdxMatch) {
+              usedCompanyIndices.add(parseInt(companyIdxMatch[1], 10));
+            }
             writeRelationshipFile(fname, mailingAddressFileName);
           }
         }
@@ -2605,7 +2624,11 @@ function main() {
       // Typically one sale, link both owners to that sale
       const targetSale = latestSales[0];
       if (targetSale) {
-        let relIdx = 1;
+        // Extract sale index from filename like "sales_history_1.json"
+        const saleIdxMatch = targetSale.match(/sales_history_(\d+)\.json/);
+        const saleIdx = saleIdxMatch ? saleIdxMatch[1] : "1";
+        let personCounter = 0;
+        let companyCounter = 0;
         for (const o of currentOwners) {
           if (o.type === "person") {
             const pf = persons.find(
@@ -2614,15 +2637,33 @@ function main() {
                 pp.data.last_name === upperFirst(o.last_name),
             );
             if (pf) {
+              const personIdx = persons.indexOf(pf) + 1;
+              usedPersonIndices.add(personIdx);
+              personCounter++;
               writeJSON(
-                `relationship_sales_history_person_${relationshipsSalesPersons.length + 1}.json`,
+                `relationship_sales_history_${saleIdx}_buyer_person_${personCounter}.json`,
                 {
                   to: { "/": `./${pf.file}` },
                   from: { "/": `./${targetSale}` },
                 },
               );
               relationshipsSalesPersons.push(1);
-              relIdx++;
+            }
+          } else if (o.type === "company") {
+            const cf = companies.find(
+              (cc) => cc.data.name === normalizeSpace(o.name || ""),
+            );
+            if (cf) {
+              const companyIdx = companies.indexOf(cf) + 1;
+              usedCompanyIndices.add(companyIdx);
+              companyCounter++;
+              writeJSON(
+                `relationship_sales_history_${saleIdx}_buyer_company_${companyCounter}.json`,
+                {
+                  to: { "/": `./${cf.file}` },
+                  from: { "/": `./${targetSale}` },
+                },
+              );
             }
           }
         }
@@ -2635,6 +2676,11 @@ function main() {
       const salesInYear = salesForYear(year);
       if (salesInYear.length > 0) {
         const targetSale = salesInYear[0];
+        // Extract sale index from filename like "sales_history_1.json"
+        const saleIdxMatch = targetSale.match(/sales_history_(\d+)\.json/);
+        const saleIdx = saleIdxMatch ? saleIdxMatch[1] : "1";
+        let personCounter = 0;
+        let companyCounter = 0;
         const ownersArr = ownersByDate[d] || [];
         for (const o of ownersArr) {
           if (o.type === "person") {
@@ -2644,8 +2690,11 @@ function main() {
                 pp.data.last_name === upperFirst(o.last_name),
             );
             if (pf) {
+              const personIdx = persons.indexOf(pf) + 1;
+              usedPersonIndices.add(personIdx);
+              personCounter++;
               writeJSON(
-                `relationship_sales_history_person_${relationshipsSalesPersons.length + 1}.json`,
+                `relationship_sales_history_${saleIdx}_buyer_person_${personCounter}.json`,
                 {
                   to: { "/": `./${pf.file}` },
                   from: { "/": `./${targetSale}` },
@@ -2653,7 +2702,43 @@ function main() {
               );
               relationshipsSalesPersons.push(1);
             }
+          } else if (o.type === "company") {
+            const cf = companies.find(
+              (cc) => cc.data.name === normalizeSpace(o.name || ""),
+            );
+            if (cf) {
+              const companyIdx = companies.indexOf(cf) + 1;
+              usedCompanyIndices.add(companyIdx);
+              companyCounter++;
+              writeJSON(
+                `relationship_sales_history_${saleIdx}_buyer_company_${companyCounter}.json`,
+                {
+                  to: { "/": `./${cf.file}` },
+                  from: { "/": `./${targetSale}` },
+                },
+              );
+            }
           }
+        }
+      }
+    }
+
+    // Cleanup: Remove unused person and company files
+    for (let i = 1; i <= persons.length; i++) {
+      if (!usedPersonIndices.has(i)) {
+        const unusedFile = path.join(DATA_DIR, `person_${i}.json`);
+        if (fs.existsSync(unusedFile)) {
+          fs.unlinkSync(unusedFile);
+          console.log(`Removed unused file: person_${i}.json`);
+        }
+      }
+    }
+    for (let i = 1; i <= companies.length; i++) {
+      if (!usedCompanyIndices.has(i)) {
+        const unusedFile = path.join(DATA_DIR, `company_${i}.json`);
+        if (fs.existsSync(unusedFile)) {
+          fs.unlinkSync(unusedFile);
+          console.log(`Removed unused file: company_${i}.json`);
         }
       }
     }

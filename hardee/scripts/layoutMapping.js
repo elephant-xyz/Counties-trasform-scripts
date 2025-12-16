@@ -95,11 +95,10 @@ function toInt(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function createDefaultLayout(space_type) {
+function defaultLayout(space_type, idx) {
   return {
     space_type,
-    space_index: null,
-    space_type_index: null,
+    space_index: idx,
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: null,
@@ -133,87 +132,26 @@ function createDefaultLayout(space_type) {
     bathroom_renovation_date: null,
     kitchen_renovation_date: null,
     flooring_installation_date: null,
-    livable_area_sq_ft: null,
-    total_area_sq_ft: null,
-    area_under_air_sq_ft: null,
   };
 }
 
-function buildLayoutContext(buildings) {
-  const layouts = [];
-  const layoutHasLayout = [];
-  const layoutHasStructure = [];
-  const layoutHasUtility = [];
-
-  buildings.forEach((building, idx) => {
-    const buildingNumber = idx + 1;
-    const nextLayoutIndex = () => layouts.length;
-    const registerLayout = (layout) => {
-      const layoutIndex = nextLayoutIndex();
-      layout.space_index = layoutIndex + 1;
-      layouts.push(layout);
-      return layoutIndex;
-    };
-
-    const buildingLayout = createDefaultLayout("Building");
-    buildingLayout.building_number = buildingNumber;
-    buildingLayout._building_number = buildingNumber;
-    buildingLayout.space_type_index = `${buildingNumber}`;
-    const totalArea = toInt(building["Total Area"]);
-    if (totalArea > 0) {
-      buildingLayout.size_square_feet = totalArea;
-      buildingLayout.total_area_sq_ft = totalArea;
-    }
-    const heatedArea =
-      toInt(building["Heated Area"]) || toInt(building["Living Area"]);
-    if (heatedArea > 0) {
-      buildingLayout.livable_area_sq_ft = heatedArea;
-      buildingLayout.area_under_air_sq_ft = heatedArea;
-    }
-
-    const buildingLayoutIndex = registerLayout(buildingLayout);
-    layoutHasStructure.push({
-      layout_index: buildingLayoutIndex,
-      structure_index: idx,
-    });
-    layoutHasUtility.push({
-      layout_index: buildingLayoutIndex,
-      utility_index: idx,
-    });
-
-    const typeCounters = new Map();
-    const ensureCounter = (typeKey) => {
-      const current = typeCounters.get(typeKey) || 0;
-      const next = current + 1;
-      typeCounters.set(typeKey, next);
-      return next;
-    };
-
-    const addRoomLayouts = (count, spaceType) => {
-      if (!count || count <= 0) return;
-      for (let i = 0; i < count; i += 1) {
-        const roomLayout = createDefaultLayout(spaceType);
-        const counter = ensureCounter(spaceType);
-        roomLayout.space_type_index = `${buildingNumber}.${counter}`;
-        roomLayout._building_number = buildingNumber;
-        const roomIndex = registerLayout(roomLayout);
-        layoutHasLayout.push({
-          parent_index: buildingLayoutIndex,
-          child_index: roomIndex,
-        });
-      }
-    };
-
-    addRoomLayouts(toInt(building["Bedrooms"]), "Bedroom");
-    addRoomLayouts(toInt(building["Bathrooms"]), "Full Bathroom");
+function buildLayoutsFromBuildings(buildings) {
+  // Sum across all buildings
+  let totalBeds = 0;
+  let totalBaths = 0;
+  buildings.forEach((b) => {
+    totalBeds += toInt(b["Bedrooms"]);
+    totalBaths += toInt(b["Bathrooms"]);
   });
-
-  return {
-    layouts,
-    layout_has_layout: layoutHasLayout,
-    layout_has_structure: layoutHasStructure,
-    layout_has_utility: layoutHasUtility,
-  };
+  const layouts = [];
+  let idx = 1;
+  for (let i = 0; i < totalBeds; i++) {
+    layouts.push(defaultLayout("Bedroom", idx++));
+  }
+  for (let i = 0; i < totalBaths; i++) {
+    layouts.push(defaultLayout("Full Bathroom", idx++));
+  }
+  return layouts;
 }
 
 function main() {
@@ -232,13 +170,13 @@ function main() {
   
   if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
-  const layoutContext = buildLayoutContext(buildings);
+  const layouts = buildLayoutsFromBuildings(buildings);
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "layout_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = layoutContext;
+  outObj[`property_${parcelId}`] = { layouts };
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }

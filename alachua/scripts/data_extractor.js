@@ -108,6 +108,14 @@ function isValidMiddleName(name) {
   return /^[A-Z][a-zA-Z\s\-',.]*$/.test(trimmed);
 }
 
+function isValidFirstOrLastName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  return /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(trimmed);
+}
+
 function buildPersonFromTokens(tokens, fallbackLastName) {
   if (!tokens || !tokens.length) return null;
   if (tokens.length === 1) return null;
@@ -1422,6 +1430,12 @@ function main() {
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
+
+    // Validate first_name and last_name match required pattern
+    if (!isValidFirstOrLastName(firstName) || !isValidFirstOrLastName(lastName)) {
+      return null;
+    }
+
     const middleName = middleRaw && isValidMiddleName(middleRaw) ? middleRaw : null;
     const key =
       firstName || lastName
@@ -2418,20 +2432,6 @@ function main() {
   }
 
   const ownerMailingInfo = parseOwnerMailingAddresses($);
-  const mailingAddressFiles = [];
-  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-    if (!addr) return;
-    const fileName = `mailing_address_${idx + 1}.json`;
-    const mailingObj = {
-      unnormalized_address: addr,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    mailingAddressFiles.push({ path: `./${fileName}` });
-  });
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -2452,6 +2452,23 @@ function main() {
         currentOwners = latestOwners;
       }
     }
+  }
+
+  const mailingAddressFiles = [];
+  if (currentOwners.length > 0) {
+    ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
+      if (!addr) return;
+      const fileName = `mailing_address_${idx + 1}.json`;
+      const mailingObj = {
+        unnormalized_address: addr,
+        latitude: null,
+        longitude: null,
+        source_http_request: clone(defaultSourceHttpRequest),
+        request_identifier: requestIdentifier,
+      };
+      writeJSON(path.join(dataDir, fileName), mailingObj);
+      mailingAddressFiles.push({ path: `./${fileName}` });
+    });
   }
 
   const currentOwnerEntities = [];

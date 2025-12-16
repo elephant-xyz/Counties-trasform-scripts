@@ -309,7 +309,7 @@ function extractUtility($, buildingElement, extraFeatures, buildingNumber) {
     heating_system_type: mapHeatingType(heatTypeRaw),
     hvac_capacity_kw: null,
     hvac_capacity_tons: null,
-    hvac_condensing_unit_present: null,
+    hvac_condensing_unit_present: null, // Will be set to "Yes" string if present
     hvac_equipment_component: null,
     hvac_equipment_manufacturer: null,
     hvac_equipment_model: null,
@@ -390,8 +390,8 @@ function applyExtraFeaturesToUtility(utilities, extraFeatures, buildingNumber) {
       utilities.cooling_system_type = "CentralAir";
       updates.cooling_system_type = "CentralAir";
     }
-    utilities.hvac_condensing_unit_present = true;
-    updates.hvac_condensing_unit_present = true;
+    utilities.hvac_condensing_unit_present = "Yes";
+    updates.hvac_condensing_unit_present = "Yes";
     if (centralAC.yearBuilt && !utilities.hvac_installation_date) {
       const installDate = `${centralAC.yearBuilt}-01-01`;
       utilities.hvac_installation_date = installDate;
@@ -409,8 +409,8 @@ function applyExtraFeaturesToUtility(utilities, extraFeatures, buildingNumber) {
       utilities.cooling_system_type = "CentralAir";
       updates.cooling_system_type = "CentralAir";
     }
-    utilities.hvac_condensing_unit_present = true;
-    updates.hvac_condensing_unit_present = true;
+    utilities.hvac_condensing_unit_present = "Yes";
+    updates.hvac_condensing_unit_present = "Yes";
     if (commercialAC.yearBuilt && !utilities.hvac_installation_date) {
       const installDate = `${commercialAC.yearBuilt}-01-01`;
       utilities.hvac_installation_date = installDate;
@@ -425,10 +425,10 @@ function applyExtraFeaturesToUtility(utilities, extraFeatures, buildingNumber) {
   if (wallAC && !utilities.cooling_system_type) {
     const updates = {
       cooling_system_type: "WindowAirConditioner",
-      hvac_condensing_unit_present: true,
+      hvac_condensing_unit_present: "Yes",
     };
     utilities.cooling_system_type = "WindowAirConditioner";
-    utilities.hvac_condensing_unit_present = true;
+    utilities.hvac_condensing_unit_present = "Yes";
     if (wallAC.yearBuilt && !utilities.hvac_installation_date) {
       const installDate = `${wallAC.yearBuilt}-01-01`;
       utilities.hvac_installation_date = installDate;

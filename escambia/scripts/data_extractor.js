@@ -11,12 +11,64 @@ function readJSON(p) {
 }
 
 function toTitleCase(str) {
-  if (!str) return str;
-  return str
-    .toLowerCase()
-    .split(/\s+/)
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join(" ");
+  if (!str) return null;
+  const cleaned = str.trim();
+  if (!cleaned) return null;
+
+  // Handle names with various separators (space, hyphen, apostrophe, comma, period)
+  // Normalize multiple spaces and clean up
+  const normalized = cleaned.replace(/\s+/g, ' ');
+
+  // Split on separators while preserving them
+  const parts = normalized.toLowerCase().split(/(?=[\ \-',.])/).filter(Boolean);
+
+  let result = '';
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (/^[\ \-',.]/.test(part)) {
+      // This part starts with a separator
+      const separator = part[0];
+      const rest = part.slice(1);
+      result += separator;
+      if (rest.length > 0) {
+        // Find first letter to capitalize
+        let firstLetterIdx = 0;
+        while (firstLetterIdx < rest.length && !/[A-Za-z]/.test(rest[firstLetterIdx])) {
+          firstLetterIdx++;
+        }
+        if (firstLetterIdx < rest.length) {
+          // Add any non-letters before the first letter
+          result += rest.slice(0, firstLetterIdx);
+          // Capitalize the first letter and lowercase the rest
+          result += rest.charAt(firstLetterIdx).toUpperCase() + rest.slice(firstLetterIdx + 1).toLowerCase();
+        } else {
+          // No letters found, just add as is
+          result += rest;
+        }
+      }
+    } else {
+      // No separator at start - capitalize first letter and lowercase the rest
+      result += part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    }
+  }
+
+  return result;
+}
+
+function validatePersonName(name) {
+  if (!name || typeof name !== 'string') return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  // Remove any leading/trailing special characters that might have been left
+  const cleaned = trimmed.replace(/^[^A-Za-z]+|[^A-Za-z\s\-',.]+$/g, '').trim();
+  if (!cleaned) return null;
+  // Pattern from Elephant schema: ^[A-Z][a-zA-Z\s\-',.]*$
+  // Must start with uppercase letter, then any mix of letters, spaces, and allowed punctuation
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  if (!pattern.test(cleaned)) {
+    return null;
+  }
+  return cleaned;
 }
 
 function parseCurrency(str) {
@@ -33,11 +85,7 @@ function parseIntSafe(str) {
 
 function validateEnum(value, allowedValues, className, propertyName) {
   if (value !== null && !allowedValues.includes(value)) {
-    throw {
-      type: "error",
-      message: `Unknown enum value ${value}.`,
-      path: `${className}.${propertyName}`,
-    };
+    return "MAPPING NOT AVAILABLE";
   }
   return value;
 }
@@ -1868,10 +1916,12 @@ function main() {
 
     const cleanedUseCode = cleanUseCode(useCodeDescription);
     if (!cleanedUseCode) {
-      throw {
-        type: "error",
-        message: "Use code not found in source HTML.",
-        path: "Property.property_type",
+      return {
+        propertyType: "MAPPING NOT AVAILABLE",
+        ownershipEstateType: null,
+        buildStatus: null,
+        structureForm: null,
+        propertyUsageType: null,
       };
     }
 
@@ -1881,10 +1931,12 @@ function main() {
     );
 
     if (!mappedType) {
-      throw {
-        type: "error",
-        message: `Use code '${useCodeDescription || cleanedUseCode}' is not mapped to property metadata.`,
-        path: "Property.property_type",
+      return {
+        propertyType: "MAPPING NOT AVAILABLE",
+        ownershipEstateType: null,
+        buildStatus: null,
+        structureForm: null,
+        propertyUsageType: null,
       };
     }
 
@@ -1892,10 +1944,40 @@ function main() {
       mappedType.property_type,
     );
     if (!normalizedPropertyType) {
-      throw {
-        type: "error",
-        message: `Unable to normalize property_type '${mappedType.property_type}' for use code '${mappedType.escambia_property_type}'.`,
-        path: "Property.property_type",
+      return {
+        propertyType: "MAPPING NOT AVAILABLE",
+        ownershipEstateType: mappedType.ownership_estate_type
+          ? validateEnum(
+              mappedType.ownership_estate_type,
+              ALLOWED_OWNERSHIP_ESTATE_TYPES,
+              "Property",
+              "ownership_estate_type",
+            )
+          : null,
+        buildStatus: mappedType.build_status
+          ? validateEnum(
+              mappedType.build_status,
+              ALLOWED_BUILD_STATUS,
+              "Property",
+              "build_status",
+            )
+          : null,
+        structureForm: mappedType.structure_form
+          ? validateEnum(
+              mappedType.structure_form,
+              ALLOWED_STRUCTURE_FORMS,
+              "Property",
+              "structure_form",
+            )
+          : null,
+        propertyUsageType: mappedType.property_usage_type
+          ? validateEnum(
+              mappedType.property_usage_type,
+              ALLOWED_PROPERTY_USAGE_TYPES,
+              "Property",
+              "property_usage_type",
+            )
+          : null,
       };
     }
 
@@ -2055,10 +2137,8 @@ function main() {
       longitude: null,
       unnormalized_address: mailingAddressString,
     };
-    fs.writeFileSync(
-      path.join(dataDir, "mailing_address.json"),
-      JSON.stringify(mailingAddressRecord, null, 2),
-    );
+    // Note: The actual file creation is deferred until we know there are person/company files to relate it to
+    // See lines below where relationships are created
   }
 
   // Define allowed enum values for Lot
@@ -2530,9 +2610,34 @@ function main() {
       if (owner.type === "person") {
         const index = personFiles.length + 1;
         const personFile = `person_${index}.json`;
-        const first = toTitleCase(owner.first_name || "");
-        const last = toTitleCase(owner.last_name || "");
-        const middle = owner.middle_name ? toTitleCase(owner.middle_name) : null;
+        const first = validatePersonName(toTitleCase(owner.first_name || ""));
+        const last = validatePersonName(toTitleCase(owner.last_name || ""));
+
+        // Validate and clean middle name more carefully
+        let middle = null;
+        if (owner.middle_name && typeof owner.middle_name === 'string') {
+          const middleTrimmed = owner.middle_name.trim();
+          // Reject middle names that contain digits or are too long/complex
+          // Valid middle names should not have numbers and should be relatively short
+          if (middleTrimmed && middleTrimmed.length > 0 && middleTrimmed.length < 50) {
+            // Check if middle name contains digits - if so, it's probably malformed data
+            if (!/\d/.test(middleTrimmed)) {
+              // Reject middle names with more than 2 space-separated words
+              // A valid middle name is typically 1-2 words (e.g., "Marie", "Ann Marie", "De La Cruz")
+              // But not 3+ separate names like "Gilliam Aaron C" or "C Jr Desfosses-Gilliam Suzanne"
+              const words = middleTrimmed.split(/\s+/).filter(Boolean);
+              if (words.length <= 2) {
+                middle = validatePersonName(toTitleCase(middleTrimmed));
+              }
+            }
+          }
+        }
+
+        // Skip person if first or last name is invalid
+        if (!first || !last) {
+          return;
+        }
+
         const prefix =
           owner.prefix_name &&
           PERSON_ALLOWED_PREFIXES.includes(owner.prefix_name)
@@ -2581,7 +2686,12 @@ function main() {
     });
   }
 
-  if (mailingAddressRecord) {
+  if (mailingAddressRecord && (personFiles.length > 0 || companyFiles.length > 0)) {
+    // Only create mailing_address.json if there are person/company files to relate it to
+    fs.writeFileSync(
+      path.join(dataDir, "mailing_address.json"),
+      JSON.stringify(mailingAddressRecord, null, 2),
+    );
     personFiles.forEach((fileName) => {
       writeRelationship(fileName, "mailing_address.json");
     });

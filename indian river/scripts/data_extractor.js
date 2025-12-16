@@ -1178,6 +1178,8 @@ function clearExistingSalesHistoryFiles() {
       if (
         /^sales_history_\d+\.json$/.test(f) ||
         /^sales_\d+\.json$/.test(f) ||
+        /^deed_\d+\.json$/.test(f) ||
+        /^file_\d+\.json$/.test(f) ||
         /^relationship_deed_file_\d+\.json$/.test(f) ||
         /^relationship_sales_deed_\d+\.json$/.test(f) ||
         /^relationship_sales_person_\d+\.json$/.test(f) ||
@@ -1323,8 +1325,7 @@ function clearExistingMailingAddressFiles() {
 function writeMailingAddresses(parcelId, ownerMailingData, sourceHttpRequest) {
   clearExistingMailingAddressFiles();
   if (!ownerMailingData || !ownerMailingData.length) return;
-  const uniqueAddressMap = new Map();
-  let addressCounter = 0;
+
   const normalizeAddress = (addr) =>
     (addr || "")
       .split(/\r?\n/)
@@ -1333,51 +1334,81 @@ function writeMailingAddresses(parcelId, ownerMailingData, sourceHttpRequest) {
       .join(", ")
       .trim();
 
-  ownerMailingData.forEach((info) => {
-    const addresses = (info.addresses || []).map((a) => normalizeAddress(a));
-    addresses
-      .filter((addr) => addr && addr.length)
-      .forEach((addr) => {
-        if (!uniqueAddressMap.has(addr)) {
-          addressCounter++;
-          uniqueAddressMap.set(addr, {
-            index: addressCounter,
-            raw: addr,
-          });
-          const mailingAddress = {
-            unnormalized_address: addr,
-            latitude: null,
-            longitude: null,
-            source_http_request: sourceHttpRequest || null,
-            request_identifier: parcelId || null,
-          };
-          writeJSON(
-            path.join("data", `mailing_address_${addressCounter}.json`),
-            mailingAddress,
-          );
-        }
-      });
-  });
-
-  if (uniqueAddressMap.size === 0) return;
-
-  const personMailRelCount = new Map();
-  const companyMailRelCount = new Map();
+  // First pass: identify which addresses will have valid relationships
+  const addressesToCreate = new Map(); // Map<normalized_address, Set<{type, index}>>
 
   ownerMailingData.forEach((info) => {
     const addresses = (info.addresses || [])
       .map((a) => normalizeAddress(a))
-      .filter((addr) => addr && uniqueAddressMap.has(addr));
+      .filter((addr) => addr && addr.length);
+
     if (!addresses.length) return;
+
     if (info.type === "person") {
+      // Clean names before lookup to match how they were cleaned during person creation
+      const cleanedFirstName = info.first_name ? cleanNameForValidation(info.first_name) : null;
+      const cleanedLastName = info.last_name ? cleanNameForValidation(info.last_name) : null;
       const personIdx = findPersonIndexByName(
-        info.first_name,
-        info.last_name,
+        cleanedFirstName,
+        cleanedLastName,
         info.suffix_name,
       );
-      if (!personIdx) return;
+      if (!personIdx) return; // Skip if person not found
+
       addresses.forEach((addr) => {
-        const { index } = uniqueAddressMap.get(addr);
+        if (!addressesToCreate.has(addr)) {
+          addressesToCreate.set(addr, new Set());
+        }
+        addressesToCreate.get(addr).add({ type: "person", index: personIdx });
+      });
+    } else if (info.type === "company") {
+      const companyIdx = findCompanyIndexByName(info.name);
+      if (!companyIdx) return; // Skip if company not found
+
+      addresses.forEach((addr) => {
+        if (!addressesToCreate.has(addr)) {
+          addressesToCreate.set(addr, new Set());
+        }
+        addressesToCreate.get(addr).add({ type: "company", index: companyIdx });
+      });
+    }
+  });
+
+  if (addressesToCreate.size === 0) return;
+
+  // Second pass: create mailing_address files only for addresses with valid relationships
+  const uniqueAddressMap = new Map();
+  let addressCounter = 0;
+
+  addressesToCreate.forEach((owners, addr) => {
+    addressCounter++;
+    uniqueAddressMap.set(addr, {
+      index: addressCounter,
+      raw: addr,
+    });
+    const mailingAddress = {
+      unnormalized_address: addr,
+      latitude: null,
+      longitude: null,
+      source_http_request: sourceHttpRequest || null,
+      request_identifier: parcelId || null,
+    };
+    writeJSON(
+      path.join("data", `mailing_address_${addressCounter}.json`),
+      mailingAddress,
+    );
+  });
+
+  // Third pass: create relationships
+  const personMailRelCount = new Map();
+  const companyMailRelCount = new Map();
+
+  addressesToCreate.forEach((owners, addr) => {
+    const { index } = uniqueAddressMap.get(addr);
+
+    owners.forEach((owner) => {
+      if (owner.type === "person") {
+        const personIdx = owner.index;
         const count = (personMailRelCount.get(personIdx) || 0) + 1;
         personMailRelCount.set(personIdx, count);
         const suffix = count > 1 ? `_${count}` : "";
@@ -1386,12 +1417,8 @@ function writeMailingAddresses(parcelId, ownerMailingData, sourceHttpRequest) {
           to: { "/": `./mailing_address_${index}.json` },
           from: { "/": `./person_${personIdx}.json` },
         });
-      });
-    } else if (info.type === "company") {
-      const companyIdx = findCompanyIndexByName(info.name);
-      if (!companyIdx) return;
-      addresses.forEach((addr) => {
-        const { index } = uniqueAddressMap.get(addr);
+      } else if (owner.type === "company") {
+        const companyIdx = owner.index;
         const count = (companyMailRelCount.get(companyIdx) || 0) + 1;
         companyMailRelCount.set(companyIdx, count);
         const suffix = count > 1 ? `_${count}` : "";
@@ -1400,8 +1427,8 @@ function writeMailingAddresses(parcelId, ownerMailingData, sourceHttpRequest) {
           to: { "/": `./mailing_address_${index}.json` },
           from: { "/": `./company_${companyIdx}.json` },
         });
-      });
-    }
+      }
+    });
   });
 }
 
@@ -1575,6 +1602,90 @@ function isRomanNumeral(val) {
   return validGenerationalSuffixes.includes(trimmed);
 }
 
+function validatePrefixName(prefix) {
+  if (!prefix) return null;
+  const trimmed = prefix.trim();
+  if (!trimmed) return null;
+
+  const validPrefixes = [
+    "Mr.",
+    "Mrs.",
+    "Ms.",
+    "Miss",
+    "Mx.",
+    "Dr.",
+    "Prof.",
+    "Rev.",
+    "Fr.",
+    "Sr.",
+    "Br.",
+    "Capt.",
+    "Col.",
+    "Maj.",
+    "Lt.",
+    "Sgt.",
+    "Hon.",
+    "Judge",
+    "Rabbi",
+    "Imam",
+    "Sheikh",
+    "Sir",
+    "Dame",
+  ];
+
+  // Check exact match
+  if (validPrefixes.includes(trimmed)) return trimmed;
+
+  // Check case-insensitive match
+  for (const valid of validPrefixes) {
+    if (valid.toUpperCase() === trimmed.toUpperCase()) return valid;
+  }
+
+  // Check for common variations and map to valid prefixes
+  const normalized = trimmed.replace(/\./g, "").toUpperCase();
+  const prefixMap = {
+    "MR": "Mr.",
+    "MRS": "Mrs.",
+    "MS": "Ms.",
+    "MISS": "Miss",
+    "MX": "Mx.",
+    "DR": "Dr.",
+    "PROF": "Prof.",
+    "PROFESSOR": "Prof.",
+    "REV": "Rev.",
+    "REVEREND": "Rev.",
+    "FR": "Fr.",
+    "FATHER": "Fr.",
+    "SR": "Sr.",
+    "SISTER": "Sr.",
+    "BR": "Br.",
+    "BROTHER": "Br.",
+    "CAPT": "Capt.",
+    "CAPTAIN": "Capt.",
+    "COL": "Col.",
+    "COLONEL": "Col.",
+    "MAJ": "Maj.",
+    "MAJOR": "Maj.",
+    "LT": "Lt.",
+    "LIEUTENANT": "Lt.",
+    "SGT": "Sgt.",
+    "SERGEANT": "Sgt.",
+    "HON": "Hon.",
+    "HONORABLE": "Hon.",
+    "JUDGE": "Judge",
+    "RABBI": "Rabbi",
+    "IMAM": "Imam",
+    "SHEIKH": "Sheikh",
+    "SIR": "Sir",
+    "DAME": "Dame",
+  };
+
+  if (prefixMap[normalized]) return prefixMap[normalized];
+
+  // Invalid prefix - return null
+  return null;
+}
+
 function validateSuffixName(suffix) {
   if (!suffix) return null;
   const trimmed = suffix.trim();
@@ -1674,10 +1785,6 @@ function findCompanyIndexByName(name) {
   return null;
 }
 
-function isRomanNumeral(val) {
-  return /^[IVXLCDM]+$/i.test(val || "");
-}
-
 function titleCaseName(s) {
   if (!s) return s;
   const trimmed = s.trim();
@@ -1691,6 +1798,25 @@ function titleCaseName(s) {
     .join(" ");
 }
 
+function cleanNameForValidation(name) {
+  if (!name) return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+
+  // Remove invalid characters: keep only letters, spaces, hyphens, apostrophes, commas, periods
+  // Split on semicolon and take only the first part (handles cases like "M;swearingen" or "Zuleica Marie;norris Tony")
+  let cleaned = trimmed.split(';')[0].trim();
+
+  // Remove any other invalid characters (anything not letter, space, hyphen, apostrophe, comma, period)
+  cleaned = cleaned.replace(/[^a-zA-Z\s\-',.]/g, '');
+
+  // Remove extra spaces
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+  if (!cleaned) return null;
+  return cleaned;
+}
+
 function validateNamePattern(name) {
   if (!name) return null;
   const trimmed = name.trim();
@@ -1702,201 +1828,10 @@ function validateNamePattern(name) {
 }
 
 function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
-  const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (!owners) return;
-  const key = `property_${parcelId}`;
-  const record = owners[key];
-  if (!record || !record.owners_by_date) return;
-  const ownersByDate = record.owners_by_date;
-
-  // Helper function to check if a key is a valid ISO date
-  const isISODateKey = (k) => /^\d{4}-\d{2}-\d{2}$/.test(k);
-
-  // Filter ownersByDate to only include valid ISO date entries (exclude unknown_prior_sale_* entries)
-  const validDateEntries = Object.entries(ownersByDate).filter(([k]) => isISODateKey(k));
-
-  // Step 1: Determine which persons will be referenced
-  // Collect all sale dates that have sales_history records
-  const saleDates = new Set();
-  sales.forEach((s) => {
-    const saleDateISO = parseDateToISO(s.saleDate);
-    if (saleDateISO) saleDates.add(saleDateISO);
-  });
-
-  // Collect persons that will be referenced (on sale dates or current owners with mailing addresses)
-  const referencedPersonKeys = new Set();
-  const mailingAddresses = record.owner_mailing_addresses || [];
-  const hasMailingAddresses = mailingAddresses && mailingAddresses.length > 0;
-
-  // Add persons from sale dates
-  validDateEntries.forEach(([dateKey, arr]) => {
-    if (saleDates.has(dateKey)) {
-      (arr || []).forEach((o) => {
-        if (o.type === "person") {
-          const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-          referencedPersonKeys.add(k);
-        }
-      });
-    }
-  });
-
-  // Add current owners if there are mailing addresses
-  if (hasMailingAddresses && mailingAddresses.some(info => info.type === "person")) {
-    mailingAddresses.forEach((info) => {
-      if (info.type === "person") {
-        const k = `${(info.first_name || "").trim().toUpperCase()}|${(info.last_name || "").trim().toUpperCase()}`;
-        referencedPersonKeys.add(k);
-      }
-    });
-  }
-
-  // Step 2: Build unique person map (only for referenced persons)
-  const personMap = new Map();
-  validDateEntries.forEach(([, arr]) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "person") {
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (referencedPersonKeys.has(k)) {
-          if (!personMap.has(k)) {
-            personMap.set(k, {
-              first_name: o.first_name,
-              middle_name: o.middle_name,
-              last_name: o.last_name,
-              prefix_name: o.prefix_name,
-              suffix_name: o.suffix_name,
-            });
-          } else {
-            const existing = personMap.get(k);
-            if (!existing.middle_name && o.middle_name)
-              existing.middle_name = o.middle_name;
-            if (!existing.prefix_name && o.prefix_name)
-              existing.prefix_name = o.prefix_name;
-            if (!existing.suffix_name && o.suffix_name)
-              existing.suffix_name = o.suffix_name;
-          }
-        }
-      }
-    });
-  });
-
-  // Also add mailing address persons if they're not already in the map
-  if (hasMailingAddresses) {
-    mailingAddresses.forEach((info) => {
-      if (info.type === "person") {
-        const k = `${(info.first_name || "").trim().toUpperCase()}|${(info.last_name || "").trim().toUpperCase()}`;
-        if (referencedPersonKeys.has(k) && !personMap.has(k)) {
-          personMap.set(k, {
-            first_name: info.first_name,
-            middle_name: info.middle_name,
-            last_name: info.last_name,
-            prefix_name: info.prefix_name,
-            suffix_name: info.suffix_name,
-          });
-        }
-      }
-    });
-  }
-
-  // Create person entities with validation
-  people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? validateNamePattern(titleCaseName(p.first_name)) : null,
-    middle_name: p.middle_name ? validateNamePattern(titleCaseName(p.middle_name)) : null,
-    last_name: p.last_name ? validateNamePattern(titleCaseName(p.last_name)) : null,
-    birth_date: null,
-    prefix_name: p.prefix_name,
-    suffix_name: validateSuffixName(p.suffix_name), // Validate suffix
-    us_citizenship_status: null,
-    veteran_status: null,
-    request_identifier: parcelId,
-  }));
-
-  people.forEach((p, idx) => {
-    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
-  });
-
-  // Create company entities (only from valid ISO date entries that will be referenced)
-  const referencedCompanyNames = new Set();
-
-  // Add companies from sale dates ONLY (companies that will have sales_history relationships)
-  validDateEntries.forEach(([dateKey, arr]) => {
-    if (saleDates.has(dateKey)) {
-      (arr || []).forEach((o) => {
-        if (o.type === "company" && (o.name || "").trim()) {
-          referencedCompanyNames.add((o.name || "").trim());
-        }
-      });
-    }
-  });
-
-  // Add companies from mailing addresses ONLY if they have valid addresses
-  if (hasMailingAddresses) {
-    mailingAddresses.forEach((info) => {
-      if (info.type === "company" && (info.name || "").trim()) {
-        // Check if this company has valid addresses before adding
-        const addresses = (info.addresses || [])
-          .map((a) => (a || "").split(/\r?\n/).map((part) => part.trim()).filter(Boolean).join(", ").trim())
-          .filter((addr) => addr && addr.length);
-        if (addresses.length > 0) {
-          referencedCompanyNames.add((info.name || "").trim());
-        }
-      }
-    });
-  }
-
-  companies = Array.from(referencedCompanyNames).map((n) => ({
-    name: n,
-    request_identifier: parcelId,
-  }));
-
-  companies.forEach((c, idx) => {
-    writeJSON(path.join("data", `company_${idx + 1}.json`), c);
-  });
-
-  // Create relationships between sales_history and persons/companies
-  sales.forEach((s, idx) => {
-    const saleIdx = idx + 1;
-    const saleDateISO = parseDateToISO(s.saleDate);
-    const ownersOnDate = (saleDateISO && ownersByDate[saleDateISO]) || [];
-
-    const linked = new Set();
-
-    // Link persons to sales_history
-    ownersOnDate
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        const pIdx = findPersonIndexByName(o.first_name, o.last_name, o.suffix_name);
-        if (pIdx && !linked.has(`person:${pIdx}`)) {
-          linked.add(`person:${pIdx}`);
-          writeJSON(
-            path.join("data", `relationship_sales_history_${saleIdx}_person_${pIdx}.json`),
-            {
-              from: { "/": `./sales_history_${saleIdx}.json` },
-              to: { "/": `./person_${pIdx}.json` },
-            }
-          );
-        }
-      });
-
-    // Link companies to sales_history
-    ownersOnDate
-      .filter((o) => o.type === "company")
-      .forEach((o) => {
-        const cIdx = findCompanyIndexByName(o.name);
-        if (cIdx && !linked.has(`company:${cIdx}`)) {
-          linked.add(`company:${cIdx}`);
-          writeJSON(
-            path.join("data", `relationship_sales_history_${saleIdx}_company_${cIdx}.json`),
-            {
-              from: { "/": `./sales_history_${saleIdx}.json` },
-              to: { "/": `./company_${cIdx}.json` },
-            }
-          );
-        }
-      });
-  });
-
-  // Write mailing addresses for current owners
-  writeMailingAddresses(parcelId, mailingAddresses, propertySeed?.source_http_request);
+  // DISABLED: Person, Company, and Mailing Address entities are not part of the Sales_History data group
+  // The Sales_History data group only includes: file, property, and sales_history classes
+  // Therefore, we do not generate person, company, or mailing_address entities or their relationships
+  return;
 }
 
 function writeTaxes($) {
