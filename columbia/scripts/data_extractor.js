@@ -1178,6 +1178,12 @@ const layoutData = fs.existsSync(layoutDataPath)
       };
       companyRecords.push(record);
     } else if (owner.type === "person") {
+      // Names are already formatted in ownerMapping.js, don't format again
+      // Validate that required fields are present and valid
+      if (!owner.first_name || !owner.last_name) {
+        return null; // Skip persons without required name fields
+      }
+
       personIndex += 1;
       const fileName = `person_${personIndex}.json`;
       const filePath = path.join("data", fileName);
@@ -1185,17 +1191,11 @@ const layoutData = fs.existsSync(layoutDataPath)
         source_http_request: cloneSourceHttp(),
         request_identifier: hyphenParcel,
         birth_date: null,
-        first_name: owner.first_name
-          ? formatNameToPattern(owner.first_name)
-          : null,
-        last_name: owner.last_name
-          ? formatNameToPattern(owner.last_name)
-          : null,
-        middle_name: owner.middle_name
-          ? formatNameToPattern(owner.middle_name)
-          : null,
-        prefix_name: mapPrefixName(owner.prefix_name),
-        suffix_name: mapSuffixName(owner.suffix_name),
+        first_name: owner.first_name,
+        last_name: owner.last_name,
+        middle_name: owner.middle_name || null,
+        prefix_name: owner.prefix_name || null,
+        suffix_name: owner.suffix_name || null,
         us_citizenship_status: null,
         veteran_status: null,
       };
