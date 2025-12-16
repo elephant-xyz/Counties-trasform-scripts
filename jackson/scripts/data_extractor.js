@@ -1512,7 +1512,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     ownersOnDate
       .filter((o) => o.type === "person")
       .forEach((o) => {
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+        // Include middle name in key to distinguish people with same first+last names
+        const middle = (o.middle_name || "").trim().toUpperCase();
+        const k = `${(o.first_name || "").trim().toUpperCase()}|${middle}|${(o.last_name || "").trim().toUpperCase()}`;
         if (!personsToUseMap.has(k)) {
           personsToUseMap.set(k, {
             first_name: o.first_name,
@@ -1548,24 +1550,28 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   }));
   const validPeople = validateAndFilterPeople(people);
 
-  // Build a map from person key (FIRSTNAME|LASTNAME) to person index
+  // Build a map from person key (FIRSTNAME|MIDDLENAME|LASTNAME) to person index
   // This ensures we can find the person index reliably when creating relationships
   const personKeyToIndex = new Map();
   validPeople.forEach((p, idx) => {
     if (p.first_name && p.last_name) {
-      const key = `${p.first_name.trim().toUpperCase()}|${p.last_name.trim().toUpperCase()}`;
+      const middle = (p.middle_name || "").trim().toUpperCase();
+      const key = `${p.first_name.trim().toUpperCase()}|${middle}|${p.last_name.trim().toUpperCase()}`;
       personKeyToIndex.set(key, idx + 1);
     }
   });
 
-  // Helper function to get person index by first and last name using the map
-  const getPersonIndexByKey = (firstName, lastName) => {
+  // Helper function to get person index by first, middle, and last name using the map
+  const getPersonIndexByKey = (firstName, middleName, lastName) => {
     if (!firstName || !lastName) return null;
     // Format names the same way they were formatted when building personKeyToIndex
     const formattedFirst = formatNameForSchema(firstName);
     const formattedLast = formatNameForSchema(lastName);
     if (!formattedFirst || !formattedLast) return null;
-    const key = `${formattedFirst.trim().toUpperCase()}|${formattedLast.trim().toUpperCase()}`;
+    // Format middle name if provided
+    const formattedMiddle = middleName ? formatMiddleNameForSchema(middleName) : null;
+    const middle = (formattedMiddle || "").trim().toUpperCase();
+    const key = `${formattedFirst.trim().toUpperCase()}|${middle}|${formattedLast.trim().toUpperCase()}`;
     return personKeyToIndex.get(key) || null;
   };
 
@@ -1614,7 +1620,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     ownersOnDate
       .filter((o) => o.type === "person")
       .forEach((o) => {
-        const pIdx = getPersonIndexByKey(o.first_name, o.last_name);
+        const pIdx = getPersonIndexByKey(o.first_name, o.middle_name, o.last_name);
         if (pIdx) {
           usedPersonIdx.add(pIdx);
           writeJSON(
@@ -1628,7 +1634,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
             },
           );
         } else {
-          console.warn(`Warning: Could not find person index for: ${o.first_name} ${o.last_name}`);
+          console.warn(`Warning: Could not find person index for: ${o.first_name} ${o.middle_name || ''} ${o.last_name}`);
         }
       });
     ownersOnDate
