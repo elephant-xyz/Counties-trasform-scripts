@@ -3272,11 +3272,11 @@ function main() {
     lot_type: mapLotType(primaryLand && primaryLand.method, lotAcre),
     lot_length_feet:
       primaryLand && Number.isFinite(primaryLand.landDepth)
-        ? Number(primaryLand.landDepth)
+        ? Math.round(Number(primaryLand.landDepth))
         : null,
     lot_width_feet:
       primaryLand && Number.isFinite(primaryLand.landFrontage)
-        ? Number(primaryLand.landFrontage)
+        ? Math.round(Number(primaryLand.landFrontage))
         : null,
     lot_area_sqft: lotAreaSqft,
     landscaping_features: null,
