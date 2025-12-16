@@ -2543,14 +2543,24 @@ function main() {
         }
 
         const person = {
-          birth_date: null,
           first_name: firstName,
           last_name: lastName,
+          birth_date: null,
           middle_name: middleName,
           prefix_name: null,
           suffix_name: null,
           us_citizenship_status: null,
           veteran_status: null,
+          request_identifier: pInfo.FolioNumber || null,
+          source_http_request: {
+            url: "https://apps.miamidadepa.gov/PApublicServiceProxy/PaServicesProxy.ashx",
+            method: "GET",
+            multiValueQueryString: {
+              Operation: ["GetPropertySearchByFolio"],
+              clientAppName: ["PropertySearch"],
+              folioNumber: [pInfo.FolioNumber || "unknown"]
+            }
+          }
         };
         writeJson(path.join("data", `person_${personIdx}.json`), person);
         personIdx++;
