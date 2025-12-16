@@ -22484,7 +22484,33 @@ async function main() {
 
   let finalAddressOut = null;
 
-  if (resolvedRaw) {
+  if (normalizedComplete) {
+    finalAddressOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = normalizedSurface[field];
+      if (field === "request_identifier" && resolvedRequestIdentifier !== undefined) {
+        value = resolvedRequestIdentifier;
+      } else if (field === "source_http_request") {
+        value = prepareSourceHttpRequest(resolvedSourceHttp) || null;
+      }
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        finalAddressOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        finalAddressOut[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      finalAddressOut[field] = value === undefined ? null : value;
+    });
+    if (
+      Object.prototype.hasOwnProperty.call(finalAddressOut, "unnormalized_address")
+    ) {
+      delete finalAddressOut.unnormalized_address;
+    }
+  } else if (resolvedRaw) {
     const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
     RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
       rawOut[field] = rawOut[field] ?? null;
@@ -22562,32 +22588,6 @@ async function main() {
     applyIfMissing("plus_four_postal_code", parsedLocality.plus4);
 
     finalAddressOut = rawOut;
-  } else if (normalizedComplete) {
-    finalAddressOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-      let value = normalizedSurface[field];
-      if (field === "request_identifier" && resolvedRequestIdentifier !== undefined) {
-        value = resolvedRequestIdentifier;
-      } else if (field === "source_http_request") {
-        value = prepareSourceHttpRequest(resolvedSourceHttp) || null;
-      }
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(value);
-        finalAddressOut[field] = Number.isFinite(numeric) ? numeric : null;
-        return;
-      }
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        finalAddressOut[field] = trimmed.length ? trimmed : null;
-        return;
-      }
-      finalAddressOut[field] = value === undefined ? null : value;
-    });
-    if (
-      Object.prototype.hasOwnProperty.call(finalAddressOut, "unnormalized_address")
-    ) {
-      delete finalAddressOut.unnormalized_address;
-    }
   }
 
   if (finalAddressOut) {
