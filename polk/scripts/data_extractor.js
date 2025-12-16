@@ -3241,7 +3241,8 @@ const propertyTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
 function mapPropertyTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
 
-  const normalizedInput = String(code).match(/\d{4}/)[0];
+  const matches = String(code).matchAll(/\d{4}/g); // Use 'g' flag for all matches
+  const normalizedInput = Array.from(matches).pop()?.[0]; // Convert to array, get last, then access the match
   if (!normalizedInput) return null;
 
   if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
