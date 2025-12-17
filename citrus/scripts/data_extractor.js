@@ -1525,7 +1525,6 @@ function extract() {
         file_format: null,
         ipfs_url: null,
         name: name || null,
-        original_url: href || null,
       });
     }
   });
