@@ -487,6 +487,7 @@ function main() {
         file_format: null,
         ipfs_url: null,
         name: bookPageText ? `Official Records ${bookPageText}` : null,
+        original_url: null,
       };
       out.files.push(fileObj);
     });
