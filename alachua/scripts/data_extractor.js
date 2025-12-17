@@ -2613,41 +2613,19 @@ function main() {
   }
 
   const mailingAddressFiles = [];
-  if (currentOwners.length > 0) {
-    ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-      if (!addr) return;
-      const fileName = `mailing_address_${idx + 1}.json`;
-      const mailingObj = {
-        unnormalized_address: addr,
-        latitude: null,
-        longitude: null,
-        source_http_request: clone(defaultSourceHttpRequest),
-        request_identifier: requestIdentifier,
-      };
-      writeJSON(path.join(dataDir, fileName), mailingObj);
-      mailingAddressFiles.push({ path: `./${fileName}` });
-    });
-  }
+  const mailingAddressMap = new Map();
 
   const currentOwnerEntities = [];
   currentOwners.forEach((owner, idx) => {
     if (!owner || !owner.type) return;
-    let mailingIdx = null;
-    if (
-      ownerMailingInfo.rawAddresses[idx] != null &&
-      mailingAddressFiles.length
-    ) {
-      const rawAddr = ownerMailingInfo.rawAddresses[idx];
-      const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-      if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
+
+    // Determine which mailing address this owner should use
+    let mailingAddress = null;
+    if (ownerMailingInfo.rawAddresses[idx] != null) {
+      mailingAddress = ownerMailingInfo.rawAddresses[idx];
+    } else if (ownerMailingInfo.uniqueAddresses.length > 0) {
+      mailingAddress = ownerMailingInfo.uniqueAddresses[0];
     }
-    if (mailingIdx == null && mailingAddressFiles.length) {
-      mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
-    }
-    const mailingRecord =
-      mailingIdx != null && mailingIdx >= 0
-        ? mailingAddressFiles[mailingIdx]
-        : null;
 
     if (owner.type === "person") {
       const normalizedPerson = normalizeOwner(owner, ownersByDate);
@@ -2656,7 +2634,7 @@ function main() {
         currentOwnerEntities.push({
           type: "person",
           path: personPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
+          mailingAddress: mailingAddress,
         });
       }
     } else if (owner.type === "company") {
@@ -2665,10 +2643,37 @@ function main() {
         currentOwnerEntities.push({
           type: "company",
           path: companyPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
+          mailingAddress: mailingAddress,
         });
       }
     }
+  });
+
+  // Now create mailing address files only for addresses that are actually used
+  currentOwnerEntities.forEach((entity) => {
+    if (!entity.mailingAddress) return;
+
+    // Check if we've already created a file for this address
+    if (mailingAddressMap.has(entity.mailingAddress)) {
+      entity.mailingPath = mailingAddressMap.get(entity.mailingAddress);
+      return;
+    }
+
+    // Create new mailing address file
+    const fileIndex = mailingAddressFiles.length + 1;
+    const fileName = `mailing_address_${fileIndex}.json`;
+    const mailingObj = {
+      unnormalized_address: entity.mailingAddress,
+      latitude: null,
+      longitude: null,
+      source_http_request: clone(defaultSourceHttpRequest),
+      request_identifier: requestIdentifier,
+    };
+    writeJSON(path.join(dataDir, fileName), mailingObj);
+    const mailingPath = `./${fileName}`;
+    mailingAddressFiles.push({ path: mailingPath });
+    mailingAddressMap.set(entity.mailingAddress, mailingPath);
+    entity.mailingPath = mailingPath;
   });
 
   const mailingRelationshipKeys = new Set();
