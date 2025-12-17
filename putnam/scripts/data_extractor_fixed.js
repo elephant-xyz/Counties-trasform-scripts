@@ -1603,6 +1603,10 @@ function main() {
       period_start_date: null,
     };
     writeOut(`tax_${year}.json`, taxObj);
+    writeOut(`relationship_property_has_tax_${year}.json`, {
+      from: { "/": `./property.json` },
+      to: { "/": `./tax_${year}.json` },
+    });
   }
 
   // LOT from Land
