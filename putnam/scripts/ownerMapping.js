@@ -33,6 +33,11 @@ function isCompanyName(name) {
 
 // Heuristic: looks like address
 function looksLikeAddress(s) {
+  // Exclude "ST JOHNS" which is a proper name (Saint Johns), not "Street"
+  if (/\bST\s+JOHNS?\b/i.test(s)) {
+    return false;
+  }
+
   const addrWords =
     /(\b(st|street|ave|avenue|rd|road|dr|drive|blvd|lane|ln|hwy|suite|ste|apt|#)\b|\bFL\b|\bCA\b|\bGA\b|\bTX\b|\bNY\b|\b\d{5}(-\d{4})?\b)/i;
   const manyDigits = /\d{2,}/;
