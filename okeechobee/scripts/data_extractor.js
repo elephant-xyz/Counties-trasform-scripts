@@ -2993,6 +2993,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
   }
 
   if (hasLotData) {
+    console.log("Creating lot.json with data:", lotData);
     writeJson(path.join("data", "lot.json"), lotData);
     writeJson(
       path.join("data", "relationship_property_has_lot.json"),
@@ -3002,6 +3003,8 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       }
     );
     console.log("Created lot.json and relationship_property_has_lot.json");
+  } else {
+    console.log("No lot data found in extra features");
   }
   //Lot modifications
   // 7) LOT
@@ -3035,16 +3038,33 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     const lotPath = path.join("data", "lot.json");
     if (fs.existsSync(lotPath)) {
       existingLotData = readJson(lotPath);
+    } else {
+      // Create default lot data structure if no existing file
+      existingLotData = {
+        ...appendSourceInfo(seed),
+        lot_type: null,
+        lot_length_feet: null,
+        lot_width_feet: null,
+        lot_area_sqft: null,
+        landscaping_features: null,
+        view: null,
+        fencing_type: null,
+        fence_height: null,
+        fence_length: null,
+        driveway_material: null,
+        driveway_condition: null,
+        lot_condition_issues: null
+      };
     }
     
-    // Merge with new data, keeping only the three specified fields
+    // Merge with new data, preserving all existing fields
     const finalLotData = {
       ...existingLotData,
-      lot_area_sqft: lotAreaSqft || existingLotData.lot_area_sqft || null,
-      lot_type: lot_type || existingLotData.lot_type || null,
-      lot_size_acre: lotSizeAcre || existingLotData.lot_size_acre || null,
+      lot_area_sqft: lotAreaSqft !== null ? lotAreaSqft : existingLotData.lot_area_sqft || null,
+      lot_type: lot_type !== null ? lot_type : existingLotData.lot_type || null,
+      lot_size_acre: lotSizeAcre !== null ? lotSizeAcre : existingLotData.lot_size_acre || null
     };
-    
+    // console.log("FINAL LOT ",finalLotData)
     writeJson(lotPath, finalLotData);
   } catch (e) {}
 
