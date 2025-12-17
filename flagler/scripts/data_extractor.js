@@ -497,6 +497,8 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     if (!part) return part;
     // Remove any non-letter characters except internal spaces, hyphens, apostrophes, commas, periods
     let cleaned = part.replace(/[^A-Za-z\s\-',.]/g, "").trim();
+    // Remove leading delimiters (periods, commas, hyphens, apostrophes) to match pattern
+    cleaned = cleaned.replace(/^[ \-',.]+/, '');
     // Remove trailing delimiters (periods, commas, hyphens, apostrophes) to match pattern
     cleaned = cleaned.replace(/[ \-',.]+$/, '');
     return cleaned;
