@@ -4036,10 +4036,10 @@ function main() {
 
   const property_type = mapPropertyTypeFromUseCode(propertyUse || "");
   // console.log("property_type>>",property_type);
-  const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(propertyUse || "");
-  const build_status= mapBuildStatusFromUseCode(propertyUse || "");
-  const structure_form = mapStructureFormFromUseCode(propertyUse || "");
-  const property_usage_type = mapPropertyUsageTypeFromUseCode(propertyUse || "");
+  const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(propertyUse || null);
+  const build_status= mapBuildStatusFromUseCode(propertyUse || null);
+  const structure_form = mapStructureFormFromUseCode(propertyUse || null);
+  const property_usage_type = mapPropertyUsageTypeFromUseCode(propertyUse || null);
   console.log(propertyUse,property_type,ownership_estate_type,build_status,structure_form,property_usage_type)
 
   const { section, township, range } =
@@ -4050,8 +4050,8 @@ function main() {
   const propertyObj = {
     ...appendSourceInfo(seed),
     parcel_identifier: propertyIdentifier,
-    property_type: property_type || null,
-    property_legal_description_text: legalDesc || "",
+    property_type: property_type || "",
+    property_legal_description_text: legalDesc || null,
     subdivision: subdivision,
     ownership_estate_type: ownership_estate_type || null,
     build_status: build_status || null,
