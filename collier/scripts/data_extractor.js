@@ -934,8 +934,17 @@ function main() {
   const utilsEntry = utils[ownerKey];
   if (utilsEntry) {
     fs.writeFileSync(
-      path.join(dataDir, "utility.json"),
+      path.join(dataDir, "utility_1.json"),
       JSON.stringify(utilsEntry, null, 2),
+    );
+    // Create relationship from property to utility
+    const relPropertyUtility = {
+      from: { "/": "./property.json" },
+      to: { "/": "./utility_1.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_utility_1.json"),
+      JSON.stringify(relPropertyUtility, null, 2),
     );
   }
 
