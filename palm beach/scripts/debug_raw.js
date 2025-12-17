@@ -10884,7 +10884,8 @@ const RAW_ADDRESS_SURFACE_FIELDS = Array.from(new Set(RAW_ADDRESS_ALLOWED_FIELDS
 const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
 const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 
-// Raw variant deliberately keeps a minimal surface to satisfy the schema oneOf.
+// Raw variant keeps the full schema surface so required keys stay present
+// (nullable) even when we only have an unnormalized string.
 const RAW_VARIANT_SCHEMA_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 const RAW_VARIANT_SCHEMA_FIELD_SET = new Set(RAW_VARIANT_SCHEMA_FIELDS);
 
@@ -10892,22 +10893,7 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = Array.from(
   new Set(RAW_ADDRESS_ALLOWED_FIELDS),
 );
 
-const RAW_ONE_OF_MINIMAL_FIELDS = new Set([
-  "latitude",
-  "longitude",
-  "postal_code",
-  "plus_four_postal_code",
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "county_name",
-  "country_code",
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
-]);
+const RAW_ONE_OF_MINIMAL_FIELDS = new Set([...RAW_ONE_OF_ALLOWED_FIELDS]);
 
 const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS];
 
@@ -25842,9 +25828,9 @@ async function main() {
     preserveFields: [...RAW_ONE_OF_MINIMAL_FIELDS, "state_code"],
   });
 
-  // Force the terminal address payload onto a single oneOf branch: keep a lean
-  // raw variant when we only have an unnormalized string, otherwise emit the
-  // normalized branch without the raw field.
+  // Force the terminal address payload onto a single oneOf branch: emit the raw
+  // variant with the full schema surface when we have an unnormalized string,
+  // otherwise emit the normalized branch without the raw field.
   if (fs.existsSync(addressOutputPath)) {
     const snapshot = readJSONIfExists(addressOutputPath) || {};
     const writeUnlocked = (payload) => {
