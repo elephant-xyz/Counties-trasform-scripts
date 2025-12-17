@@ -3069,6 +3069,9 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     if (!existingLotData.hasOwnProperty('lot_length_feet')) {
       existingLotData.lot_length_feet = null;
     }
+    if (!existingLotData.hasOwnProperty('landscaping_features')) {
+      existingLotData.landscaping_features = null;
+    }
     if (!existingLotData.hasOwnProperty('fencing_type')) {
       existingLotData.fencing_type = null;
     }
@@ -3091,6 +3094,8 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       lot_area_sqft: lotAreaSqft !== null ? lotAreaSqft : existingLotData.lot_area_sqft || null,
       lot_type: lot_type !== null ? lot_type : existingLotData.lot_type || null,
       lot_size_acre: lotSizeAcre !== null ? lotSizeAcre : existingLotData.lot_size_acre || null,
+      // Ensure landscaping_features is always present (required property, can be null)
+      landscaping_features: existingLotData.landscaping_features !== undefined ? existingLotData.landscaping_features : null,
       // Ensure lot_condition_issues is always present (even if null)
       lot_condition_issues: existingLotData.lot_condition_issues !== undefined ? existingLotData.lot_condition_issues : null,
       // Ensure fence_height is always present (even if null)
