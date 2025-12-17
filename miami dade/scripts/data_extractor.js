@@ -2496,6 +2496,17 @@ function main() {
       writeJson(path.join("data", `relationship_deed_file_${rdfIdx}.json`), relDF);
       rdfIdx++;
     }
+
+    // relationship_property_file (property → file) - create relationships from property to all files
+    let rpfIdx = 1;
+    for (let fIdx = 1; fIdx < fileIdx; fIdx++) {
+      const relPF = {
+        from: { "/": "./property.json" },
+        to: { "/": `./file_${fIdx}.json` },
+      };
+      writeJson(path.join("data", `relationship_property_has_file_${rpfIdx}.json`), relPF);
+      rpfIdx++;
+    }
   }
 
   // PERSON/COMPANY (owners)
