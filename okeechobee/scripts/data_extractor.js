@@ -3022,7 +3022,9 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       if (mAc) {
         lotSizeAcre = parseFloat(mAc[1].replace(/[,]/g, ""));
         // Convert acres to square feet (1 acre = 43,560 sq ft)
-        lotAreaSqft = Math.round(lotSizeAcre * 43560);
+        const calculated = Math.round(lotSizeAcre * 43560);
+        // Ensure lot_area_sqft is at least 1 (schema requirement: must be >= 1)
+        lotAreaSqft = calculated >= 1 ? calculated : null;
       }
     }
     let lot_type = null;
