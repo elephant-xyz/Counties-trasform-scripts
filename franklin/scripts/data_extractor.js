@@ -2900,16 +2900,7 @@ function main() {
   };
   writeJSON(path.join("data", "address.json"), address);
   console.log(address)
-
-  // Create relationship between property and address
-  writeJSON(
-    path.join("data", "relationship_property_has_address.json"),
-    {
-      from: { "/": "./property.json" },
-      to: { "/": "./address.json" }
-    }
-  );
-
+  
   // Extract mailing address and owner info from ownership section
   const ownershipHtml = $(".ownership").html();
   const mailingAddr = ownershipHtml ? extractMailingAddress(ownershipHtml) : null;
