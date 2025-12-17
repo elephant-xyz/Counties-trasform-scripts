@@ -2938,9 +2938,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     fence_length: null,
     driveway_material: null,
     driveway_condition: null,
-    lot_condition_issues: null,
-    paving_type: null,
-    site_lighting_type: null
+    lot_condition_issues: null
   };
 
   let hasStructureData = false;
@@ -2965,11 +2963,8 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       utilityData[mapping.property] = mapping.value;
       hasUtilityData = true;
     } else if (mapping.class === "Lot") {
-      // Only set the value if it's not null
-      if (mapping.value !== null) {
-        lotData[mapping.property] = mapping.value;
-        hasLotData = true;
-      }
+      lotData[mapping.property] = mapping.value;
+      hasLotData = true;
     }
   });
 
@@ -3041,39 +3036,62 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     } else {
       // Create default lot data structure if no existing file
       existingLotData = {
-        ...appendSourceInfo(seed)
+        ...appendSourceInfo(seed),
+        lot_type: null,
+        lot_length_feet: null,
+        lot_width_feet: null,
+        lot_area_sqft: null,
+        landscaping_features: null,
+        view: null,
+        fencing_type: null,
+        fence_height: null,
+        fence_length: null,
+        driveway_material: null,
+        driveway_condition: null,
+        lot_condition_issues: null
       };
+    }
+
+    // Ensure all required properties exist with defaults if missing
+    if (!existingLotData.hasOwnProperty('lot_width_feet')) {
+      existingLotData.lot_width_feet = null;
+    }
+    if (!existingLotData.hasOwnProperty('lot_length_feet')) {
+      existingLotData.lot_length_feet = null;
+    }
+    if (!existingLotData.hasOwnProperty('landscaping_features')) {
+      existingLotData.landscaping_features = null;
+    }
+    if (!existingLotData.hasOwnProperty('fencing_type')) {
+      existingLotData.fencing_type = null;
+    }
+    if (!existingLotData.hasOwnProperty('fence_height')) {
+      existingLotData.fence_height = null;
+    }
+    if (!existingLotData.hasOwnProperty('driveway_condition')) {
+      existingLotData.driveway_condition = null;
+    }
+    if (!existingLotData.hasOwnProperty('lot_condition_issues')) {
+      existingLotData.lot_condition_issues = null;
     }
 
     // Merge with new data, creating clean object with only valid properties
     const finalLotData = {
-      ...appendSourceInfo(seed)
+      ...appendSourceInfo(seed),
+      lot_type: lot_type !== null ? lot_type : (existingLotData.lot_type || null),
+      lot_length_feet: existingLotData.lot_length_feet !== undefined ? existingLotData.lot_length_feet : null,
+      lot_width_feet: existingLotData.lot_width_feet !== undefined ? existingLotData.lot_width_feet : null,
+      lot_area_sqft: lotAreaSqft !== null ? lotAreaSqft : (existingLotData.lot_area_sqft || null),
+      lot_size_acre: lotSizeAcre !== null ? lotSizeAcre : (existingLotData.lot_size_acre || null),
+      landscaping_features: existingLotData.landscaping_features !== undefined ? existingLotData.landscaping_features : null,
+      view: existingLotData.view !== undefined ? existingLotData.view : null,
+      fencing_type: existingLotData.fencing_type !== undefined ? existingLotData.fencing_type : null,
+      fence_height: existingLotData.fence_height !== undefined ? existingLotData.fence_height : null,
+      fence_length: existingLotData.fence_length !== undefined ? existingLotData.fence_length : null,
+      driveway_material: existingLotData.driveway_material !== undefined ? existingLotData.driveway_material : null,
+      driveway_condition: existingLotData.driveway_condition !== undefined ? existingLotData.driveway_condition : null,
+      lot_condition_issues: existingLotData.lot_condition_issues !== undefined ? existingLotData.lot_condition_issues : null
     };
-
-    // Add fields only if they have valid values
-    if (lot_type !== null) finalLotData.lot_type = lot_type;
-    else if (existingLotData.lot_type !== null && existingLotData.lot_type !== undefined) finalLotData.lot_type = existingLotData.lot_type;
-
-    if (existingLotData.lot_length_feet !== null && existingLotData.lot_length_feet !== undefined) finalLotData.lot_length_feet = existingLotData.lot_length_feet;
-    if (existingLotData.lot_width_feet !== null && existingLotData.lot_width_feet !== undefined) finalLotData.lot_width_feet = existingLotData.lot_width_feet;
-
-    if (lotAreaSqft !== null) finalLotData.lot_area_sqft = lotAreaSqft;
-    else if (existingLotData.lot_area_sqft !== null && existingLotData.lot_area_sqft !== undefined) finalLotData.lot_area_sqft = existingLotData.lot_area_sqft;
-
-    if (lotSizeAcre !== null) finalLotData.lot_size_acre = lotSizeAcre;
-    else if (existingLotData.lot_size_acre !== null && existingLotData.lot_size_acre !== undefined) finalLotData.lot_size_acre = existingLotData.lot_size_acre;
-
-    // Optional fields - only include if they have valid non-null values
-    if (existingLotData.landscaping_features !== null && existingLotData.landscaping_features !== undefined) finalLotData.landscaping_features = existingLotData.landscaping_features;
-    if (existingLotData.view !== null && existingLotData.view !== undefined) finalLotData.view = existingLotData.view;
-    if (existingLotData.fencing_type !== null && existingLotData.fencing_type !== undefined) finalLotData.fencing_type = existingLotData.fencing_type;
-    if (existingLotData.fence_height !== null && existingLotData.fence_height !== undefined) finalLotData.fence_height = existingLotData.fence_height;
-    if (existingLotData.fence_length !== null && existingLotData.fence_length !== undefined) finalLotData.fence_length = existingLotData.fence_length;
-    if (existingLotData.driveway_material !== null && existingLotData.driveway_material !== undefined) finalLotData.driveway_material = existingLotData.driveway_material;
-    if (existingLotData.driveway_condition !== null && existingLotData.driveway_condition !== undefined) finalLotData.driveway_condition = existingLotData.driveway_condition;
-    if (existingLotData.lot_condition_issues !== null && existingLotData.lot_condition_issues !== undefined) finalLotData.lot_condition_issues = existingLotData.lot_condition_issues;
-    if (existingLotData.paving_type !== null && existingLotData.paving_type !== undefined) finalLotData.paving_type = existingLotData.paving_type;
-    if (existingLotData.site_lighting_type !== null && existingLotData.site_lighting_type !== undefined) finalLotData.site_lighting_type = existingLotData.site_lighting_type;
     // console.log("FINAL LOT ",finalLotData)
     writeJson(lotPath, finalLotData);
 
@@ -3096,13 +3114,16 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         lot_type: null,
         lot_length_feet: null,
         lot_width_feet: null,
-        lot_area_sqft: null
+        lot_area_sqft: null,
+        landscaping_features: null,
+        view: null,
+        fencing_type: null,
+        fence_height: null,
+        fence_length: null,
+        driveway_material: null,
+        driveway_condition: null,
+        lot_condition_issues: null
       };
-      // Remove optional fields that are null
-      if (minimalLot.lot_type === null) delete minimalLot.lot_type;
-      if (minimalLot.lot_length_feet === null) delete minimalLot.lot_length_feet;
-      if (minimalLot.lot_width_feet === null) delete minimalLot.lot_width_feet;
-      if (minimalLot.lot_area_sqft === null) delete minimalLot.lot_area_sqft;
       writeJson(lotPath, minimalLot);
 
       // Create relationship
