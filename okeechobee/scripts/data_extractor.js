@@ -2939,7 +2939,13 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     fence_length: null,
     driveway_material: null,
     driveway_condition: null,
-    lot_condition_issues: null
+    lot_condition_issues: null,
+    paving_area_sqft: null,
+    paving_installation_date: null,
+    paving_type: null,
+    site_lighting_fixture_count: null,
+    site_lighting_installation_date: null,
+    site_lighting_type: null
   };
 
   let hasStructureData = false;
@@ -2997,6 +3003,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     console.log("Creating lot.json with data:", lotData);
     writeJson(path.join("data", "lot.json"), lotData);
     console.log("Created lot.json from extra features");
+    // Do NOT create relationship here - it will be created later after lot is fully processed
   } else {
     console.log("No lot data found in extra features");
   }
@@ -3094,6 +3101,24 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     if (!existingLotData.hasOwnProperty('lot_condition_issues')) {
       existingLotData.lot_condition_issues = null;
     }
+    if (!existingLotData.hasOwnProperty('paving_area_sqft')) {
+      existingLotData.paving_area_sqft = null;
+    }
+    if (!existingLotData.hasOwnProperty('paving_installation_date')) {
+      existingLotData.paving_installation_date = null;
+    }
+    if (!existingLotData.hasOwnProperty('paving_type')) {
+      existingLotData.paving_type = null;
+    }
+    if (!existingLotData.hasOwnProperty('site_lighting_fixture_count')) {
+      existingLotData.site_lighting_fixture_count = null;
+    }
+    if (!existingLotData.hasOwnProperty('site_lighting_installation_date')) {
+      existingLotData.site_lighting_installation_date = null;
+    }
+    if (!existingLotData.hasOwnProperty('site_lighting_type')) {
+      existingLotData.site_lighting_type = null;
+    }
 
     // Merge with new data, creating clean object with only valid properties
     const finalLotData = {
@@ -3110,7 +3135,13 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       fence_length: existingLotData.fence_length !== undefined ? existingLotData.fence_length : null,
       driveway_material: existingLotData.driveway_material !== undefined ? existingLotData.driveway_material : null,
       driveway_condition: existingLotData.driveway_condition !== undefined ? existingLotData.driveway_condition : null,
-      lot_condition_issues: existingLotData.lot_condition_issues !== undefined ? existingLotData.lot_condition_issues : null
+      lot_condition_issues: existingLotData.lot_condition_issues !== undefined ? existingLotData.lot_condition_issues : null,
+      paving_area_sqft: existingLotData.paving_area_sqft !== undefined ? existingLotData.paving_area_sqft : null,
+      paving_installation_date: existingLotData.paving_installation_date !== undefined ? existingLotData.paving_installation_date : null,
+      paving_type: existingLotData.paving_type !== undefined ? existingLotData.paving_type : null,
+      site_lighting_fixture_count: existingLotData.site_lighting_fixture_count !== undefined ? existingLotData.site_lighting_fixture_count : null,
+      site_lighting_installation_date: existingLotData.site_lighting_installation_date !== undefined ? existingLotData.site_lighting_installation_date : null,
+      site_lighting_type: existingLotData.site_lighting_type !== undefined ? existingLotData.site_lighting_type : null
     };
     // console.log("FINAL LOT ",finalLotData)
     writeJson(lotPath, finalLotData);
@@ -3143,7 +3174,13 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         fence_length: null,
         driveway_material: null,
         driveway_condition: null,
-        lot_condition_issues: null
+        lot_condition_issues: null,
+        paving_area_sqft: null,
+        paving_installation_date: null,
+        paving_type: null,
+        site_lighting_fixture_count: null,
+        site_lighting_installation_date: null,
+        site_lighting_type: null
       };
       writeJson(lotPath, minimalLot);
 
