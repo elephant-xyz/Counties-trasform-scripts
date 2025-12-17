@@ -1293,7 +1293,7 @@ function createStructureFiles(seed,parcelIdentifier) {
   } catch (e) {}
   
   if (structuresData && parcelIdentifier) {
-    // console.log("INSIDE")
+    console.log("INSIDE")
     const key = `property_${parcelIdentifier}`;
     const structures = structuresData[key]?.structures || [];
     structures.forEach((struct, idx) => {
@@ -2216,6 +2216,10 @@ async function main() {
     }
   }
 
+  // Lat/Long
+  const lat = unAddr.latitude || null; // latitude
+  const lon = unAddr.longitude || null; // longitude
+
   // Township/Range/Section & Block/Lot
   function parseTRS() {
     let trs =
@@ -2339,48 +2343,14 @@ async function main() {
   const address = {
     ...appendSourceInfo(seed),
     county_name: "Volusia",
-    // latitude: Number.isFinite(lat) ? lat : null,
-    // longitude: Number.isFinite(lon) ? lon : null,
+    latitude: Number.isFinite(lat) ? lat : null,
+    longitude: Number.isFinite(lon) ? lon : null,
     range: trs.range || null,
     section: trs.section || null,
     township:  trs.township || null,
     unnormalized_address: extractTopValue("Physical Address:") || null,
   };
   writeJSON(path.join(dataDir, "address.json"), address);
-
-  // Lat/Long - try unAddr first, then fallback to HTML input fields
-  let lat = unAddr.latitude || null;
-  let lon = unAddr.longitude || null;
-  
-  // If no coordinates in unAddr, extract from HTML input fields
-  if (!lat || !lon) {
-    const xcoordMatch = html.match(/<input[^>]*id="xcoord"[^>]*value="([^"]+)"/i);
-    const ycoordMatch = html.match(/<input[^>]*id="ycoord"[^>]*value="([^"]+)"/i);
-    
-    if (xcoordMatch && ycoordMatch) {
-      lat = parseFloat(xcoordMatch[1]) || lat;
-      lon = parseFloat(ycoordMatch[1]) || lon;
-    }
-  }
-
-  // geometry_address.json
-  const geometryAddress = {
-    latitude: Number.isFinite(lat) ? lat : null,
-    longitude: Number.isFinite(lon) ? lon : null,
-    ...appendSourceInfo(seed)
-  };
-  writeJSON(path.join(dataDir, "geometry_address.json"), geometryAddress);
-
-  // Relationship between address and geometry_address
-  const addressGeometryRel = {
-    from: { "/": "./address.json" },
-    to: { "/": "./geometry_address.json" }
-  };
-  writeJSON(path.join(dataDir, "relationship_address_has_geometry.json"), addressGeometryRel);
-
-  // Create parcel and geometry files
-  await createParcelAndGeometry(seed, parcelId, dataDir, altKey);
-  
 
   // Mailing Address
   const mailingAddressRaw = extractTopValue("Mailing Address On File:");
@@ -2431,8 +2401,8 @@ async function main() {
       first_name: o.first_name || "",
       last_name: o.last_name || "",
       middle_name: o.middle_name || null,
-      prefix_name: null,
-      suffix_name: null,
+      prefix_name: o.prefix_name || null,
+      suffix_name: o.suffix_name || null,
       us_citizenship_status: null,
       veteran_status: null,
     };

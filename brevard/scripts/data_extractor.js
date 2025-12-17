@@ -3520,6 +3520,14 @@ function writeJSON(filePath, obj) {
   fs.writeFileSync(filePath, JSON.stringify(obj, null, 2));
 }
 
+function isValidMiddleName(name) {
+  // Validate against Elephant schema pattern for middle_name
+  // Pattern requires: start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, or periods
+  if (!name) return false;
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  return pattern.test(name);
+}
+
 function normalizeOwnerKey(o) {
   if (!o) return null;
   const fn = (o.first_name || "").trim().toLowerCase();
@@ -4189,7 +4197,7 @@ function main() {
       birth_date: null,
       first_name: o.first_name || "",
       last_name: o.last_name || "",
-      middle_name: o.middle_name || null,
+      middle_name: (o.middle_name && isValidMiddleName(o.middle_name)) ? o.middle_name : null,
       prefix_name: o.prefix_name || null,
       suffix_name: o.suffix_name || null,
       us_citizenship_status: null,

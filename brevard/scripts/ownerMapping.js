@@ -213,6 +213,12 @@ function splitCompoundAndNames(segment) {
   return [seg];
 }
 
+function isValidMiddleName(name) {
+  // Validate against Elephant schema pattern for middle_name
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  return pattern.test(name);
+}
+
 function classifyPersonName(name) {
   const raw = normalizeSpace(name).replace(/&/g, " ");
   if (!raw) return null;
@@ -305,11 +311,20 @@ function classifyPersonName(name) {
 
   if (!first || !last) return null;
 
+  // Validate and apply title case for middle name
+  let validMiddleName = null;
+  if (middle) {
+    const titleCasedMiddle = toTitleCase(middle);
+    if (isValidMiddleName(titleCasedMiddle)) {
+      validMiddleName = titleCasedMiddle;
+    }
+  }
+
   return {
     type: "person",
     first_name: toTitleCase(first),
     last_name: toTitleCase(last),
-    middle_name: middle ? toTitleCase(middle) : null,
+    middle_name: validMiddleName,
     prefix_name,
     suffix_name,
   };
