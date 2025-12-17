@@ -930,15 +930,6 @@ function main() {
     }
   }
 
-  // Utilities from owners/utilities_data.json
-  const utilsEntry = utils[ownerKey];
-  if (utilsEntry) {
-    fs.writeFileSync(
-      path.join(dataDir, "utility.json"),
-      JSON.stringify(utilsEntry, null, 2),
-    );
-  }
-
   // Layouts from owners/layout_data.json
   let layoutIdx = 1;
   const layoutEntry = layouts[ownerKey];
