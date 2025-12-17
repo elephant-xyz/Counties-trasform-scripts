@@ -265,7 +265,7 @@ function buildStructureForBuilding(building, requestIdentifier) {
   if (roofCover === "Architectural Asphalt Shingle") {
     roofMaterialType = "Shingle";
   } else if (roofCover === "Built-Up") {
-    roofMaterialType = "Composition";
+    roofMaterialType = "Built-Up";
   }
   const roofDesign = mapRoofDesign(left["roof type"]);
 
