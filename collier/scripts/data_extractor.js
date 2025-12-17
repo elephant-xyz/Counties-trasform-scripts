@@ -794,16 +794,15 @@ function main() {
     Array.isArray(ownerEntry.owners_by_date.current)
   ) {
     const curr = ownerEntry.owners_by_date.current;
-    if (curr.length > 0) {
+    if (curr.length > 0 && validSales.length > 0) {
+      // Only create company/person files if there are valid sales to link them to
       // Cleanup any legacy duplicate relationship files
       const files = fs
         .readdirSync(dataDir)
         .filter(
           (f) =>
             f.startsWith("relationship_sales_company") ||
-            f.startsWith("relationship_sales_person") ||
-            f.startsWith("relationship_property_person") ||
-            f.startsWith("relationship_property_company"),
+            f.startsWith("relationship_sales_person"),
         );
       for (const f of files) {
         try {
@@ -851,62 +850,59 @@ function main() {
         }
       });
 
-      // Create relationships linking property to current owners (persons and companies)
-      personFiles.forEach((personFile, pi) => {
-        const rel = {
-          from: { "/": "./property.json" },
-          to: { "/": `./${personFile}` },
-        };
-        fs.writeFileSync(
-          path.join(dataDir, `relationship_property_person_${pi + 1}.json`),
-          JSON.stringify(rel, null, 2),
-        );
-      });
+      // Track which owner indices are actually used
+      const usedPersonIndices = new Set();
+      const usedCompanyIndices = new Set();
 
-      companyFiles.forEach((companyFile, ci) => {
-        const rel = {
-          from: { "/": "./property.json" },
-          to: { "/": `./${companyFile}` },
-        };
-        fs.writeFileSync(
-          path.join(dataDir, `relationship_property_company_${ci + 1}.json`),
-          JSON.stringify(rel, null, 2),
-        );
-      });
-
-      // If there are valid sales, also create relationships linking sales to owners
-      if (validSales.length > 0) {
-        validSales.forEach((s, si) => {
-          // Link to all person files
-          personFiles.forEach((personFile, pi) => {
-            const rel = {
-              from: { "/": `./sales_${si + 1}.json` },
-              to: { "/": `./${personFile}` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_person_${pi + 1}_${si + 1}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-          });
-
-          // Link to all company files
-          companyFiles.forEach((companyFile, ci) => {
-            const rel = {
-              from: { "/": `./sales_${si + 1}.json` },
-              to: { "/": `./${companyFile}` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-          });
+      // Create relationships for valid sales
+      validSales.forEach((s, si) => {
+        // Link to all person files
+        personFiles.forEach((personFile, pi) => {
+          const rel = {
+            to: { "/": `./${personFile}` },
+            from: { "/": `./sales_${si + 1}.json` },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_sales_person_${pi + 1}_${si + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+          usedPersonIndices.add(pi + 1);
         });
+
+        // Link to all company files
+        companyFiles.forEach((companyFile, ci) => {
+          const rel = {
+            to: { "/": `./${companyFile}` },
+            from: { "/": `./sales_${si + 1}.json` },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_sales_company_${ci + 1}_${si + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+          usedCompanyIndices.add(ci + 1);
+        });
+      });
+
+      // Remove unused owner files
+      for (let i = 1; i <= personFiles.length; i++) {
+        if (!usedPersonIndices.has(i)) {
+          try {
+            fs.unlinkSync(path.join(dataDir, `person_${i}.json`));
+          } catch (_) {}
+        }
+      }
+      for (let i = 1; i <= companyFiles.length; i++) {
+        if (!usedCompanyIndices.has(i)) {
+          try {
+            fs.unlinkSync(path.join(dataDir, `company_${i}.json`));
+          } catch (_) {}
+        }
       }
     }
   }
