@@ -39,6 +39,24 @@ function toCurrencyNumber(n) {
   return Math.round(num * 100) / 100;
 }
 
+function cleanNameString(s) {
+  if (!s) return null;
+  const str = String(s).trim();
+  if (!str) return null;
+
+  // Remove digits and any characters that are not letters or allowed separators (space, hyphen, apostrophe, comma, period)
+  const cleaned = str.replace(/[^a-zA-Z\s\-',.]/g, '');
+
+  // Remove multiple consecutive separators
+  const normalized = cleaned.replace(/[\s\-',.]+/g, (match) => {
+    // Keep only the first separator character
+    return match.charAt(0);
+  });
+
+  const trimmed = normalized.trim();
+  return trimmed || null;
+}
+
 function properCaseName(s) {
   if (!s) return s;
 
@@ -73,6 +91,15 @@ function isValidName(s) {
   if (!str) return false;
   // Pattern: must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, or periods
   const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  return namePattern.test(str);
+}
+
+function isValidFirstOrLastName(s) {
+  if (!s) return false;
+  const str = String(s).trim();
+  if (!str) return false;
+  // Pattern from Elephant schema: must start with uppercase letter, followed by lowercase letters, then optional (separator + letter + lowercase letters)
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   return namePattern.test(str);
 }
 
@@ -3537,14 +3564,33 @@ function main() {
 
       for (const owner of currOwners) {
         if (owner.type === "person") {
+          // Clean and validate first and last names
+          const firstNameCleaned = cleanNameString(owner.first_name || null);
+          const lastNameCleaned = cleanNameString(owner.last_name || null);
+
+          if (!firstNameCleaned || !lastNameCleaned) {
+            // Skip this person if first or last name is missing after cleaning
+            continue;
+          }
+
+          const firstNameProper = properCaseName(firstNameCleaned);
+          const lastNameProper = properCaseName(lastNameCleaned);
+
+          // Validate that names match the required pattern
+          if (!isValidFirstOrLastName(firstNameProper) || !isValidFirstOrLastName(lastNameProper)) {
+            // Skip this person if names don't match the pattern
+            continue;
+          }
+
           personIndex += 1;
           const personFileName = `person_${personIndex}.json`;
-          const middleNameRaw = properCaseName(owner.middle_name || null);
+          const middleNameCleaned = cleanNameString(owner.middle_name || null);
+          const middleNameRaw = middleNameCleaned ? properCaseName(middleNameCleaned) : null;
           const middleNameValid = middleNameRaw && isValidName(middleNameRaw) ? middleNameRaw : null;
           const personRecord = {
             birth_date: null,
-            first_name: properCaseName(owner.first_name || null),
-            last_name: properCaseName(owner.last_name || null),
+            first_name: firstNameProper,
+            last_name: lastNameProper,
             middle_name: middleNameValid,
             prefix_name: null,
             suffix_name: normalizeSuffix(owner.suffix_name),

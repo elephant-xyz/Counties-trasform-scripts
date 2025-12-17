@@ -87,12 +87,39 @@ function toNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function cleanNameString(s) {
+  if (!s) return null;
+  const str = String(s).trim();
+  if (!str) return null;
+
+  // Remove digits and any characters that are not letters or allowed separators (space, hyphen, apostrophe, comma, period)
+  const cleaned = str.replace(/[^a-zA-Z\s\-',.]/g, '');
+
+  // Remove multiple consecutive separators
+  const normalized = cleaned.replace(/[\s\-',.]+/g, (match) => {
+    // Keep only the first separator character
+    return match.charAt(0);
+  });
+
+  const trimmed = normalized.trim();
+  return trimmed || null;
+}
+
 function isValidName(s) {
   if (!s) return false;
   const str = String(s).trim();
   if (!str) return false;
   // Pattern: must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, or periods
   const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  return namePattern.test(str);
+}
+
+function isValidFirstOrLastName(s) {
+  if (!s) return false;
+  const str = String(s).trim();
+  if (!str) return false;
+  // Pattern from Elephant schema: must start with uppercase letter, followed by lowercase letters, then optional (separator + letter + lowercase letters)
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   return namePattern.test(str);
 }
 
@@ -252,11 +279,29 @@ function parsePersonName(raw, inferredLastName) {
       return null;
     }
 
+    // Clean names to remove invalid characters (like digits)
+    const firstCleaned = cleanNameString(first);
+    const lastCleaned = cleanNameString(lastPart);
+    const middleCleaned = middleValid ? cleanNameString(middleValid) : null;
+
+    if (!firstCleaned || !lastCleaned) {
+      return null;
+    }
+
+    const firstProper = properCaseName(firstCleaned);
+    const lastProper = properCaseName(lastCleaned);
+    const middleProper = middleCleaned ? properCaseName(middleCleaned) : null;
+
+    // Validate with strict pattern
+    if (!isValidFirstOrLastName(firstProper) || !isValidFirstOrLastName(lastProper)) {
+      return null;
+    }
+
     const person = {
       type: "person",
-      first_name: properCaseName(first),
-      last_name: properCaseName(lastPart),
-      middle_name: middleValid ? properCaseName(middleValid) : null,
+      first_name: firstProper,
+      last_name: lastProper,
+      middle_name: middleProper,
     };
 
     // Normalize and add suffix if found
@@ -273,10 +318,24 @@ function parsePersonName(raw, inferredLastName) {
   const tokens = s.split(" ").filter(Boolean);
   if (tokens.length === 1) {
     if (inferredLastName && isValidName(tokens[0]) && isValidName(inferredLastName)) {
+      const firstCleaned = cleanNameString(tokens[0]);
+      const lastCleaned = cleanNameString(inferredLastName);
+
+      if (!firstCleaned || !lastCleaned) {
+        return null;
+      }
+
+      const firstProper = properCaseName(firstCleaned);
+      const lastProper = properCaseName(lastCleaned);
+
+      if (!isValidFirstOrLastName(firstProper) || !isValidFirstOrLastName(lastProper)) {
+        return null;
+      }
+
       return {
         type: "person",
-        first_name: properCaseName(tokens[0]),
-        last_name: properCaseName(inferredLastName),
+        first_name: firstProper,
+        last_name: lastProper,
         middle_name: null,
       };
     }
@@ -294,11 +353,29 @@ function parsePersonName(raw, inferredLastName) {
     return null;
   }
 
+  // Clean names to remove invalid characters
+  const firstCleaned = cleanNameString(first);
+  const lastCleaned = cleanNameString(last);
+  const middleCleaned = middleValid ? cleanNameString(middleValid) : null;
+
+  if (!firstCleaned || !lastCleaned) {
+    return null;
+  }
+
+  const firstProper = properCaseName(firstCleaned);
+  const lastProper = properCaseName(lastCleaned);
+  const middleProper = middleCleaned ? properCaseName(middleCleaned) : null;
+
+  // Validate with strict pattern
+  if (!isValidFirstOrLastName(firstProper) || !isValidFirstOrLastName(lastProper)) {
+    return null;
+  }
+
   return {
     type: "person",
-    first_name: properCaseName(first),
-    last_name: properCaseName(last),
-    middle_name: middleValid ? properCaseName(middleValid) : null,
+    first_name: firstProper,
+    last_name: lastProper,
+    middle_name: middleProper,
   };
 }
 
@@ -374,13 +451,40 @@ function processOwnerObject(obj, options = {}) {
   }
 
   if (first && last) {
+    // Clean names to remove invalid characters
+    const firstCleaned = cleanNameString(first);
+    const lastCleaned = cleanNameString(last);
+
+    if (!firstCleaned || !lastCleaned) {
+      result.invalids.push({
+        raw: JSON.stringify(o),
+        reason: "invalid_names_after_cleaning",
+      });
+      return result;
+    }
+
+    const firstProper = properCaseName(firstCleaned);
+    const lastProper = properCaseName(lastCleaned);
+
+    // Validate with strict pattern
+    if (!isValidFirstOrLastName(firstProper) || !isValidFirstOrLastName(lastProper)) {
+      result.invalids.push({
+        raw: JSON.stringify(o),
+        reason: "names_do_not_match_pattern",
+      });
+      return result;
+    }
+
     const middleNormalized = middle ? normWS(middle) : null;
     const middleValid = middleNormalized && isValidName(middleNormalized) ? middleNormalized : null;
+    const middleCleaned = middleValid ? cleanNameString(middleValid) : null;
+    const middleProper = middleCleaned ? properCaseName(middleCleaned) : null;
+
     const person = {
       type: "person",
-      first_name: properCaseName(first),
-      last_name: properCaseName(last),
-      middle_name: middleValid ? properCaseName(middleValid) : null,
+      first_name: firstProper,
+      last_name: lastProper,
+      middle_name: middleProper,
     };
     // Normalize suffix to match allowed enum values
     const normalizedSuffix = suffix ? normalizeSuffix(suffix) : null;
