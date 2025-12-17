@@ -1860,56 +1860,12 @@ function writeLayout(
 ) {
   clearExistingLayoutFiles();
   if (!parcelId) return;
-
-  const createPropertyOnlyRelationships = () => {
-    const structureList = Array.isArray(structuresInfo)
-      ? structuresInfo
-      : [];
-    structureList.forEach((s) => {
-      if (!s || typeof s.index !== "number") return;
-      writeJSON(
-        path.join(
-          "data",
-          `relationship_property_has_structure_${s.index}.json`,
-        ),
-        {
-          from: { "/": "./property.json" },
-          to: { "/": `./structure_${s.index}.json` },
-        },
-      );
-    });
-
-    const utilityList = Array.isArray(utilitiesInfo) ? utilitiesInfo : [];
-    utilityList.forEach((u) => {
-      if (!u || typeof u.index !== "number") return;
-      writeJSON(
-        path.join(
-          "data",
-          `relationship_property_has_utility_${u.index}.json`,
-        ),
-        {
-          from: { "/": "./property.json" },
-          to: { "/": `./utility_${u.index}.json` },
-        },
-      );
-    });
-  };
-
-  if (propertyType === "LandParcel") {
-    createPropertyOnlyRelationships();
-    return;
-  }
+  if (propertyType === "LandParcel") return;
   const layoutsData = readJSON(path.join("owners", "layout_data.json"));
-  if (!layoutsData) {
-    createPropertyOnlyRelationships();
-    return;
-  }
+  if (!layoutsData) return;
   const key = `property_${parcelId}`;
   const entry = layoutsData[key];
-  if (!entry || !Array.isArray(entry.layouts) || !entry.layouts.length) {
-    createPropertyOnlyRelationships();
-    return;
-  }
+  if (!entry || !Array.isArray(entry.layouts) || !entry.layouts.length) return;
 
   const layoutOutputs = entry.layouts.map((lay, idx) => {
     const index = idx + 1;
