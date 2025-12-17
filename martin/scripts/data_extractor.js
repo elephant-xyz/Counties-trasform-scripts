@@ -1667,7 +1667,8 @@ function main() {
       null,
   };
   const mailingAddressFile = "mailing_address.json";
-  writeJson(path.join("data", mailingAddressFile), mailingAddressOut);
+  // Conditionally write mailing_address.json only if it will be referenced by relationships
+  // (moved to after relationship filtering to avoid unused file)
 
   const geometryOut = {
     latitude: latitude ?? null,
@@ -2228,6 +2229,11 @@ function main() {
       const fileName = path.basename(fromPath);
       return companyFilesWithSalesRelation.has(fileName);
     });
+
+  // Only write mailing_address.json if it will be referenced by at least one relationship
+  if (mailingPersonRelationshipsFiltered.length > 0 || mailingCompanyRelationshipsFiltered.length > 0) {
+    writeJson(path.join("data", mailingAddressFile), mailingAddressOut);
+  }
 
   personsToWrite.forEach((p) => writeJson(path.join("data", p.file), p.data));
   companiesToWrite.forEach((c) => writeJson(path.join("data", c.file), c.data));
