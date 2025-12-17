@@ -3438,8 +3438,9 @@ function main() {
     });
   }
 
-  // Only create mailing address files for addresses that will be used
-  const mailingAddressFiles = [];
+  // Prepare mailing address data but don't write files yet
+  // We'll only write them if they're actually referenced by owner entities
+  const mailingAddressData = [];
   const oldToNewIndexMap = new Map();
   if (currentOwners.length > 0 && usedAddressIndices.size > 0) {
     const sortedIndices = Array.from(usedAddressIndices).sort((a, b) => a - b);
@@ -3454,8 +3455,12 @@ function main() {
         source_http_request: clone(defaultSourceHttpRequest),
         request_identifier: requestIdentifier,
       };
-      writeJSON(path.join(dataDir, fileName), mailingObj);
-      mailingAddressFiles.push({ path: `./${fileName}`, oldIdx });
+      mailingAddressData.push({
+        path: `./${fileName}`,
+        oldIdx,
+        fileName,
+        data: mailingObj
+      });
       oldToNewIndexMap.set(oldIdx, newIdx);
     });
   }
@@ -3496,7 +3501,7 @@ function main() {
     let mailingIdx = null;
     if (
       ownerMailingInfo.rawAddresses[idx] != null &&
-      mailingAddressFiles.length
+      mailingAddressData.length
     ) {
       const rawAddr = ownerMailingInfo.rawAddresses[idx];
       const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
@@ -3504,17 +3509,17 @@ function main() {
         mailingIdx = oldToNewIndexMap.get(uniqueIdx);
       }
     }
-    if (mailingIdx == null && mailingAddressFiles.length) {
+    if (mailingIdx == null && mailingAddressData.length) {
       const fallbackUniqueIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
       if (oldToNewIndexMap.has(fallbackUniqueIdx)) {
         mailingIdx = oldToNewIndexMap.get(fallbackUniqueIdx);
-      } else if (mailingAddressFiles.length > 0) {
+      } else if (mailingAddressData.length > 0) {
         mailingIdx = 0;
       }
     }
     const mailingRecord =
       mailingIdx != null && mailingIdx >= 0
-        ? mailingAddressFiles[mailingIdx]
+        ? mailingAddressData[mailingIdx]
         : null;
 
     if (owner.type === "person") {
@@ -3542,6 +3547,21 @@ function main() {
   // Don't pre-register previous owners - only register them when they're actually referenced by a sale
   // This prevents creating unused person/company files
 
+  // Write only the mailing address files that are actually referenced by valid owner entities
+  const referencedMailingPaths = new Set();
+  currentOwnerEntities.forEach((entity) => {
+    if (entity.mailingPath) {
+      referencedMailingPaths.add(entity.mailingPath);
+    }
+  });
+
+  mailingAddressData.forEach((mailingData) => {
+    if (referencedMailingPaths.has(mailingData.path)) {
+      writeJSON(path.join(dataDir, mailingData.fileName), mailingData.data);
+    }
+  });
+
+  // Create relationships between owner entities and their mailing addresses
   const mailingRelationshipKeys = new Set();
   currentOwnerEntities.forEach((entity) => {
     if (!entity.path || !entity.mailingPath) return;
