@@ -589,6 +589,9 @@ const PERSON_FRAGMENT_BLOCKLIST = new Set([
 function splitPartySegments(raw) {
   const cleaned = normalizePartyName(raw);
   if (!cleaned) return [];
+  if (isCompanyName(cleaned)) {
+    return [cleaned];
+  }
   const parts = cleaned
     .split(/\s*&\s*|\s+AND\s+|\s*\+\s*|;/i)
     .map((p) => normalizePartyName(p))
@@ -806,11 +809,35 @@ const buildDefaultRelationshipFileName = (rel) => {
 
 function titleCaseName(s) {
   if (s == null) return null;
-  s = String(s).toLowerCase();
-  return s.replace(
-    /(^|[\s\-\'])([a-z])/g,
-    (m, p1, p2) => p1 + p2.toUpperCase(),
+  s = String(s).trim();
+  if (!s) return null;
+
+  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
+  s = s.replace(/[^a-zA-Z\s\-',.]/g, '');
+  if (!s) return null;
+
+  // Remove leading/trailing separators and collapse multiple spaces
+  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '').replace(/\s+/g, ' ');
+  if (!s) return null;
+
+  s = s.toLowerCase();
+
+  // Apply title casing: uppercase letter after start or after a separator
+  const result = s.replace(
+    /(^|[\s\-',.])([a-z])/g,
+    (m, p1, p2) => p1 + p2.toUpperCase()
   );
+
+  // Remove any consecutive separators (reduce to single space)
+  let cleaned = result;
+  while (/[\s\-',.]{2,}/.test(cleaned)) {
+    cleaned = cleaned.replace(/[\s\-',.]{2,}/g, ' ');
+  }
+  cleaned = cleaned.trim();
+
+  // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  if (!cleaned || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(cleaned)) return null;
+  return cleaned;
 }
 
 function getValueByStrong($, label) {
@@ -1864,6 +1891,8 @@ function main() {
     const first = titleCaseName(p.first_name);
     const last = titleCaseName(p.last_name);
     const middle = p.middle_name ? titleCaseName(p.middle_name) : null;
+    // Ensure first and last names are valid after title casing
+    if (!first || !last) return null;
     const personObj = {
       birth_date: null,
       first_name: first,
@@ -2107,29 +2136,27 @@ function main() {
   if (latestIdx >= 0) {
     const sObj = salesHistoryOut[latestIdx];
     const companiesHere = currentOwners.filter((o) => o.type === "company");
-    if (companiesHere.length) {
-      companiesHere.forEach((c) => {
-        const cFile = companyMap.get(companyKey(c.name));
-        if (cFile) {
-          relSalesCompanies.push({
-            to: { "/": `./${cFile}` },
+    companiesHere.forEach((c) => {
+      const cFile = companyMap.get(companyKey(c.name));
+      if (cFile) {
+        relSalesCompanies.push({
+          to: { "/": `./${cFile}` },
+          from: { "/": `./${sObj.file}` },
+        });
+      }
+    });
+
+    currentOwners
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
+        const file = personMap.get(personKey(o));
+        if (file) {
+          relSalesPersons.push({
+            to: { "/": `./${file}` },
             from: { "/": `./${sObj.file}` },
           });
         }
       });
-    } else {
-      currentOwners
-        .filter((o) => o.type === "person")
-        .forEach((o) => {
-          const file = personMap.get(personKey(o));
-          if (file) {
-            relSalesPersons.push({
-              to: { "/": `./${file}` },
-              from: { "/": `./${sObj.file}` },
-            });
-          }
-        });
-    }
   }
 
   // Chain-based buyers: for each non-latest sale, link to next sale's sellers (owners_by_date at next sale date), but avoid linking when next seller equals current seller (no transfer)
@@ -2165,8 +2192,45 @@ function main() {
     });
   }
 
-  persons.forEach((p) => writeJson(path.join("data", p.file), p.data));
-  companies.forEach((c) => writeJson(path.join("data", c.file), c.data));
+  const personFilesWithSalesRelation = new Set(
+    relSalesPersons
+      .map((rel) => rel?.to?.["/"])
+      .filter(Boolean)
+      .map((relPath) => path.basename(relPath)),
+  );
+  const companyFilesWithSalesRelation = new Set(
+    relSalesCompanies
+      .map((rel) => rel?.to?.["/"])
+      .filter(Boolean)
+      .map((relPath) => path.basename(relPath)),
+  );
+
+  const personsToWrite = persons.filter((p) =>
+    personFilesWithSalesRelation.has(p.file),
+  );
+  const companiesToWrite = companies.filter((c) =>
+    companyFilesWithSalesRelation.has(c.file),
+  );
+
+  const mailingPersonRelationshipsFiltered = mailingPersonRelationships.filter(
+    (rel) => {
+      const fromPath = rel?.from?.["/"];
+      if (!fromPath) return false;
+      const fileName = path.basename(fromPath);
+      return personFilesWithSalesRelation.has(fileName);
+    },
+  );
+
+  const mailingCompanyRelationshipsFiltered =
+    mailingCompanyRelationships.filter((rel) => {
+      const fromPath = rel?.from?.["/"];
+      if (!fromPath) return false;
+      const fileName = path.basename(fromPath);
+      return companyFilesWithSalesRelation.has(fileName);
+    });
+
+  personsToWrite.forEach((p) => writeJson(path.join("data", p.file), p.data));
+  companiesToWrite.forEach((c) => writeJson(path.join("data", c.file), c.data));
 
   writeRelationshipFiles(relSalesHistoryDeed, (rel) => {
     const fromPath = rel?.from?.["/"];
@@ -2204,14 +2268,14 @@ function main() {
     return `relationship_sales_history_${saleIdx}_company_${companyIdx}.json`;
   });
 
-  writeRelationshipFiles(mailingPersonRelationships, (rel) => {
+  writeRelationshipFiles(mailingPersonRelationshipsFiltered, (rel) => {
     const fromPath = rel?.from?.["/"];
     const personIdx = getIndexFromRelPath(fromPath, "person_");
     if (!personIdx) return null;
     return `relationship_person_${personIdx}_has_mailing_address.json`;
   });
 
-  writeRelationshipFiles(mailingCompanyRelationships, (rel) => {
+  writeRelationshipFiles(mailingCompanyRelationshipsFiltered, (rel) => {
     const fromPath = rel?.from?.["/"];
     const companyIdx = getIndexFromRelPath(fromPath, "company_");
     if (!companyIdx) return null;

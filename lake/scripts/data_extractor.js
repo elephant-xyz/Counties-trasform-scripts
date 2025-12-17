@@ -1170,9 +1170,9 @@ function main() {
       let personIndex = 1;
       owners.forEach((o) => {
         if (o.type !== "person") return;
-        const first = properCaseName(o.first_name || null);
-        const last = properCaseName(o.last_name || null);
-        const middle = o.middle_name ? o.middle_name : null;
+        const first = cleanName(o.first_name);
+        const last = cleanName(o.last_name);
+        const middle = cleanName(o.middle_name);
         const person = {
           birth_date: null,
           first_name: first,
