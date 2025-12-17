@@ -4131,6 +4131,13 @@ function main() {
       ...taxData,
     };
     writeJson(path.join(dataDir, "tax_1.json"), taxObj);
+
+    // Create property_has_tax relationship
+    const propertyTaxRel = {
+      from: { "/": "./property.json" },
+      to: { "/": "./tax_1.json" }
+    };
+    writeJson(path.join(dataDir, "relationship_property_has_tax.json"), propertyTaxRel);
   }
 
   //OWNERS CREATION
