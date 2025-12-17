@@ -1250,23 +1250,23 @@ function main() {
     fileFiles.push(fName);
   });
 
-  // relationship_deed_file_*.json (deed → file)
+  // relationship_deed_*_has_file_*.json (deed → file)
   for (let i = 0; i < Math.min(deedFiles.length, fileFiles.length); i++) {
     const rel = {
       from: { "/": `./${deedFiles[i]}` },
       to: { "/": `./${fileFiles[i]}` },
     };
-    const relName = `relationship_deed_file_${i + 1}.json`;
+    const relName = `relationship_deed_${i + 1}_has_file_${i + 1}.json`;
     writeJSON(path.join(dataDir, relName), rel);
   }
 
-  // relationship_sales_deed_*.json (sales → deed)
+  // relationship_sales_history_*_has_deed.json (sales → deed)
   for (let i = 0; i < Math.min(salesFiles.length, deedFiles.length); i++) {
     const rel = {
-      to: { "/": `./${deedFiles[i]}` },
       from: { "/": `./${salesFiles[i]}` },
+      to: { "/": `./${deedFiles[i]}` },
     };
-    const relName = `relationship_sales_deed_${i + 1}.json`;
+    const relName = `relationship_sales_history_${i + 1}_has_deed.json`;
     writeJSON(path.join(dataDir, relName), rel);
   }
 
