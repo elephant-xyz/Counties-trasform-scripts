@@ -26036,66 +26036,57 @@ async function main() {
       hasCompleteNormalizedAddress({ ...terminalNormalizedSurface });
 
     if (terminalRawCandidate) {
-      const rawFieldSurface = Array.from(
-        new Set([
-          ...RAW_ONE_OF_MINIMAL_FIELDS,
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
+      // Lock the final payload onto the raw oneOf branch: keep every schema
+      // field present (nullable) but avoid mixing in normalized values so the
+      // oneOf resolves cleanly to the raw variant.
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      rawOut.unnormalized_address = terminalRawCandidate;
+
+      const resolvedRequestId = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          terminalSnapshot.request_identifier,
+          resolvedRequestIdentifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+          unnormalizedSource.request_identifier,
         ]),
       );
-      const rawOut =
-        ensureRawAddressSchemaDefaults(
-          {
-            ...terminalSnapshot,
-            unnormalized_address: terminalRawCandidate,
-          },
-          rawFieldSurface,
-        ) || rawFieldSurface.reduce(
-          (acc, field) => {
-            acc[field] = null;
-            return acc;
-          },
-          { unnormalized_address: terminalRawCandidate },
-        );
+      rawOut.request_identifier =
+        resolvedRequestId === undefined ? null : resolvedRequestId;
 
-      rawFieldSurface.forEach((field) => {
-        if (!Object.prototype.hasOwnProperty.call(rawOut, field)) {
-          rawOut[field] = null;
-          return;
-        }
-        if (field === "source_http_request") {
-          rawOut[field] =
-            prepareSourceHttpRequest(rawOut[field]) ||
-            prepareSourceHttpRequest(resolvedSourceHttp) ||
-            null;
-          return;
-        }
-        if (field === "request_identifier") {
-          const identifier = safeNullIfEmpty(
-            resolveFirstNonEmptyString([
-              rawOut.request_identifier,
-              resolvedRequestIdentifier,
-              trimmedRequestIdentifier,
-              parcelId,
-              seed && seed.request_identifier,
-            ]),
-          );
-          rawOut.request_identifier = identifier === undefined ? null : identifier;
-          return;
-        }
-        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-          const numeric = parseCoordinate(rawOut[field]);
-          rawOut[field] = Number.isFinite(numeric) ? numeric : null;
-          return;
-        }
-        if (typeof rawOut[field] === "string") {
-          const trimmed = rawOut[field].trim();
-          rawOut[field] = trimmed.length ? trimmed : null;
-        } else if (rawOut[field] === undefined) {
-          rawOut[field] = null;
-        }
-      });
+      rawOut.source_http_request =
+        prepareSourceHttpRequest(
+          terminalSnapshot.source_http_request ??
+            resolvedSourceHttp ??
+            sourceHttpCandidate ??
+            unnormalizedSource.source_http_request ??
+            seedSource.source_http_request,
+        ) || null;
+
+      const numericLat = parseCoordinate(terminalSnapshot.latitude);
+      const numericLon = parseCoordinate(terminalSnapshot.longitude);
+      rawOut.latitude = Number.isFinite(numericLat) ? numericLat : null;
+      rawOut.longitude = Number.isFinite(numericLon) ? numericLon : null;
+
+      rawOut.county_name =
+        safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            terminalSnapshot.county_name,
+            inferredCounty,
+            formattedCountyName,
+            countyName,
+          ]),
+        ) || null;
+      rawOut.state_code =
+        safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            terminalSnapshot.state_code,
+            inferredStateCode,
+            "FL",
+          ]),
+        ) || null;
+      rawOut.country_code = rawOut.state_code ? "US" : null;
 
       if (!rawOut.postal_code) {
         rawOut.plus_four_postal_code = null;
@@ -26103,12 +26094,6 @@ async function main() {
       if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
         rawOut.latitude = null;
         rawOut.longitude = null;
-      }
-      if (
-        hasMeaningfulAddressValue(rawOut.state_code) &&
-        !hasMeaningfulAddressValue(rawOut.country_code)
-      ) {
-        rawOut.country_code = "US";
       }
       originalWriteFileSync.call(
         fs,
