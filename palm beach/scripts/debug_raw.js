@@ -27630,13 +27630,40 @@ async function main() {
         seed && seed.source_http_request,
       ),
     );
-    finalAddressPayload = {
-      unnormalized_address: finalRawAddressValue,
-      county_name: formattedCountyName || countyName || null,
-      request_identifier:
-        resolvedRequestId === undefined ? null : resolvedRequestId,
-      source_http_request: resolvedSourceHttp || null,
+    const rawSeed = {
+      ...(seed && typeof seed === "object" ? seed : {}),
+      state_code: safeNullIfEmpty(inferredStateCode) || "FL",
+      postal_code:
+        (seed && seed.postal_code) !== undefined
+          ? seed.postal_code
+          : fallbackPostalValue ?? null,
+      plus_four_postal_code:
+        (seed && seed.plus_four_postal_code) !== undefined
+          ? seed.plus_four_postal_code
+          : fallbackPlus4Value ?? null,
     };
+    const latitudeCandidate = Number.isFinite(initialLatitude)
+      ? initialLatitude
+      : parcelCentroid && Number.isFinite(parcelCentroid.latitude)
+        ? parcelCentroid.latitude
+        : null;
+    const longitudeCandidate = Number.isFinite(initialLongitude)
+      ? initialLongitude
+      : parcelCentroid && Number.isFinite(parcelCentroid.longitude)
+        ? parcelCentroid.longitude
+        : null;
+    finalAddressPayload = buildFinalRawAddressOutput(finalRawAddressValue, {
+      seed: rawSeed,
+      requestIdentifier: resolvedRequestId,
+      sourceHttpRequest: resolvedSourceHttp,
+      countyName: formattedCountyName || countyName || null,
+      countryCode:
+        safeNullIfEmpty(seed && seed.country_code) ||
+        safeNullIfEmpty(unAddr && unAddr.country_code) ||
+        null,
+      latitude: latitudeCandidate,
+      longitude: longitudeCandidate,
+    });
   }
 
   if (finalAddressPayload) {
