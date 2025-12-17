@@ -212,6 +212,9 @@ function classifyOwner(raw) {
   // Strip leading special characters like %, #, etc. that are used as markers
   text = text.replace(/^[%#@*]+\s*/, "");
 
+  // Strip common prefixes like "ATTN:", "ATTENTION:", "C/O:", etc.
+  text = text.replace(/^(ATTN|ATTENTION|C\/O|CARE OF):\s*/i, "").trim();
+
   // Strip trailing & symbols (indicates continuation on next line)
   text = text.replace(/\s*&\s*$/, "").trim();
 
