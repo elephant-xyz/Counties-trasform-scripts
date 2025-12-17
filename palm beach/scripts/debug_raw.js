@@ -16329,16 +16329,43 @@ function finalizeAddressOneOfSelection(addressPath) {
   }
 
   if (rawValue) {
-    const rawOut = {
-      unnormalized_address: rawValue,
-      request_identifier: requestId || null,
-      source_http_request: sourceHttp,
-    };
-    Object.keys(rawOut).forEach((key) => {
-      if (!RAW_ONE_OF_ALLOWED_FIELD_SET.has(key)) {
-        delete rawOut[key];
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        rawOut[field] = rawValue;
+        return;
       }
+      if (field === "request_identifier") {
+        rawOut[field] = requestId === undefined ? null : requestId;
+        return;
+      }
+      if (field === "source_http_request") {
+        rawOut[field] = sourceHttp ? deepClone(sourceHttp) : null;
+        return;
+      }
+      const value = Object.prototype.hasOwnProperty.call(payload, field)
+        ? payload[field]
+        : null;
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      rawOut[field] = sanitizeAddressFieldValue(field, value);
     });
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
+    }
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rawOut.state_code) &&
+      !hasMeaningfulAddressValue(rawOut.country_code)
+    ) {
+      rawOut.country_code = "US";
+    }
     originalWriteFileSync(addressPath, `${JSON.stringify(rawOut, null, 2)}\n`);
     return;
   }
