@@ -3412,8 +3412,9 @@ function main() {
         if (grantYear && value) {
           exemptions.push({
             exemption_type: value === 25000 ? "Homestead" : "Additional Homestead",
-            exemption_value: value,
-            tax_year: grantYear
+            exemption_amount: value,
+            grant_year: grantYear,
+            is_active: !description.includes("not renew")
           });
         }
       }
@@ -3422,7 +3423,7 @@ function main() {
   
   // Write exemptions
   exemptions.forEach((exemption, idx) => {
-    writeJSON(path.join(dataDir, `tax_exemption_${idx + 1}.json`), exemption);
+    writeJSON(path.join(dataDir, `exemption_${idx + 1}.json`), exemption);
   });
   
   if (floodRows.length > 0) {
@@ -3446,9 +3447,9 @@ function main() {
   
   // Exemption relationships
   exemptions.forEach((exemption, index) => {
-    writeJSON(path.join(dataDir, `relationship_property_has_tax_exemption_${index + 1}.json`), {
+    writeJSON(path.join(dataDir, `relationship_property_exemption_${index + 1}.json`), {
       from: "./property.json",
-      to: `./tax_exemption_${index + 1}.json`
+      to: `./exemption_${index + 1}.json`
     });
   });
 
