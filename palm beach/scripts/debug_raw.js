@@ -655,94 +655,12 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
         typeof data === "string"
           ? JSON.parse(data)
           : JSON.parse(data.toString("utf8"));
-      const normalizedSurface =
-        ensureNormalizedAddressSchemaSurface &&
-        ensureNormalizedAddressSchemaSurface({ ...payload });
-      const hasNormalizedAddress =
-        normalizedSurface &&
-        hasCompleteNormalizedAddress({ ...normalizedSurface });
-      const rawValue = safeNullIfEmpty(
-        resolveFirstNonEmptyString([
-          payload.unnormalized_address,
-          payload.full_address,
-          payload.site_address,
-          payload.address,
-        ]),
-      );
-
-      if (rawValue) {
-        const latNum = parseCoordinate(payload.latitude);
-        const lonNum = parseCoordinate(payload.longitude);
-        const rawOut = {
-          unnormalized_address: rawValue,
-          request_identifier: safeNullIfEmpty(payload.request_identifier) ?? null,
-          source_http_request:
-            prepareSourceHttpRequest(payload.source_http_request) || null,
-          county_name: safeNullIfEmpty(payload.county_name) ?? null,
-          state_code: safeNullIfEmpty(payload.state_code) ?? null,
-          country_code:
-            safeNullIfEmpty(payload.country_code) ||
-            (safeNullIfEmpty(payload.state_code) ? "US" : null),
-          latitude: Number.isFinite(latNum) ? latNum : null,
-          longitude: Number.isFinite(lonNum) ? lonNum : null,
-          section: payload.section ?? null,
-          township: payload.township ?? null,
-          range: payload.range ?? null,
-          lot: payload.lot ?? null,
-          municipality_name: payload.municipality_name ?? null,
-          postal_code: safeNullIfEmpty(payload.postal_code) ?? null,
-          plus_four_postal_code: safeNullIfEmpty(payload.postal_code)
-            ? safeNullIfEmpty(payload.plus_four_postal_code) ?? null
-            : null,
-          route_number: payload.route_number ?? null,
-        };
-        if (!rawOut.postal_code) {
-          rawOut.plus_four_postal_code = null;
-        }
-        if (
-          hasMeaningfulAddressValue(rawOut.state_code) &&
-          !hasMeaningfulAddressValue(rawOut.country_code)
-        ) {
-          rawOut.country_code = "US";
-        }
-        data = `${JSON.stringify(rawOut, null, 2)}\n`;
-      } else if (hasNormalizedAddress) {
-        const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-        NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-          let value = normalizedSurface[field];
-          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-            const numeric = parseCoordinate(value);
-            value = Number.isFinite(numeric) ? numeric : null;
-          } else if (field === "request_identifier") {
-            value = safeNullIfEmpty(value);
-          } else if (field === "source_http_request") {
-            value = prepareSourceHttpRequest(value) || null;
-          } else if (typeof value === "string") {
-            const trimmed = value.trim();
-            value = trimmed.length ? trimmed : null;
-          } else if (value === undefined) {
-            value = null;
-          }
-          normalizedOut[field] = value;
-        });
-        if (!normalizedOut.postal_code) {
-          normalizedOut.plus_four_postal_code = null;
-        }
-        if (
-          hasMeaningfulAddressValue(normalizedOut.state_code) &&
-          !hasMeaningfulAddressValue(normalizedOut.country_code)
-        ) {
-          normalizedOut.country_code = "US";
-        }
-        if (
-          Object.prototype.hasOwnProperty.call(
-            normalizedOut,
-            "unnormalized_address",
-          )
-        ) {
-          delete normalizedOut.unnormalized_address;
-        }
-        data = `${JSON.stringify(normalizedOut, null, 2)}\n`;
+      const sanitized =
+        typeof sanitizeAddressPayloadForWrite === "function"
+          ? sanitizeAddressPayloadForWrite(payload)
+          : payload;
+      if (sanitized && typeof sanitized === "object") {
+        data = `${JSON.stringify(sanitized, null, 2)}\n`;
       }
     } catch {
       // fall through to original write
