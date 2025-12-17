@@ -188,13 +188,13 @@ function buildUtilityData($, requestIdentifier) {
       electrical_wiring_type: null,
       hvac_condensing_unit_present: null,
       electrical_wiring_type_other_description: null,
-      solar_panel_present: null,
+      solar_panel_present: false,
       solar_panel_type: null,
       solar_panel_type_other_description: null,
       smart_home_features: null,
       smart_home_features_other_description: null,
       hvac_unit_condition: null,
-      solar_inverter_visible: null,
+      solar_inverter_visible: false,
       hvac_unit_issues: null,
     };
 
