@@ -1525,6 +1525,7 @@ function main() {
     // Create person files
     let personIdx = 0;
     const personFiles = new Map();
+    const personArray = [];
     personMap.forEach((personData, pKey) => {
       personIdx++;
       const person = {
@@ -1539,11 +1540,13 @@ function main() {
       };
       writeJSON(path.join(dataDir, `person_${personIdx}.json`), person);
       personFiles.set(pKey, `person_${personIdx}.json`);
+      personArray.push(person);
     });
 
     // Create company files
     let companyIdx = 0;
     const companyFiles = new Map();
+    const companyArray = [];
     companyMap.forEach((companyData, cKey) => {
       companyIdx++;
       const company = {
@@ -1551,7 +1554,12 @@ function main() {
       };
       writeJSON(path.join(dataDir, `company_${companyIdx}.json`), company);
       companyFiles.set(cKey, `company_${companyIdx}.json`);
+      companyArray.push(company);
     });
+
+    // Track which person/company files are actually used in relationships
+    const usedPersonIdx = new Set();
+    const usedCompanyIdx = new Set();
 
     // Create relationships from sales to persons/companies
     // Link the first (most recent) sale to current owners
@@ -1565,6 +1573,11 @@ function main() {
           const pKey = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
           const personFile = personFiles.get(pKey);
           if (personFile) {
+            // Extract file index from filename (e.g., "person_5.json" -> 5)
+            const match = personFile.match(/person_(\d+)\.json/);
+            if (match) {
+              usedPersonIdx.add(parseInt(match[1], 10));
+            }
             relPersonIdx++;
             writeJSON(
               path.join(dataDir, `relationship_sales_person_${relPersonIdx}.json`),
@@ -1578,6 +1591,11 @@ function main() {
           const cKey = (o.name || "").trim().toUpperCase();
           const companyFile = companyFiles.get(cKey);
           if (companyFile) {
+            // Extract file index from filename (e.g., "company_3.json" -> 3)
+            const match = companyFile.match(/company_(\d+)\.json/);
+            if (match) {
+              usedCompanyIdx.add(parseInt(match[1], 10));
+            }
             relCompanyIdx++;
             writeJSON(
               path.join(dataDir, `relationship_sales_company_${relCompanyIdx}.json`),
@@ -1590,6 +1608,26 @@ function main() {
         }
       });
     }
+
+    // Remove unused person and company files
+    personArray.forEach((_, idx) => {
+      const fileIdx = idx + 1;
+      if (!usedPersonIdx.has(fileIdx)) {
+        const filePath = path.join(dataDir, `person_${fileIdx}.json`);
+        try {
+          fs.unlinkSync(filePath);
+        } catch (e) {}
+      }
+    });
+    companyArray.forEach((_, idx) => {
+      const fileIdx = idx + 1;
+      if (!usedCompanyIdx.has(fileIdx)) {
+        const filePath = path.join(dataDir, `company_${fileIdx}.json`);
+        try {
+          fs.unlinkSync(filePath);
+        } catch (e) {}
+      }
+    });
   }
 }
 
