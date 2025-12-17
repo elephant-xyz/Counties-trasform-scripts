@@ -811,14 +811,33 @@ function titleCaseName(s) {
   if (s == null) return null;
   s = String(s).trim();
   if (!s) return null;
+
+  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
+  s = s.replace(/[^a-zA-Z\s\-',.]/g, '');
+  if (!s) return null;
+
+  // Remove leading/trailing separators and collapse multiple spaces
+  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '').replace(/\s+/g, ' ');
+  if (!s) return null;
+
   s = s.toLowerCase();
+
+  // Apply title casing: uppercase letter after start or after a separator
   const result = s.replace(
-    /(^|[\s\-\'])([a-z])/g,
-    (m, p1, p2) => p1 + p2.toUpperCase(),
+    /(^|[\s\-',.])([a-z])/g,
+    (m, p1, p2) => p1 + p2.toUpperCase()
   );
-  // Ensure result starts with an uppercase letter (valid name pattern)
-  if (!result || !/^[A-Z]/.test(result)) return null;
-  return result;
+
+  // Remove any consecutive separators (reduce to single space)
+  let cleaned = result;
+  while (/[\s\-',.]{2,}/.test(cleaned)) {
+    cleaned = cleaned.replace(/[\s\-',.]{2,}/g, ' ');
+  }
+  cleaned = cleaned.trim();
+
+  // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  if (!cleaned || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(cleaned)) return null;
+  return cleaned;
 }
 
 function getValueByStrong($, label) {
@@ -2117,29 +2136,27 @@ function main() {
   if (latestIdx >= 0) {
     const sObj = salesHistoryOut[latestIdx];
     const companiesHere = currentOwners.filter((o) => o.type === "company");
-    if (companiesHere.length) {
-      companiesHere.forEach((c) => {
-        const cFile = companyMap.get(companyKey(c.name));
-        if (cFile) {
-          relSalesCompanies.push({
-            to: { "/": `./${cFile}` },
+    companiesHere.forEach((c) => {
+      const cFile = companyMap.get(companyKey(c.name));
+      if (cFile) {
+        relSalesCompanies.push({
+          to: { "/": `./${cFile}` },
+          from: { "/": `./${sObj.file}` },
+        });
+      }
+    });
+
+    currentOwners
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
+        const file = personMap.get(personKey(o));
+        if (file) {
+          relSalesPersons.push({
+            to: { "/": `./${file}` },
             from: { "/": `./${sObj.file}` },
           });
         }
       });
-    } else {
-      currentOwners
-        .filter((o) => o.type === "person")
-        .forEach((o) => {
-          const file = personMap.get(personKey(o));
-          if (file) {
-            relSalesPersons.push({
-              to: { "/": `./${file}` },
-              from: { "/": `./${sObj.file}` },
-            });
-          }
-        });
-    }
   }
 
   // Chain-based buyers: for each non-latest sale, link to next sale's sellers (owners_by_date at next sale date), but avoid linking when next seller equals current seller (no transfer)

@@ -16,9 +16,40 @@ function norm(str) {
 }
 
 // Title case for names: first letter uppercase, rest lowercase
+// Handles delimiters like hyphens, apostrophes properly
 function titleCase(str) {
   if (!str) return str;
-  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+
+  // Clean up malformed hyphen-space patterns (e.g., "TRACEY- " becomes "TRACEY-")
+  str = str.replace(/-\s+$/, '-').replace(/^-\s+/, '-');
+
+  // Split on delimiters while preserving them
+  const parts = str.split(/(\s+|\-|'|,|\.)/);
+
+  const capitalized = parts.map((part, index) => {
+    // If it's a delimiter, keep it as is
+    if (/^(\s+|\-|'|,|\.)$/.test(part)) return part;
+
+    // Skip empty parts
+    if (!part) return part;
+
+    // Single letter: uppercase
+    if (part.length === 1) {
+      return part.toUpperCase();
+    }
+
+    // Check if previous part was an apostrophe or hyphen
+    const prevPart = index > 0 ? parts[index - 1] : null;
+    if (prevPart === "'" || prevPart === "-") {
+      // Capitalize after apostrophe or hyphen
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    }
+
+    // Standard capitalization
+    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+  });
+
+  return capitalized.join("");
 }
 
 // Determine if text looks like an address or non-name noise
@@ -245,7 +276,23 @@ function classifyOwner(raw) {
       suffixName = normalizeSuffix(leftTokens.pop());
     }
 
-    lastName = leftTokens.map(titleCase).join(" ");
+    // Handle hyphenated last names: if token ends with hyphen, join with next token using hyphen
+    const processedTokens = [];
+    for (let i = 0; i < leftTokens.length; i++) {
+      let token = leftTokens[i];
+      // If token ends with hyphen and there's a next token, join them with hyphen
+      while (token.endsWith('-') && i + 1 < leftTokens.length) {
+        i++;
+        token = token + leftTokens[i];
+      }
+      // Clean up any trailing hyphens
+      token = token.replace(/-+$/, '');
+      if (token) {
+        processedTokens.push(token);
+      }
+    }
+
+    lastName = processedTokens.map(titleCase).join(" ").replace(/'\s+/g, "'");
 
     // Parse right side (first + middle names)
     const firstMiddle = parts[1].trim();
@@ -345,7 +392,7 @@ function classifyOwner(raw) {
         suffixName = normalizeSuffix(tokens.pop());
       }
 
-      const lastName = titleCase(tokens[tokens.length - 1]);
+      const lastName = titleCase(tokens[tokens.length - 1]).replace(/'\s+/g, "'");
       tokens.pop(); // Remove last name
 
       // Now tokens contains all first names (and possibly middle names)
@@ -383,7 +430,7 @@ function classifyOwner(raw) {
         suffixName = normalizeSuffix(tokens.pop());
       }
 
-      const lastName = titleCase(tokens[tokens.length - 1]);
+      const lastName = titleCase(tokens[tokens.length - 1]).replace(/'\s+/g, "'");
       tokens.pop(); // Remove last name
 
       // Split by "&"
@@ -443,7 +490,7 @@ function classifyOwner(raw) {
     const firstName = titleCase(tokens[0]);
 
     // Last token is the last name (after potentially removing suffix)
-    const lastName = titleCase(tokens[tokens.length - 1]);
+    const lastName = titleCase(tokens[tokens.length - 1]).replace(/'\s+/g, "'");
 
     // Everything in between is middle name
     const middleName =
