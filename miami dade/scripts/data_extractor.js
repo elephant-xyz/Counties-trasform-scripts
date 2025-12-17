@@ -1,8 +1,16 @@
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
-
+// 0000 REFERENCE FOLIO
 const propertyTypeMapping  = [
+  {
+    "property_usecode": "0000 - REFERENCE FOLIO",
+    "ownership_estate_type": null,
+    "build_status": null,
+    "structure_form": null,
+    "property_usage_type": null,
+    "property_type": "LandParcel"
+  },
   {
     "property_usecode": "0004 - VACANT RESIDENTIAL : RESIDENTIAL - TOTAL VALUE",
     "ownership_estate_type": "FeeSimple",
@@ -1339,14 +1347,14 @@ function mapDorToPropertyType(dorCode, dorDescription) {
   if (!dorCode || typeof dorCode !== "string" || dorCode.length < 2)
     return null;
   
-  // Check for invalid 0000 REFERENCE FOLIO case
-  if (dorCode === "0000" && dorDescription === "REFERENCE FOLIO") {
-    return { 
-      error: true, 
-      message: `Invalid 0000 REFERENCE FOLIO - skipping transformation`,
-      value: dorCode 
-    };
-  }
+  // // Check for invalid 0000 REFERENCE FOLIO case
+  // if (dorCode === "0000" && dorDescription === "REFERENCE FOLIO") {
+  //   return { 
+  //     error: true, 
+  //     message: `Invalid 0000 REFERENCE FOLIO - skipping transformation`,
+  //     value: dorCode 
+  //   };
+  // }
   const propertyMapping = mapPropertyTypeFromUseCode(dorCode);
   if (!propertyMapping) {
     throw {
