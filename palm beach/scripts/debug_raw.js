@@ -522,6 +522,101 @@ function clampAddressToSingleBranchStrict(addressPath) {
   writeJSON(addressPath, rawOut);
 }
 
+// Emit a lean raw payload when only an unnormalized address is available so
+// the oneOf validator doesn't expect normalized street components.
+function enforceMinimalRawOneOf(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath) || {};
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...snapshot });
+  const normalizedReady =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+  if (normalizedReady) return;
+
+  const rawValue = safeNullIfEmpty(snapshot.unnormalized_address);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawFieldOrder = [
+    "unnormalized_address",
+    "latitude",
+    "longitude",
+    "section",
+    "township",
+    "range",
+    "block",
+    "lot",
+    "city_name",
+    "postal_code",
+    "plus_four_postal_code",
+    "state_code",
+    "county_name",
+    "country_code",
+    "request_identifier",
+    "source_http_request",
+  ];
+
+  const rawOut = {};
+  rawFieldOrder.forEach((field) => {
+    rawOut[field] = null;
+  });
+  rawOut.unnormalized_address = rawValue;
+
+  const numericLat = parseCoordinate(snapshot.latitude);
+  const numericLon = parseCoordinate(snapshot.longitude);
+  rawOut.latitude = Number.isFinite(numericLat) ? numericLat : null;
+  rawOut.longitude = Number.isFinite(numericLon) ? numericLon : null;
+
+  rawOut.section = snapshot.section ?? null;
+  rawOut.township = snapshot.township ?? null;
+  rawOut.range = snapshot.range ?? null;
+  rawOut.block = snapshot.block ?? null;
+  rawOut.lot = snapshot.lot ?? null;
+
+  rawOut.city_name = safeNullIfEmpty(snapshot.city_name);
+  rawOut.postal_code = safeNullIfEmpty(snapshot.postal_code);
+  rawOut.plus_four_postal_code = rawOut.postal_code
+    ? safeNullIfEmpty(snapshot.plus_four_postal_code)
+    : null;
+
+  const stateFallback =
+    safeNullIfEmpty(snapshot.state_code) ||
+    safeNullIfEmpty(options.stateFallback) ||
+    null;
+  rawOut.state_code = stateFallback;
+
+  rawOut.county_name =
+    safeNullIfEmpty(snapshot.county_name) ||
+    safeNullIfEmpty(options.countyFallback) ||
+    null;
+
+  rawOut.country_code = hasMeaningfulAddressValue(rawOut.state_code)
+    ? safeNullIfEmpty(snapshot.country_code) || "US"
+    : safeNullIfEmpty(snapshot.country_code) || null;
+
+  rawOut.request_identifier =
+    safeNullIfEmpty(snapshot.request_identifier) ||
+    safeNullIfEmpty(options.requestIdentifier) ||
+    null;
+
+  rawOut.source_http_request =
+    prepareSourceHttpRequest(snapshot.source_http_request) ||
+    prepareSourceHttpRequest(options.sourceHttpRequest) ||
+    null;
+
+  Object.keys(rawOut).forEach((key) => {
+    if (rawOut[key] === undefined) {
+      delete rawOut[key];
+    }
+  });
+
+  const serialized = `${JSON.stringify(rawOut, null, 2)}\n`;
+  originalWriteFileSync.call(fs, addressPath, serialized);
+}
+
 fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
   if (lockedAddressPath) {
     const normalizedTarget = path.resolve(targetPath || "");
@@ -26796,6 +26891,14 @@ async function main() {
       removeFileIfExists(addressOutputPath);
     }
   }
+
+  enforceMinimalRawOneOf(addressOutputPath, {
+    countyFallback: formattedCountyName || countyName || "Palm Beach",
+    stateFallback: inferredStateCode || "FL",
+    requestIdentifier:
+      resolvedRequestIdentifier ?? trimmedRequestIdentifier ?? parcelId ?? null,
+    sourceHttpRequest: resolvedSourceHttp || sourceHttpCandidate,
+  });
 
   // Guarantee relationships are left for downstream population (no local URs).
   enforcePropertyRelationshipNulls(propertyFilePath);
