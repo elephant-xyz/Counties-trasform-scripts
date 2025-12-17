@@ -2931,7 +2931,6 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     lot_length_feet: null,
     lot_width_feet: null,
     lot_area_sqft: null,
-    lot_size_acre: null,
     landscaping_features: null,
     view: null,
     fencing_type: null,
@@ -2939,13 +2938,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     fence_length: null,
     driveway_material: null,
     driveway_condition: null,
-    lot_condition_issues: null,
-    paving_area_sqft: null,
-    paving_type: null,
-    paving_installation_date: null,
-    site_lighting_fixture_count: null,
-    site_lighting_installation_date: null,
-    site_lighting_type: null
+    lot_condition_issues: null
   };
 
   let hasStructureData = false;
@@ -3048,7 +3041,6 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         lot_length_feet: null,
         lot_width_feet: null,
         lot_area_sqft: null,
-        lot_size_acre: null,
         landscaping_features: null,
         view: null,
         fencing_type: null,
@@ -3056,13 +3048,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         fence_length: null,
         driveway_material: null,
         driveway_condition: null,
-        lot_condition_issues: null,
-        paving_area_sqft: null,
-        paving_type: null,
-        paving_installation_date: null,
-        site_lighting_fixture_count: null,
-        site_lighting_installation_date: null,
-        site_lighting_type: null
+        lot_condition_issues: null
       };
     }
 
@@ -3104,13 +3090,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       fence_length: existingLotData.fence_length !== undefined ? existingLotData.fence_length : null,
       driveway_material: existingLotData.driveway_material !== undefined ? existingLotData.driveway_material : null,
       driveway_condition: existingLotData.driveway_condition !== undefined ? existingLotData.driveway_condition : null,
-      lot_condition_issues: existingLotData.lot_condition_issues !== undefined ? existingLotData.lot_condition_issues : null,
-      paving_area_sqft: existingLotData.paving_area_sqft !== undefined ? existingLotData.paving_area_sqft : null,
-      paving_type: existingLotData.paving_type !== undefined ? existingLotData.paving_type : null,
-      paving_installation_date: existingLotData.paving_installation_date !== undefined ? existingLotData.paving_installation_date : null,
-      site_lighting_fixture_count: existingLotData.site_lighting_fixture_count !== undefined ? existingLotData.site_lighting_fixture_count : null,
-      site_lighting_installation_date: existingLotData.site_lighting_installation_date !== undefined ? existingLotData.site_lighting_installation_date : null,
-      site_lighting_type: existingLotData.site_lighting_type !== undefined ? existingLotData.site_lighting_type : null
+      lot_condition_issues: existingLotData.lot_condition_issues !== undefined ? existingLotData.lot_condition_issues : null
     };
     // console.log("FINAL LOT ",finalLotData)
     writeJson(lotPath, finalLotData);
@@ -3135,7 +3115,6 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         lot_length_feet: null,
         lot_width_feet: null,
         lot_area_sqft: null,
-        lot_size_acre: null,
         landscaping_features: null,
         view: null,
         fencing_type: null,
@@ -3143,13 +3122,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         fence_length: null,
         driveway_material: null,
         driveway_condition: null,
-        lot_condition_issues: null,
-        paving_area_sqft: null,
-        paving_type: null,
-        paving_installation_date: null,
-        site_lighting_fixture_count: null,
-        site_lighting_installation_date: null,
-        site_lighting_type: null
+        lot_condition_issues: null
       };
       writeJson(lotPath, minimalLot);
 
