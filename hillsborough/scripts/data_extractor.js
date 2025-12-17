@@ -2505,113 +2505,46 @@ function writeJson(filePath, obj) {
 }
 
 
-function mapPropertyTypeFromUseCode(code) {
+function mapFromUseCode(code, lookup) {
   if (!code && code !== 0) return null;
   const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
   if (!normalizedInput) return null;
   
-  // Try exact match first
-  if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
-    return propertyTypeByUseCode[normalizedInput];
-  }
-  
-  // Try partial match on numeric code
+  // Try numeric prefix match first
   const numericMatch = normalizedInput.match(/^\d{4}/);
   if (numericMatch) {
     const numericCode = numericMatch[0];
-    for (const key in propertyTypeByUseCode) {
+    for (const key in lookup) {
       if (key.startsWith(numericCode)) {
-        return propertyTypeByUseCode[key];
+        return lookup[key];
       }
     }
   }
+  
+  // Try exact match second
+  if (lookup[normalizedInput]) return lookup[normalizedInput];
+  
   return null;
 }
 
-
+function mapPropertyTypeFromUseCode(code) {
+  return mapFromUseCode(code, propertyTypeByUseCode);
+}
 
 function mapOwnershipEstateTypeFromUseCode(code) {
-  if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  
-  if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
-    return ownershipEstateTypeByUseCode[normalizedInput];
-  }
-  
-  const numericMatch = normalizedInput.match(/^\d{4}/);
-  if (numericMatch) {
-    const numericCode = numericMatch[0];
-    for (const key in ownershipEstateTypeByUseCode) {
-      if (key.startsWith(numericCode)) {
-        return ownershipEstateTypeByUseCode[key];
-      }
-    }
-  }
-  return null;
+  return mapFromUseCode(code, ownershipEstateTypeByUseCode);
 }
 
 function mapBuildStatusFromUseCode(code) {
-  if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  
-  if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
-    return buildStatusByUseCode[normalizedInput];
-  }
-  
-  const numericMatch = normalizedInput.match(/^\d{4}/);
-  if (numericMatch) {
-    const numericCode = numericMatch[0];
-    for (const key in buildStatusByUseCode) {
-      if (key.startsWith(numericCode)) {
-        return buildStatusByUseCode[key];
-      }
-    }
-  }
-  return null;
+  return mapFromUseCode(code, buildStatusByUseCode);
 }
 
 function mapStructureFormFromUseCode(code) {
-  if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  
-  if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
-    return structureFormByUseCode[normalizedInput];
-  }
-  
-  const numericMatch = normalizedInput.match(/^\d{4}/);
-  if (numericMatch) {
-    const numericCode = numericMatch[0];
-    for (const key in structureFormByUseCode) {
-      if (key.startsWith(numericCode)) {
-        return structureFormByUseCode[key];
-      }
-    }
-  }
-  return null;
+  return mapFromUseCode(code, structureFormByUseCode);
 }
 
 function mapPropertyUsageTypeFromUseCode(code) {
-  if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  
-  if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
-    return propertyUsageTypeByUseCode[normalizedInput];
-  }
-  
-  const numericMatch = normalizedInput.match(/^\d{4}/);
-  if (numericMatch) {
-    const numericCode = numericMatch[0];
-    for (const key in propertyUsageTypeByUseCode) {
-      if (key.startsWith(numericCode)) {
-        return propertyUsageTypeByUseCode[key];
-      }
-    }
-  }
-  return null;
+  return mapFromUseCode(code, propertyUsageTypeByUseCode);
 }
 
 function cleanText(value) {
@@ -4112,25 +4045,18 @@ function main() {
   const { section, township, range } =
     extractSectionTownshipRange(propertyIdentifier);
   
-  if (!property_type) {
-    const error = {
-      type: "error",
-      message: `Unable to map property type from property use code.`,
-      path: "property.property_type",
-    };
-    writeJson(path.join(dataDir, "error_property_type.json"), error);
-  }
+
 
   const propertyObj = {
     ...appendSourceInfo(seed),
     parcel_identifier: propertyIdentifier,
-    property_type: property_type,
+    property_type: property_type || null,
     property_legal_description_text: legalDesc || "",
     subdivision: subdivision,
-    ownership_estate_type: ownership_estate_type,
-    build_status: build_status,
-    structure_form:structure_form,
-    property_usage_type:property_usage_type
+    ownership_estate_type: ownership_estate_type || null,
+    build_status: build_status || null,
+    structure_form: structure_form || null,
+    property_usage_type: property_usage_type || null
 
   };
   console.log(propertyObj);
