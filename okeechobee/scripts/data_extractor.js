@@ -3072,6 +3072,9 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     if (!existingLotData.hasOwnProperty('fencing_type')) {
       existingLotData.fencing_type = null;
     }
+    if (!existingLotData.hasOwnProperty('fence_height')) {
+      existingLotData.fence_height = null;
+    }
     if (!existingLotData.hasOwnProperty('paving_type')) {
       existingLotData.paving_type = "None";
     }
@@ -3086,7 +3089,9 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       lot_type: lot_type !== null ? lot_type : existingLotData.lot_type || null,
       lot_size_acre: lotSizeAcre !== null ? lotSizeAcre : existingLotData.lot_size_acre || null,
       // Ensure lot_condition_issues is always present (even if null)
-      lot_condition_issues: existingLotData.lot_condition_issues !== undefined ? existingLotData.lot_condition_issues : null
+      lot_condition_issues: existingLotData.lot_condition_issues !== undefined ? existingLotData.lot_condition_issues : null,
+      // Ensure fence_height is always present (even if null)
+      fence_height: existingLotData.fence_height !== undefined ? existingLotData.fence_height : null
     };
     // console.log("FINAL LOT ",finalLotData)
     writeJson(lotPath, finalLotData);
