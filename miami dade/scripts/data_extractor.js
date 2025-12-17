@@ -1,7 +1,6 @@
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
-// 0000 REFERENCE FOLIO
 const propertyTypeMapping  = [
   {
     "property_usecode": "0000 - REFERENCE FOLIO",
