@@ -2462,8 +2462,8 @@ function main() {
     let relSDIdx = 1;
     for (const [sIndex, dIndex] of deedMap.entries()) {
       const relSD = {
-        from: { "/": `./sales_history_${sIndex}.json` },
-        to: { "/": `./deed_${dIndex}.json` },
+        from: { "/": `./deed_${dIndex}.json` },
+        to: { "/": `./sales_history_${sIndex}.json` },
       };
       writeJson(path.join("data", `relationship_sales_history_${relSDIdx}_has_deed.json`), relSD);
       relSDIdx++;
