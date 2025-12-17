@@ -3539,14 +3539,8 @@ function main() {
     }
   });
 
-  Object.keys(previousOwnersByDate).forEach((dateKey) => {
-    if (dateKey === "current") return;
-    const ownersArr = previousOwnersByDate[dateKey];
-    if (!Array.isArray(ownersArr)) return;
-    ownersArr.forEach((owner) => {
-      registerPreviousOwner(owner, dateKey);
-    });
-  });
+  // Don't pre-register previous owners - only register them when they're actually referenced by a sale
+  // This prevents creating unused person/company files
 
   const mailingRelationshipKeys = new Set();
   currentOwnerEntities.forEach((entity) => {
@@ -3872,6 +3866,10 @@ function main() {
     });
     saleBuyerStatus.set(latestSaleRef.salesPath, true);
   }
+
+  // Don't process previous_owners_by_date separately - the grantors from sales HTML
+  // are already processed above and will be connected to relationships.
+  // Processing them again here would create duplicate person files with slight differences.
 
   // Add previous owners from previousOwnerLookup to saleGrantorRelations
   previousOwnerLookup.forEach((meta, ownerPath) => {
