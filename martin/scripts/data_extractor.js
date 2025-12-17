@@ -1891,9 +1891,13 @@ function main() {
     const idx = persons.length + 1;
     const first = titleCaseName(p.first_name);
     const last = titleCaseName(p.last_name);
-    const middle = p.middle_name ? titleCaseName(p.middle_name) : null;
+    let middle = p.middle_name ? titleCaseName(p.middle_name) : null;
     // Ensure first and last names are valid after title casing
     if (!first || !last) return null;
+    // Ensure middle name is either null or a valid non-empty string matching the pattern
+    if (middle !== null && (typeof middle !== 'string' || middle.length === 0 || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(middle))) {
+      middle = null;
+    }
     const personObj = {
       birth_date: null,
       first_name: first,
