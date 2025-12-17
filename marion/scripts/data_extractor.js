@@ -1497,29 +1497,28 @@ function main() {
     const personMap = new Map();
     const companyMap = new Map();
 
-    // Collect all unique persons and companies from owner_data.json
+    // Collect ONLY current owners (not historical ones) to avoid unused files
     const ownersByDate = ownersData[key] ? ownersData[key].owners_by_date : null;
-    if (ownersByDate) {
-      Object.values(ownersByDate).forEach((arr) => {
-        (arr || []).forEach((o) => {
-          if (o && o.type === "person") {
-            const pKey = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-            if (pKey && !personMap.has(pKey)) {
-              personMap.set(pKey, {
-                first_name: titleCaseName(o.first_name),
-                middle_name: o.middle_name ? titleCaseName(o.middle_name) : null,
-                last_name: titleCaseName(o.last_name),
-                prefix_name: o.prefix_name || null,
-                suffix_name: o.suffix_name || null,
-              });
-            }
-          } else if (o && o.type === "company") {
-            const cKey = (o.name || "").trim().toUpperCase();
-            if (cKey && !companyMap.has(cKey)) {
-              companyMap.set(cKey, { name: o.name });
-            }
+    if (ownersByDate && ownersByDate["current"]) {
+      const currentOwners = ownersByDate["current"];
+      (currentOwners || []).forEach((o) => {
+        if (o && o.type === "person") {
+          const pKey = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+          if (pKey && !personMap.has(pKey)) {
+            personMap.set(pKey, {
+              first_name: titleCaseName(o.first_name),
+              middle_name: o.middle_name ? titleCaseName(o.middle_name) : null,
+              last_name: titleCaseName(o.last_name),
+              prefix_name: o.prefix_name || null,
+              suffix_name: o.suffix_name || null,
+            });
           }
-        });
+        } else if (o && o.type === "company") {
+          const cKey = (o.name || "").trim().toUpperCase();
+          if (cKey && !companyMap.has(cKey)) {
+            companyMap.set(cKey, { name: o.name });
+          }
+        }
       });
     }
 
