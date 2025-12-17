@@ -535,6 +535,23 @@ function main() {
   const dataDir = path.join(".", "data");
   ensureDir(dataDir);
 
+  // Cleanup old company and person files from previous runs
+  try {
+    const existingFiles = fs.readdirSync(dataDir);
+    existingFiles.forEach((f) => {
+      if (
+        /^company_\d+\.json$/i.test(f) ||
+        /^person_\d+\.json$/i.test(f) ||
+        /^relationship_sales_company_\d+_\d+\.json$/i.test(f) ||
+        /^relationship_sales_person_\d+_\d+\.json$/i.test(f)
+      ) {
+        try {
+          fs.unlinkSync(path.join(dataDir, f));
+        } catch (_) {}
+      }
+    });
+  } catch (_) {}
+
   const folio = seed.request_identifier || seed.parcel_id;
 
   // Extract base fields from HTML
@@ -782,7 +799,11 @@ function main() {
       // Cleanup any legacy duplicate relationship files
       const files = fs
         .readdirSync(dataDir)
-        .filter((f) => f.startsWith("relationship_sales_company"));
+        .filter(
+          (f) =>
+            f.startsWith("relationship_sales_company") ||
+            f.startsWith("relationship_sales_person"),
+        );
       for (const f of files) {
         try {
           fs.unlinkSync(path.join(dataDir, f));
@@ -829,6 +850,10 @@ function main() {
         }
       });
 
+      // Track which owner indices are actually used
+      const usedPersonIndices = new Set();
+      const usedCompanyIndices = new Set();
+
       // Create relationships for valid sales
       validSales.forEach((s, si) => {
         // Link to all person files
@@ -844,6 +869,7 @@ function main() {
             ),
             JSON.stringify(rel, null, 2),
           );
+          usedPersonIndices.add(pi + 1);
         });
 
         // Link to all company files
@@ -859,8 +885,25 @@ function main() {
             ),
             JSON.stringify(rel, null, 2),
           );
+          usedCompanyIndices.add(ci + 1);
         });
       });
+
+      // Remove unused owner files
+      for (let i = 1; i <= personFiles.length; i++) {
+        if (!usedPersonIndices.has(i)) {
+          try {
+            fs.unlinkSync(path.join(dataDir, `person_${i}.json`));
+          } catch (_) {}
+        }
+      }
+      for (let i = 1; i <= companyFiles.length; i++) {
+        if (!usedCompanyIndices.has(i)) {
+          try {
+            fs.unlinkSync(path.join(dataDir, `company_${i}.json`));
+          } catch (_) {}
+        }
+      }
     }
   }
 
