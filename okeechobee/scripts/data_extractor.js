@@ -3093,7 +3093,9 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       // Ensure fence_height is always present (even if null)
       fence_height: existingLotData.fence_height !== undefined ? existingLotData.fence_height : null,
       // Ensure fencing_type is always present (even if null)
-      fencing_type: existingLotData.fencing_type !== undefined ? existingLotData.fencing_type : null
+      fencing_type: existingLotData.fencing_type !== undefined ? existingLotData.fencing_type : null,
+      // Ensure view is always present (required property, can be null)
+      view: existingLotData.view !== undefined ? existingLotData.view : null
     };
     // console.log("FINAL LOT ",finalLotData)
     writeJson(lotPath, finalLotData);
