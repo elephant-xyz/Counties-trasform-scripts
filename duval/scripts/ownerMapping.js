@@ -141,16 +141,40 @@ function classifyOwner(raw, invalid) {
   function extractSuffix(tokens) {
     if (tokens.length === 0) return { tokens, suffix: null };
 
-    const suffixes = new Set([
-      "JR", "JR.", "SR", "SR.", "I", "II", "III", "IV", "V",
-      "VI", "VII", "VIII", "IX", "X", "ESQ", "ESQ.", "PHD", "PHD.",
-      "MD", "MD.", "DDS", "DDS."
-    ]);
+    // Map input tokens to schema-compliant suffix values
+    const suffixMapping = {
+      "JR": "Jr.",
+      "JR.": "Jr.",
+      "SR": "Sr.",
+      "SR.": "Sr.",
+      "II": "II",
+      "III": "III",
+      "IV": "IV",
+      "PHD": "PhD",
+      "PHD.": "PhD",
+      "MD": "MD",
+      "MD.": "MD",
+      "ESQ": "Esq.",
+      "ESQ.": "Esq.",
+      "JD": "JD",
+      "LLM": "LLM",
+      "MBA": "MBA",
+      "RN": "RN",
+      "DDS": "DDS",
+      "DDS.": "DDS",
+      "DVM": "DVM",
+      "CFA": "CFA",
+      "CPA": "CPA",
+      "PE": "PE",
+      "PMP": "PMP",
+      "EMERITUS": "Emeritus",
+      "RET": "Ret.",
+      "RET.": "Ret."
+    };
 
     const lastToken = tokens[tokens.length - 1].toUpperCase().replace(/,/g, "");
-    if (suffixes.has(lastToken)) {
-      const suffix = tokens[tokens.length - 1].replace(/,/g, "");
-      return { tokens: tokens.slice(0, -1), suffix: toTitleCaseName(suffix) };
+    if (suffixMapping[lastToken]) {
+      return { tokens: tokens.slice(0, -1), suffix: suffixMapping[lastToken] };
     }
 
     return { tokens, suffix: null };
