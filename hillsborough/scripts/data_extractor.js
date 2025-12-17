@@ -4115,6 +4115,13 @@ function main() {
   };
   writeJson(path.join(dataDir, "address.json"), addressObj);
 
+  // Create property_has_address relationship
+  const propertyAddressRel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" }
+  };
+  writeJson(path.join(dataDir, "relationship_property_has_address.json"), propertyAddressRel);
+
 
   //TAX FILES CREATION
   const taxData = extractTaxes($);
