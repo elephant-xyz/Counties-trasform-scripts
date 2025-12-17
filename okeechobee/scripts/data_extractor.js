@@ -2938,7 +2938,13 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     fence_length: null,
     driveway_material: null,
     driveway_condition: null,
-    lot_condition_issues: null
+    lot_condition_issues: null,
+    paving_type: "None",
+    paving_area_sqft: null,
+    paving_installation_date: null,
+    site_lighting_type: "None",
+    site_lighting_fixture_count: null,
+    site_lighting_installation_date: null
   };
 
   let hasStructureData = false;
@@ -3053,7 +3059,13 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         fence_length: null,
         driveway_material: null,
         driveway_condition: null,
-        lot_condition_issues: null
+        lot_condition_issues: null,
+        paving_type: "None",
+        paving_area_sqft: null,
+        paving_installation_date: null,
+        site_lighting_type: "None",
+        site_lighting_fixture_count: null,
+        site_lighting_installation_date: null
       };
     }
     
