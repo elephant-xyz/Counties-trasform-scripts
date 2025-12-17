@@ -1547,6 +1547,7 @@ function main() {
         document_type: "Title",
         file_format: null,
         name: `Deed ${book}/${page}`,
+        original_url: null,
       };
       writeOut(`file_${fileIndex}.json`, file);
       const relDeedFile = {
