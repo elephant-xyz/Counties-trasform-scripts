@@ -25246,6 +25246,10 @@ async function main() {
     ],
   });
 
+  // Final guard: lock to a single valid oneOf branch and keep every required
+  // address field present (nullable) when we only have a raw address string.
+  clampAddressToSingleBranchStrict(addressOutputPath);
+
   // Guarantee relationships are left for downstream population (no local URs).
   enforcePropertyRelationshipNulls(propertyFilePath);
   [
