@@ -1629,11 +1629,76 @@ function main() {
     request_identifier: requestIdentifier,
   };
 
+  const baseUtility = {
+    cooling_system_type: null,
+    electrical_panel_capacity: null,
+    electrical_panel_installation_date: null,
+    electrical_rewire_date: null,
+    electrical_wiring_type: null,
+    electrical_wiring_type_other_description: null,
+    heating_fuel_type: null,
+    heating_system_type: null,
+    hvac_capacity_kw: null,
+    hvac_capacity_tons: null,
+    hvac_condensing_unit_present: null,
+    hvac_equipment_component: null,
+    hvac_equipment_manufacturer: null,
+    hvac_equipment_model: null,
+    hvac_installation_date: null,
+    hvac_seer_rating: null,
+    hvac_system_configuration: null,
+    hvac_unit_condition: null,
+    hvac_unit_issues: null,
+    plumbing_fixture_count: null,
+    plumbing_fixture_quality: null,
+    plumbing_fixture_type_primary: null,
+    plumbing_system_installation_date: null,
+    plumbing_system_type: null,
+    plumbing_system_type_other_description: null,
+    public_utility_type: null,
+    sewer_connection_date: null,
+    sewer_type: null,
+    smart_home_features: null,
+    smart_home_features_other_description: null,
+    solar_installation_date: null,
+    solar_inverter_installation_date: null,
+    solar_inverter_manufacturer: null,
+    solar_inverter_model: null,
+    solar_inverter_visible: false,
+    solar_panel_present: false,
+    solar_panel_type: null,
+    solar_panel_type_other_description: null,
+    water_connection_date: null,
+    water_heater_installation_date: null,
+    water_heater_manufacturer: null,
+    water_heater_model: null,
+    water_source_type: null,
+    well_installation_date: null,
+  };
+
   const structureItems = (() => {
+    const cleanStructureEntry = (entry) => {
+      if (!entry || typeof entry !== "object") return {};
+      const baseEntry =
+        entry.structure && typeof entry.structure === "object"
+          ? entry.structure
+          : entry;
+      const {
+        buildings,
+        structures,
+        utilities,
+        layouts,
+        structure,
+        utility,
+        ...rest
+      } = baseEntry;
+      return rest;
+    };
+
     const wrap = (entry, buildingIndex = null) => ({
       data: {
         ...baseStructure,
-        ...entry,
+        ...cleanStructureEntry(entry),
         source_http_request:
           entry && entry.source_http_request != null
             ? entry.source_http_request
@@ -1710,9 +1775,28 @@ function main() {
   });
 
   const utilityItems = (() => {
+    const cleanUtilityEntry = (entry) => {
+      if (!entry || typeof entry !== "object") return {};
+      const baseEntry =
+        entry.utility && typeof entry.utility === "object"
+          ? entry.utility
+          : entry;
+      const {
+        buildings,
+        utilities,
+        layouts,
+        structures,
+        structure,
+        utility,
+        ...rest
+      } = baseEntry;
+      return rest;
+    };
+
     const wrap = (entry, buildingIndex = null) => ({
       data: {
-        ...entry,
+        ...baseUtility,
+        ...cleanUtilityEntry(entry),
         source_http_request:
           entry && entry.source_http_request != null
             ? entry.source_http_request
