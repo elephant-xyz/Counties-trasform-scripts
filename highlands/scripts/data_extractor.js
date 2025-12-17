@@ -24,7 +24,7 @@ const DEED_TYPE_MAP = {
   SD: "Sheriff's Deed",
   "SHRF'S DEED": "Sheriff's Deed",
   TD: "Tax Deed",
-  TR: "Trustee's Deed",
+  TR: "Miscellaneous",
   TRD: "Trustee's Deed",
   "TRUSTEE DEED": "Trustee's Deed",
   PRD: "Personal Representative Deed",
