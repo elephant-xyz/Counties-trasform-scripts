@@ -268,6 +268,7 @@ function generateGeometryArtifacts({
   addressPath,
   parcelPath,
   buildingLayoutPaths,
+  addressExists = true,
 }) {
   const seedCsvPath = locateSeedCsv();
   if (!seedCsvPath) return;
@@ -331,12 +332,15 @@ function generateGeometryArtifacts({
       source_http_request: clone(sourceRequest),
     };
     const geometryPath = writeGeometryFile(filename, payload);
-    const relFilename = `relationship_address_has_geometry_${slug}.json`;
-    const relObject = {
-      from: { "/": addressPath },
-      to: { "/": geometryPath },
-    };
-    writeJSON(path.join(geometryDir, relFilename), relObject);
+    // Only create address-geometry relationship if address file exists
+    if (addressExists) {
+      const relFilename = `relationship_address_has_geometry_${slug}.json`;
+      const relObject = {
+        from: { "/": addressPath },
+        to: { "/": geometryPath },
+      };
+      writeJSON(path.join(geometryDir, relFilename), relObject);
+    }
   }
 
   const buildingPolygons = extractPolygons(seedRow.building_polygon);
@@ -3375,22 +3379,31 @@ const structureItems = (() => {
     unaddr && unaddr.full_address ? String(unaddr.full_address).trim() : null;
   const unnormalizedAddress = htmlFullAddress || fallbackAddress || null;
 
-  const address = {
-    unnormalized_address: unnormalizedAddress,
-    source_http_request: clone(defaultSourceHttpRequest),
-    request_identifier: requestIdentifier,
-    county_name:
-      (unaddr &&
-        (unaddr.county_jurisdiction || unaddr.county_name || unaddr.county)) ||
-      "Monroe",
-    country_code: "US",
-  };
-  if (!address.unnormalized_address && addrFromHTML.addrLine1) {
-    address.unnormalized_address = addrFromHTML.addrLine1;
+  // Only write address if we have a valid unnormalized_address
+  let finalUnnormalizedAddress = unnormalizedAddress;
+  if (!finalUnnormalizedAddress && addrFromHTML.addrLine1) {
+    finalUnnormalizedAddress = addrFromHTML.addrLine1;
   }
+
   const addressFilename = "address.json";
   const addressPath = `./${addressFilename}`;
-  writeJSON(path.join(dataDir, addressFilename), address);
+  let addressWasWritten = false;
+
+  // Only write address if we have a valid non-empty address string
+  if (finalUnnormalizedAddress && finalUnnormalizedAddress.length > 0) {
+    const address = {
+      unnormalized_address: finalUnnormalizedAddress,
+      source_http_request: clone(defaultSourceHttpRequest),
+      request_identifier: requestIdentifier,
+      county_name:
+        (unaddr &&
+          (unaddr.county_jurisdiction || unaddr.county_name || unaddr.county)) ||
+        "Monroe",
+      country_code: "US",
+    };
+    writeJSON(path.join(dataDir, addressFilename), address);
+    addressWasWritten = true;
+  }
 
   const buildingGeometryTargets =
     buildingLayoutsInfo.length
@@ -3404,6 +3417,7 @@ const structureItems = (() => {
     addressPath,
     parcelPath: "./parcel.json",
     buildingLayoutPaths: buildingGeometryTargets,
+    addressExists: addressWasWritten,
   });
 
   const lot = {
@@ -3429,12 +3443,15 @@ const structureItems = (() => {
   writeJSON(path.join(dataDir, lotFilename), lot);
 
   // Create property relationships
-  const relPropertyAddress = makeRelationshipFilename(propertyPath, addressPath);
-  if (relPropertyAddress) {
-    writeJSON(path.join(dataDir, relPropertyAddress), {
-      from: { "/": propertyPath },
-      to: { "/": addressPath },
-    });
+  // Only create address relationship if address was actually written
+  if (addressWasWritten) {
+    const relPropertyAddress = makeRelationshipFilename(propertyPath, addressPath);
+    if (relPropertyAddress) {
+      writeJSON(path.join(dataDir, relPropertyAddress), {
+        from: { "/": propertyPath },
+        to: { "/": addressPath },
+      });
+    }
   }
 
   const relPropertyLot = makeRelationshipFilename(propertyPath, lotPath);
