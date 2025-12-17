@@ -827,10 +827,19 @@ function main() {
           companyFiles.push(filename);
           companyIdx++;
         } else if (owner.type === "person") {
+          // Capitalize names and validate
+          const capitalizedFirst = capitalizeProperName(owner.first_name);
+          const capitalizedLast = capitalizeProperName(owner.last_name);
+
+          // Skip person if first_name or last_name is empty (required by schema pattern)
+          if (!capitalizedFirst || !capitalizedLast) {
+            return;
+          }
+
           const person = {
             birth_date: owner.birth_date || null,
-            first_name: capitalizeProperName(owner.first_name) || "",
-            last_name: capitalizeProperName(owner.last_name) || "",
+            first_name: capitalizedFirst,
+            last_name: capitalizedLast,
             middle_name: owner.middle_name
               ? capitalizeProperName(owner.middle_name)
               : null,
