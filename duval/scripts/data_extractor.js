@@ -1754,7 +1754,9 @@ function extractStructure($) {
 function extractLot($, legalRows, totalAreaStr) {
   let lot_area_sqft = null;
   const ta = textOrNull(totalAreaStr);
-  if (ta && /^\d+$/.test(ta)) lot_area_sqft = Number(ta);
+  const taNumber = safeParseNumber(ta);
+  if (taNumber != null && taNumber > 0)
+    lot_area_sqft = Math.round(taNumber);
   return {
     lot_type: null,
     lot_length_feet: null,
@@ -2010,7 +2012,7 @@ function main() {
   const propertyKey = parcelIdentifier ? `property_${parcelIdentifier}` : null;
   const propertyUseText = textOrNull($("#ctl00_cphBody_lblPropertyUse").text());
   const subdivision = textOrNull($("#ctl00_cphBody_lblSubdivision").text());
-  const totalArea = textOrNull($("#ctl00_cphBody_lblTotalArea1").text());
+  const totalAreaRaw = textOrNull($("#ctl00_cphBody_lblTotalArea1").text());
   const mailingAddress = extractMailingAddress($);
   const extraFeatures = extractExtraFeatures($);
 
@@ -2120,7 +2122,14 @@ function main() {
   if (parcelIdentifier && propertyTypeCategory) {
     const heatedAreaNumber = safeParseNumber(heatedAreaTotal);
     const heatedAreaString =
-      heatedAreaNumber != null ? String(Math.round(heatedAreaNumber)) : null;
+      heatedAreaNumber != null && heatedAreaNumber >= 10
+        ? String(Math.round(heatedAreaNumber))
+        : null;
+    const totalAreaNumber = safeParseNumber(totalAreaRaw);
+    const totalAreaString =
+      totalAreaNumber != null && totalAreaNumber >= 10
+        ? String(Math.round(totalAreaNumber))
+        : null;
     const propertyPayload = {
       parcel_identifier: parcelIdentifier,
       property_type: propertyTypeCategory,
@@ -2136,7 +2145,7 @@ function main() {
       livable_floor_area: heatedAreaString,
       area_under_air: heatedAreaString,
       subdivision: subdivision || null,
-      total_area: totalArea || null,
+      total_area: totalAreaString,
       zoning: zoning || null,
     };
     writeJSON("property.json", propertyPayload);
@@ -2332,16 +2341,18 @@ function main() {
       currentOwners.forEach((owner) => {
         if (owner.type === "person") {
           const fileName = `person_${personPaths.length + 1}.json`;
+          const firstName = titleCaseNamePart(owner.first_name);
+          const lastName = titleCaseNamePart(owner.last_name);
+          if (!firstName || !lastName) return;
           const payload = {
-            first_name: titleCaseNamePart(owner.first_name),
-            middle_name: titleCaseNamePart(owner.middle_name),
-            last_name: titleCaseNamePart(owner.last_name),
-            prefix_name: owner.prefix_name || null,
-            suffix_name: owner.suffix || null,
-            birth_date: owner.birth_date || null,
-            us_citizenship_status: owner.us_citizenship_status || null,
-            veteran_status:
-              owner.veteran_status != null ? Boolean(owner.veteran_status) : null,
+            first_name: firstName,
+            last_name: lastName,
+            middle_name: null,
+            prefix_name: null,
+            suffix_name: null,
+            birth_date: null,
+            us_citizenship_status: null,
+            veteran_status: null,
             request_identifier:
               (unnormalizedAddress && unnormalizedAddress.request_identifier) ||
               parcelIdentifier,
@@ -2350,6 +2361,19 @@ function main() {
                 ? unnormalizedAddress.source_http_request
                 : null,
           };
+          const middleName = titleCaseNamePart(owner.middle_name);
+          payload.middle_name = middleName;
+          const prefixName = titleCaseNamePart(owner.prefix_name);
+          payload.prefix_name = prefixName;
+          const suffixName = titleCaseNamePart(owner.suffix);
+          payload.suffix_name = suffixName;
+          payload.birth_date = owner.birth_date || null;
+          payload.us_citizenship_status =
+            owner.us_citizenship_status != null
+              ? owner.us_citizenship_status
+              : null;
+          payload.veteran_status =
+            owner.veteran_status != null ? Boolean(owner.veteran_status) : null;
           writeJSON(fileName, payload);
           personPaths.push(`./${fileName}`);
         } else if (owner.type === "company") {
@@ -2643,7 +2667,7 @@ function main() {
     });
   });
 
-  const lotObj = extractLot($, legalRows, totalArea);
+  const lotObj = extractLot($, legalRows, totalAreaRaw);
   writeJSON("lot.json", lotObj);
 }
 
