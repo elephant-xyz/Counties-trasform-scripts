@@ -896,9 +896,6 @@ function extractLayouts($, parcelId) {
           );
           roomLayout.flooring_material_type = interiorFlooring;
           roomLayout.is_finished = true;
-          if (fullStoryTypeEnumValue) {
-            roomLayout.story_type = fullStoryTypeEnumValue;
-          }
           allLayouts.push(roomLayout);
         }
         for (let i = 0; i < fullBaths; i++) {
@@ -913,9 +910,6 @@ function extractLayouts($, parcelId) {
           );
           roomLayout.flooring_material_type = interiorFlooring;
           roomLayout.is_finished = true;
-          if (fullStoryTypeEnumValue) {
-            roomLayout.story_type = fullStoryTypeEnumValue;
-          }
           allLayouts.push(roomLayout);
         }
         for (let i = 0; i < halfBaths; i++) {
@@ -930,9 +924,6 @@ function extractLayouts($, parcelId) {
           );
           roomLayout.flooring_material_type = interiorFlooring;
           roomLayout.is_finished = true;
-          if (fullStoryTypeEnumValue) {
-            roomLayout.story_type = fullStoryTypeEnumValue;
-          }
           allLayouts.push(roomLayout);
         }
       }
@@ -950,9 +941,6 @@ function extractLayouts($, parcelId) {
         );
         roomLayout.flooring_material_type = interiorFlooring;
         roomLayout.is_finished = true;
-        if (fullStoryTypeEnumValue) {
-          roomLayout.story_type = fullStoryTypeEnumValue;
-        }
         allLayouts.push(roomLayout);
       }
       for (let i = 0; i < fullBaths; i++) {
@@ -967,9 +955,6 @@ function extractLayouts($, parcelId) {
         );
         roomLayout.flooring_material_type = interiorFlooring;
         roomLayout.is_finished = true;
-        if (fullStoryTypeEnumValue) {
-          roomLayout.story_type = fullStoryTypeEnumValue;
-        }
         allLayouts.push(roomLayout);
       }
       for (let i = 0; i < halfBaths; i++) {
@@ -984,9 +969,6 @@ function extractLayouts($, parcelId) {
         );
         roomLayout.flooring_material_type = interiorFlooring;
         roomLayout.is_finished = true;
-        if (fullStoryTypeEnumValue) {
-          roomLayout.story_type = fullStoryTypeEnumValue;
-        }
         allLayouts.push(roomLayout);
       }
     }
