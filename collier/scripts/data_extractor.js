@@ -583,7 +583,6 @@ function main() {
   const unaddrPath = path.join("unnormalized_address.json");
   const seedPath = path.join("property_seed.json");
   const ownersPath = path.join("owners", "owner_data.json");
-  const utilsPath = path.join("owners", "utilities_data.json");
   const layoutPath = path.join("owners", "layout_data.json");
 
   const html = fs.readFileSync(inHtmlPath, "utf8");
@@ -592,7 +591,6 @@ function main() {
   const unaddr = readJson(unaddrPath);
   const seed = readJson(seedPath);
   const owners = readJson(ownersPath);
-  const utils = readJson(utilsPath);
   const layouts = readJson(layoutPath);
 
   const dataDir = path.join(".", "data");
@@ -928,15 +926,6 @@ function main() {
         });
       }
     }
-  }
-
-  // Utilities from owners/utilities_data.json
-  const utilsEntry = utils[ownerKey];
-  if (utilsEntry) {
-    fs.writeFileSync(
-      path.join(dataDir, "utility.json"),
-      JSON.stringify(utilsEntry, null, 2),
-    );
   }
 
   // Layouts from owners/layout_data.json
