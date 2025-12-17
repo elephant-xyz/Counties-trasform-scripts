@@ -3842,6 +3842,17 @@ function main() {
     saleBuyerStatus.set(latestSaleRef.salesPath, true);
   }
 
+  // Add previous owners from previousOwnerLookup to saleGrantorRelations
+  previousOwnerLookup.forEach((meta, ownerPath) => {
+    if (!ownerPath || !meta.dates || meta.dates.size === 0) return;
+    meta.dates.forEach((dateISO) => {
+      saleGrantorRelations.push({
+        ownerPath,
+        saleDateISO: dateISO,
+      });
+    });
+  });
+
   const saleOwnerRelationshipKeys = new Set();
   saleOwnerRelations.forEach((entry) => {
     if (!entry.fromPath || !entry.toPath) return;
