@@ -1816,7 +1816,6 @@ function main() {
       contractor_type: contractorType || "Unknown",
       permit_required: permitNumber ? true : null,
       request_identifier: improvementRequestId,
-      source_http_request: clone(defaultSourceHttpRequest),
     };
 
     const cleanedImprovement = {};
