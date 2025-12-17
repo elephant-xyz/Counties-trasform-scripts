@@ -53,15 +53,24 @@ function toISODate(mdY) {
 }
 function properCaseName(s) {
   if (!s) return s;
+  // Convert to lowercase first, then capitalize first letter of each word
+  // Words are separated by space, hyphen, apostrophe, comma, or period
   const lower = s.toLowerCase();
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
+  return lower.replace(/(^|[\s\-',.])([a-z])/g, (match, separator, letter) => {
+    return separator + letter.toUpperCase();
+  });
 }
 
 function cleanName(s) {
   if (!s) return null;
-  // Remove characters not allowed by pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  // Remove characters not allowed by pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
   // Keep only: letters, spaces, hyphens, apostrophes, commas, and periods
-  const cleaned = String(s).replace(/[^a-zA-Z\s\-',.]/g, '').trim();
+  let cleaned = String(s).replace(/[^a-zA-Z\s\-',.]/g, '');
+  // Remove consecutive separators (e.g., -- becomes -)
+  cleaned = cleaned.replace(/[\s\-',.]{2,}/g, (match) => match[0]);
+  // Remove leading and trailing separators
+  cleaned = cleaned.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '');
+  cleaned = cleaned.trim();
   if (!cleaned) return null;
   // Apply proper case
   return properCaseName(cleaned);
