@@ -2931,6 +2931,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     lot_length_feet: null,
     lot_width_feet: null,
     lot_area_sqft: null,
+    lot_size_acre: null,
     landscaping_features: null,
     view: null,
     fencing_type: null,
@@ -3041,6 +3042,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         lot_length_feet: null,
         lot_width_feet: null,
         lot_area_sqft: null,
+        lot_size_acre: null,
         landscaping_features: null,
         view: null,
         fencing_type: null,
@@ -3053,20 +3055,38 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     }
 
     // Ensure all required properties exist with defaults if missing
+    if (!existingLotData.hasOwnProperty('lot_type')) {
+      existingLotData.lot_type = null;
+    }
     if (!existingLotData.hasOwnProperty('lot_width_feet')) {
       existingLotData.lot_width_feet = null;
     }
     if (!existingLotData.hasOwnProperty('lot_length_feet')) {
       existingLotData.lot_length_feet = null;
     }
+    if (!existingLotData.hasOwnProperty('lot_area_sqft')) {
+      existingLotData.lot_area_sqft = null;
+    }
+    if (!existingLotData.hasOwnProperty('lot_size_acre')) {
+      existingLotData.lot_size_acre = null;
+    }
     if (!existingLotData.hasOwnProperty('landscaping_features')) {
       existingLotData.landscaping_features = null;
+    }
+    if (!existingLotData.hasOwnProperty('view')) {
+      existingLotData.view = null;
     }
     if (!existingLotData.hasOwnProperty('fencing_type')) {
       existingLotData.fencing_type = null;
     }
     if (!existingLotData.hasOwnProperty('fence_height')) {
       existingLotData.fence_height = null;
+    }
+    if (!existingLotData.hasOwnProperty('fence_length')) {
+      existingLotData.fence_length = null;
+    }
+    if (!existingLotData.hasOwnProperty('driveway_material')) {
+      existingLotData.driveway_material = null;
     }
     if (!existingLotData.hasOwnProperty('driveway_condition')) {
       existingLotData.driveway_condition = null;
@@ -3115,6 +3135,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         lot_length_feet: null,
         lot_width_feet: null,
         lot_area_sqft: null,
+        lot_size_acre: null,
         landscaping_features: null,
         view: null,
         fencing_type: null,
