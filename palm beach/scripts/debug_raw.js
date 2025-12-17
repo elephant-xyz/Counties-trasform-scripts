@@ -26504,7 +26504,9 @@ async function main() {
       normalizedSurface &&
       hasCompleteNormalizedAddress({ ...normalizedSurface });
 
-    if (rawValue && !normalizedReady) {
+    // Prefer the raw oneOf branch whenever the source provides an
+    // unnormalized string so validation doesn't demand normalized fields.
+    if (rawValue) {
       const rawSeed = {
         ...snapshot,
         unnormalized_address: rawValue,
