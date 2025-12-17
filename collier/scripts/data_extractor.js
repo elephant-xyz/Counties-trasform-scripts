@@ -99,6 +99,14 @@ function capitalizeProperName(name) {
   return capitalized.join("");
 }
 
+function isValidFirstOrLastName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  return /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(trimmed);
+}
+
 function resolveUseCode(map, useCodeText) {
   if (!useCodeText) return null;
   const match = useCodeText.match(/\d+/);
@@ -827,13 +835,24 @@ function main() {
           companyFiles.push(filename);
           companyIdx++;
         } else if (owner.type === "person") {
+          const firstName = capitalizeProperName(owner.first_name) || "";
+          const lastName = capitalizeProperName(owner.last_name) || "";
+
+          // Validate names match required pattern before creating person record
+          if (!isValidFirstOrLastName(firstName) || !isValidFirstOrLastName(lastName)) {
+            // Skip creating person record if names don't match pattern
+            return;
+          }
+
+          const middleName = owner.middle_name
+            ? capitalizeProperName(owner.middle_name)
+            : null;
+
           const person = {
             birth_date: owner.birth_date || null,
-            first_name: capitalizeProperName(owner.first_name) || "",
-            last_name: capitalizeProperName(owner.last_name) || "",
-            middle_name: owner.middle_name
-              ? capitalizeProperName(owner.middle_name)
-              : null,
+            first_name: firstName,
+            last_name: lastName,
+            middle_name: middleName,
             prefix_name: owner.prefix_name || null,
             suffix_name: owner.suffix_name || null,
             us_citizenship_status: owner.us_citizenship_status || null,
