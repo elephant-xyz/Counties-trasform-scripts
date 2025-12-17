@@ -3009,6 +3009,44 @@ const propertyMappingMap = new Map(
   propertyMapping.map((item) => [item.dor_code, item]),
 );
 
+const PROPERTY_TYPE_ALLOWED_VALUES = new Set([
+  "Cooperative",
+  "Condominium",
+  "Modular",
+  "ManufacturedHousingMultiWide",
+  "Pud",
+  "Timeshare",
+  "2Units",
+  "DetachedCondominium",
+  "Duplex",
+  "SingleFamily",
+  "MultipleFamily",
+  "3Units",
+  "ManufacturedHousing",
+  "ManufacturedHousingSingleWide",
+  "4Units",
+  "Townhouse",
+  "NonWarrantableCondo",
+  "VacantLand",
+  "Retirement",
+  "MiscellaneousResidential",
+  "ResidentialCommonElementsAreas",
+  "MobileHome",
+  "Apartment",
+  "MultiFamilyMoreThan10",
+  "MultiFamilyLessThan10",
+  "LandParcel",
+  "Building",
+  "Unit",
+  "ManufacturedHome",
+]);
+
+const BUILD_STATUS_ALLOWED_VALUES = new Set([
+  "VacantLand",
+  "Improved",
+  "UnderConstruction",
+]);
+
 const PROPERTY_USAGE_ALLOWED_VALUES = new Set([
   "Residential",
   "Commercial",
@@ -3149,6 +3187,56 @@ function sanitizePropertyUsageType(value) {
   return "Unknown";
 }
 
+function isPositiveNumber(value) {
+  if (value === null || value === undefined) return false;
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0;
+}
+
+function resolvePropertyType(rawType, hasImprovements) {
+  const normalized =
+    typeof rawType === "string" ? rawType.trim() : null;
+  if (normalized && PROPERTY_TYPE_ALLOWED_VALUES.has(normalized)) {
+    return normalized;
+  }
+  return hasImprovements ? "Building" : "LandParcel";
+}
+
+function resolveBuildStatus(rawStatus, hasImprovements) {
+  const normalized =
+    typeof rawStatus === "string" ? rawStatus.trim() : null;
+  if (normalized && BUILD_STATUS_ALLOWED_VALUES.has(normalized)) {
+    return normalized;
+  }
+  if (hasImprovements) return "Improved";
+  return "VacantLand";
+}
+
+function normalizeBoolean(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed) return null;
+    if (["y", "yes", "true", "1", "required"].includes(trimmed)) return true;
+    if (["n", "no", "false", "0", "not required"].includes(trimmed)) return false;
+  }
+  return null;
+}
+
+function formatAreaValue(value) {
+  if (!Number.isFinite(value)) return null;
+  if (value <= 0) return null;
+  const rounded = Math.round(value);
+  const str = String(rounded);
+  if (/\d{2,}/.test(str)) return str;
+  return str.padStart(2, "0");
+}
+
 // Function to get property mapping based on DOR code
 function getPropertyMapping(dorCode) {
   if (dorCode === null || dorCode === undefined) return null;
@@ -3237,9 +3325,42 @@ function main() {
   const yearTokens = parseYearTokens(bldg ? bldg.yearBlt : null);
   const builtYear = yearTokens.built;
   const effectiveBuiltYear = yearTokens.effective;
+  const hasBuildingDetails =
+    Array.isArray(input.buildingDetails) &&
+    input.buildingDetails.some((detail) => {
+      if (!detail) return false;
+      return [
+        detail.livingArea,
+        detail.baseArea,
+        detail.grossArea,
+        detail.totalArea,
+        detail.heatedArea,
+        detail.adjustedArea,
+      ].some(isPositiveNumber);
+    });
+  const hasStructureRecords =
+    !!(
+      structureData &&
+      ((Array.isArray(structureData) && structureData.length > 0) ||
+        (Array.isArray(structureData.structures) &&
+          structureData.structures.length > 0))
+    );
+  const hasImprovements =
+    isPositiveNumber(livable) ||
+    isPositiveNumber(gross) ||
+    hasBuildingDetails ||
+    hasStructureRecords;
 
   // Apply property mapping using input.dor
   const mappedProperty = getPropertyMapping(input.dor);
+  const resolvedPropertyType = resolvePropertyType(
+    mappedProperty ? mappedProperty.property_type : null,
+    hasImprovements,
+  );
+  const resolvedBuildStatus = resolveBuildStatus(
+    mappedProperty ? mappedProperty.build_status : null,
+    hasImprovements,
+  );
 
   const propertyFileName = "property.json";
   const propertyUsageRaw = mappedProperty
@@ -3253,16 +3374,16 @@ function main() {
     property_effective_built_year: Number.isFinite(effectiveBuiltYear)
       ? effectiveBuiltYear
       : null,
-    // MODIFIED: Convert numeric area fields to string
-    livable_floor_area: Number.isFinite(livable) ? String(livable) : null,
-    area_under_air: Number.isFinite(livable) ? String(livable) : null,
-    total_area: Number.isFinite(gross) ? String(gross) : null,
-    property_type: mappedProperty ? mappedProperty.property_type : null,
+    // MODIFIED: Convert numeric area fields to strings that satisfy schema pattern
+    livable_floor_area: formatAreaValue(livable),
+    area_under_air: formatAreaValue(livable),
+    total_area: formatAreaValue(gross),
+    property_type: resolvedPropertyType,
     number_of_units_type: "One", // Default, can be updated based on more specific logic if needed
     ownership_estate_type: mappedProperty
       ? mappedProperty.ownership_estate_type
       : null,
-    build_status: mappedProperty ? mappedProperty.build_status : null,
+    build_status: resolvedBuildStatus,
     structure_form: mappedProperty ? mappedProperty.structure_form : null,
     property_usage_type: propertyUsageType,
     zoning: input.zoning || null,
@@ -4161,14 +4282,17 @@ function main() {
   });
 
   const floodZoneRaw = String(input.floodZone || "").trim();
-  let floodInsuranceRequired = null;
+  let floodInsuranceRequired = normalizeBoolean(input.floodInsuranceRequired);
   if (floodZoneRaw) {
     const normalizedZone = floodZoneRaw.toUpperCase();
     if (normalizedZone === "NO" || normalizedZone === "NONE" || normalizedZone === "X") {
       floodInsuranceRequired = false;
-    } else {
+    } else if (floodInsuranceRequired === null) {
       floodInsuranceRequired = true;
     }
+  }
+  if (floodInsuranceRequired === null) {
+    floodInsuranceRequired = false;
   }
 
   const floodFileName = "flood_storm_information.json";
@@ -4186,6 +4310,17 @@ function main() {
   fs.writeFileSync(
     path.join("data", floodFileName),
     JSON.stringify(floodObj, null, 2),
+  );
+  const floodRelationship = {
+    from: { "/": `./${propertyFileName}` },
+    to: { "/": `./${floodFileName}` },
+  };
+  fs.writeFileSync(
+    path.join(
+      "data",
+      createRelationshipFileName(propertyFileName, floodFileName),
+    ),
+    JSON.stringify(floodRelationship, null, 2),
   );
 
 

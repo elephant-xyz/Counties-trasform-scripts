@@ -270,8 +270,8 @@ function parsePersonName(raw, inferredLastName) {
       }
       middleTokens.push(token);
     }
-    const middleValid =
-      middle && isValidName(middle) ? normWS(middle) : null;
+    let middle = middleTokens.length ? middleTokens.join(" ") : null;
+    const middleValid = middle && isValidName(middle) ? normWS(middle) : null;
 
     let middle = middleTokens.length ? middleTokens.join(" ") : null;
     const middleValid = middle && isValidName(middle) ? normWS(middle) : null;
