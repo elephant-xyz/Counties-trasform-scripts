@@ -20410,6 +20410,87 @@ function lockFinalAddressBranch(addressPath) {
   removeFileIfExists(addressPath);
 }
 
+// Final guard to collapse the address into a single oneOf branch. When we have
+// a complete normalized surface, emit only normalized fields. Otherwise, use
+// the raw branch anchored on the unnormalized string while keeping every
+// schema field present (nullable) so required keys are never missing.
+function finalizeAddressOneOfStrict(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...snapshot })
+      : null;
+  const hasNormalized =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+  const rawValue = safeNullIfEmpty(snapshot.unnormalized_address);
+
+  let nextOut = null;
+  if (hasNormalized) {
+    nextOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = normalizedSurface[field];
+      if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(value);
+        value = prepared ? deepClone(prepared) : null;
+      } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      nextOut[field] = value;
+    });
+  } else if (rawValue) {
+    nextOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+    RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") return;
+      let value = snapshot[field];
+      if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(value);
+        nextOut[field] = prepared ? deepClone(prepared) : null;
+        return;
+      }
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        nextOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      nextOut[field] = safeNullIfEmpty(value);
+    });
+  } else {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if (!nextOut.postal_code) {
+    nextOut.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(nextOut.state_code) &&
+    !hasMeaningfulAddressValue(nextOut.country_code)
+  ) {
+    nextOut.country_code = "US";
+  }
+  if ((nextOut.latitude == null) !== (nextOut.longitude == null)) {
+    nextOut.latitude = null;
+    nextOut.longitude = null;
+  }
+  if (hasNormalized && Object.prototype.hasOwnProperty.call(nextOut, "unnormalized_address")) {
+    delete nextOut.unnormalized_address;
+  }
+
+  writeJSON(addressPath, nextOut);
+}
+
 function finalizeAddressOneOfVariant(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) {
     return;
@@ -24193,6 +24274,7 @@ async function main() {
   enforceAddressVariantFieldSurface(addressOutputPath);
   enforceAddressOneOfStrictCompliance(addressOutputPath);
   finalizeAddressVariantForSchema(addressOutputPath);
+  finalizeAddressOneOfStrict(addressOutputPath);
   emitFinalCountyAddressPayload(addressOutputPath, {
     unnormalizedCandidates: [
       ...(solidifyOptions.unnormalizedCandidates || []),
@@ -24838,6 +24920,8 @@ async function main() {
     path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
   ].forEach(removeFileIfExists);
   nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
+  purgeAddressRelationshipArtifacts(dataDir);
+  purgeAddressRelationshipArtifacts(relationshipsDir);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
