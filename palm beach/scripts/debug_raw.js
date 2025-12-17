@@ -26505,28 +26505,55 @@ async function main() {
       hasCompleteNormalizedAddress({ ...normalizedSurface });
 
     if (rawValue && !normalizedReady) {
-      const finalRawOut = {
+      const rawSeed = {
+        ...snapshot,
         unnormalized_address: rawValue,
+        county_name:
+          safeNullIfEmpty(snapshot.county_name) ||
+          safeNullIfEmpty(inferredCounty) ||
+          safeNullIfEmpty(formattedCountyName) ||
+          safeNullIfEmpty(countyName) ||
+          null,
+        state_code:
+          safeNullIfEmpty(snapshot.state_code) ||
+          safeNullIfEmpty(inferredStateCode) ||
+          "FL",
       };
-      if (
-        Object.prototype.hasOwnProperty.call(snapshot, "request_identifier") ||
-        resolvedRequestIdentifier !== undefined
-      ) {
-        finalRawOut.request_identifier =
-          safeNullIfEmpty(
-            resolvedRequestIdentifier === undefined
-              ? snapshot.request_identifier
-              : resolvedRequestIdentifier,
-          ) ?? null;
+
+      const finalRawOut =
+        ensureRawAddressSchemaDefaults(rawSeed, RAW_ADDRESS_ALLOWED_FIELDS) || {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          unnormalized_address: rawValue,
+        };
+
+      const normalizedRequestId =
+        safeNullIfEmpty(
+          resolvedRequestIdentifier === undefined
+            ? finalRawOut.request_identifier ?? snapshot.request_identifier
+            : resolvedRequestIdentifier,
+        ) ?? null;
+      finalRawOut.request_identifier = normalizedRequestId;
+
+      finalRawOut.source_http_request =
+        prepareSourceHttpRequest(
+          snapshot.source_http_request ?? resolvedSourceHttp,
+        ) || null;
+
+      if (!finalRawOut.postal_code) {
+        finalRawOut.plus_four_postal_code = null;
       }
       if (
-        Object.prototype.hasOwnProperty.call(snapshot, "source_http_request") ||
-        resolvedSourceHttp
+        (finalRawOut.latitude == null) !==
+        (finalRawOut.longitude == null)
       ) {
-        finalRawOut.source_http_request =
-          prepareSourceHttpRequest(
-            snapshot.source_http_request ?? resolvedSourceHttp,
-          ) || null;
+        finalRawOut.latitude = null;
+        finalRawOut.longitude = null;
+      }
+      if (
+        hasMeaningfulAddressValue(finalRawOut.state_code) &&
+        !hasMeaningfulAddressValue(finalRawOut.country_code)
+      ) {
+        finalRawOut.country_code = "US";
       }
       originalWriteFileSync.call(
         fs,
