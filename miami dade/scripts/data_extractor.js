@@ -1,11 +1,12 @@
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
+// 0000 REFERENCE FOLIO
 const propertyTypeMapping  = [
   {
     "property_usecode": "0000 - REFERENCE FOLIO",
     "ownership_estate_type": null,
-    "build_status": null,
+    "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": null,
     "property_type": "LandParcel"
@@ -2215,6 +2216,13 @@ function main() {
     lot_size_acre: lotSize != null ? lotSize / 43560 : null,
   };
   writeJson(path.join("data", "lot.json"), lot);
+
+  // Create property_has_lot relationship
+  const relPropertyLot = {
+    from: { "/": "./property.json" },
+    to: { "/": "./lot.json" },
+  };
+  writeJson(path.join("data", "relationship_property_has_lot.json"), relPropertyLot);
 
   // TAX
   if (input.Assessment && Array.isArray(input.Assessment.AssessmentInfos)) {
