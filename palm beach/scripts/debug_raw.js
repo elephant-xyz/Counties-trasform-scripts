@@ -24523,11 +24523,8 @@ async function main() {
     }
     writeJSON(addressOutputPath, normalizedOut);
   } else if (terminalRaw) {
-    const rawOut = {
-      unnormalized_address: terminalRaw,
-      request_identifier:
-        resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier,
-      source_http_request: prepareSourceHttpRequest(resolvedSourceHttp) || null,
+    const rawSeed = {
+      ...terminalAddress,
       county_name:
         safeNullIfEmpty(terminalAddress.county_name) ||
         safeNullIfEmpty(inferredCounty) ||
@@ -24539,7 +24536,22 @@ async function main() {
       township: terminalAddress.township ?? township ?? null,
       range: terminalAddress.range ?? range ?? null,
     };
-    writeJSON(addressOutputPath, rawOut);
+    const rawOut =
+      buildFinalRawAddressOutput(terminalRaw, {
+        requestIdentifier:
+          resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier,
+        sourceHttpRequest: resolvedSourceHttp,
+        countyName: rawSeed.county_name,
+        countryCode: rawSeed.country_code,
+        seed: rawSeed,
+        latitude: terminalAddress.latitude,
+        longitude: terminalAddress.longitude,
+      }) || null;
+    if (rawOut) {
+      writeJSON(addressOutputPath, rawOut);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
   } else {
     removeFileIfExists(addressOutputPath);
   }
