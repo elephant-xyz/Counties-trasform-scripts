@@ -181,6 +181,12 @@ function normalizeNameKey(owner) {
   return parts.join(" ").trim();
 }
 
+// Valid suffixes according to Elephant schema
+const VALID_SUFFIXES = [
+  "Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM",
+  "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."
+];
+
 // Map for suffix formatting to match schema enum (e.g., "Jr" -> "Jr.")
 // Valid suffixes: Jr., Sr., II, III, IV, PhD, MD, Esq., JD, LLM, MBA, RN, DDS, DVM, CFA, CPA, PE, PMP, Emeritus, Ret.
 // NOTE: Keys must match what toTitleCase produces (e.g., "Ii" not "II", "Phd" not "PhD")
@@ -426,8 +432,12 @@ function dedupeOwners(list) {
       if (o.middle_name === "" || o.middle_name === undefined) {
         o.middle_name = null; // Set to null instead of deleting if schema requires it
       }
+      // Validate suffix_name: must be null or one of the valid enum values
       if (o.suffix_name === "" || o.suffix_name === undefined) {
         o.suffix_name = null; // Set to null instead of deleting if schema requires it
+      } else if (o.suffix_name !== null && !VALID_SUFFIXES.includes(o.suffix_name)) {
+        // If suffix_name has a value but it's not in the valid list, set to null
+        o.suffix_name = null;
       }
       // Other required fields (birth_date, prefix_name, us_citizenship_status, veteran_status)
       // are already initialized to null in parsePersonName, so no need to check here.
