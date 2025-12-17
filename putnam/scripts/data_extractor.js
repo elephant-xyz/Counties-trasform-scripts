@@ -1104,7 +1104,6 @@ function getAddreses($) {
 
 
 function extractAddress(addressDetails, unnorm) {
-  let hasOwnerMailingAddress = false;
   let inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty || inputCounty === "") {
     inputCounty = (unnorm.county_name || "").trim();
@@ -1112,13 +1111,8 @@ function extractAddress(addressDetails, unnorm) {
   const county_name = inputCounty || null;
   const mailingAddress = addressDetails.mailingAddress;
   const siteAddress = addressDetails.siteAddress;
-  if (mailingAddress) {
-    const mailingAddressObj = {
-      unnormalized_address: mailingAddress,
-    };
-    writeOut("mailing_address.json", mailingAddressObj);
-    hasOwnerMailingAddress = true;
-  }
+  // Return mailingAddress value instead of creating the file here
+  // The file will be created later only if there are valid persons/companies
   if (siteAddress) {
     const addressObj = {
       county_name,
@@ -1133,7 +1127,7 @@ function extractAddress(addressDetails, unnorm) {
                 from: { "/": `./property.json` },
               });
   }
-  return hasOwnerMailingAddress;
+  return mailingAddress;
 }
 
 function mapInstrumentToDeedType(instr) {
@@ -1417,7 +1411,7 @@ function main() {
   }
 
   const addressDetails = getAddreses($);
-  const hasOwnerMailingAddress = extractAddress(addressDetails, unnorm);
+  const ownerMailingAddressValue = extractAddress(addressDetails, unnorm);
 
   // PROPERTY
   const parcelId = parcel.parcel_identifier;
@@ -1769,6 +1763,28 @@ function main() {
             veteran_status: null,
           }))
           .filter((p) => p.first_name && p.last_name); // Only keep persons with valid first and last names
+        const companyNames = new Set();
+        Object.values(ownersByDate).forEach((arr) => {
+          (arr || []).forEach((o) => {
+            if (o.type === "company" && (o.name || "").trim())
+              companyNames.add((o.name || "").trim().toUpperCase());
+          });
+        });
+        companies = Array.from(companyNames).map((n) => ({
+          name: n,
+        }));
+
+        // Only create mailing_address.json if there are valid persons or companies AND mailingAddress exists
+        const hasValidEntities = (people.length > 0 || companies.length > 0);
+        const shouldCreateMailingAddress = ownerMailingAddressValue && hasValidEntities;
+
+        if (shouldCreateMailingAddress) {
+          const mailingAddressObj = {
+            unnormalized_address: ownerMailingAddressValue,
+          };
+          writeOut("mailing_address.json", mailingAddressObj);
+        }
+
         let loopIdx = 1;
         for (const p of people) {
           writeOut(`person_${loopIdx}.json`, p);
@@ -1781,7 +1797,7 @@ function main() {
               },
             );
           }
-          if (hasOwnerMailingAddress) {
+          if (shouldCreateMailingAddress) {
             writeOut(
                 `relationship_person_has_mailing_address_${loopIdx}.json`,
               {
@@ -1792,16 +1808,6 @@ function main() {
           }
           loopIdx++;
         }
-        const companyNames = new Set();
-        Object.values(ownersByDate).forEach((arr) => {
-          (arr || []).forEach((o) => {
-            if (o.type === "company" && (o.name || "").trim())
-              companyNames.add((o.name || "").trim().toUpperCase());
-          });
-        });
-        companies = Array.from(companyNames).map((n) => ({ 
-          name: n,
-        }));
         loopIdx = 1;
         for (const c of companies) {
           writeOut(`company_${loopIdx}.json`, c);
@@ -1814,7 +1820,7 @@ function main() {
               },
             );
           }
-          if (hasOwnerMailingAddress) {
+          if (shouldCreateMailingAddress) {
             writeOut(
                 `relationship_company_has_mailing_address_${loopIdx}.json`,
               {
