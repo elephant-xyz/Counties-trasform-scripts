@@ -1884,7 +1884,7 @@ function main() {
       mailingAddressValue = mailingSpan.text().replace(/\s+/g, " ").trim();
     }
   }
-  if (mailingAddressValue) {
+  if (mailingAddressValue && mailingOwnerRefs.length > 0) {
     writeJson(path.join(dataDir, "mailing_address.json"), {
       unnormalized_address: mailingAddressValue,
       latitude: null,
