@@ -3557,6 +3557,11 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
       const lastName = toTitleCase(o.last_name); // Apply title case
       const suffixName = normalizeSuffix(o.suffix_name); // Normalize suffix to match schema
 
+      // Skip if firstName or lastName is empty after toTitleCase
+      if (!firstName || !lastName) {
+        return;
+      }
+
       // Validate name components before adding
       const isValid =
         isValidFirstOrLastName(firstName) &&
@@ -3599,6 +3604,11 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
         const middleName = o.middle_name ? toTitleCase(o.middle_name) || null : null;
         const lastName = toTitleCase(o.last_name); // Apply title case
         const suffixName = normalizeSuffix(o.suffix_name); // Normalize suffix to match schema
+
+        // Skip if firstName or lastName is empty after toTitleCase
+        if (!firstName || !lastName) {
+          return;
+        }
 
         // Validate name components before adding
         const isValid =
