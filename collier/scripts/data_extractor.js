@@ -777,7 +777,8 @@ function main() {
     Array.isArray(ownerEntry.owners_by_date.current)
   ) {
     const curr = ownerEntry.owners_by_date.current;
-    if (curr.length > 0) {
+    if (curr.length > 0 && validSales.length > 0) {
+      // Only create company/person files if there are valid sales to link them to
       // Cleanup any legacy duplicate relationship files
       const files = fs
         .readdirSync(dataDir)
@@ -829,39 +830,37 @@ function main() {
       });
 
       // Create relationships for valid sales
-      if (validSales.length > 0) {
-        validSales.forEach((s, si) => {
-          // Link to all person files
-          personFiles.forEach((personFile, pi) => {
-            const rel = {
-              to: { "/": `./${personFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_person_${pi + 1}_${si + 1}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-          });
-
-          // Link to all company files
-          companyFiles.forEach((companyFile, ci) => {
-            const rel = {
-              to: { "/": `./${companyFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-          });
+      validSales.forEach((s, si) => {
+        // Link to all person files
+        personFiles.forEach((personFile, pi) => {
+          const rel = {
+            to: { "/": `./${personFile}` },
+            from: { "/": `./sales_${si + 1}.json` },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_sales_person_${pi + 1}_${si + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
         });
-      }
+
+        // Link to all company files
+        companyFiles.forEach((companyFile, ci) => {
+          const rel = {
+            to: { "/": `./${companyFile}` },
+            from: { "/": `./sales_${si + 1}.json` },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_sales_company_${ci + 1}_${si + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+        });
+      });
     }
   }
 
