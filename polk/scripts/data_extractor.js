@@ -4199,18 +4199,20 @@ function main() {
   const usedPersonIndices = new Set();
   const usedCompanyIndices = new Set();
 
-  // Mark current owners with mailing address as used
+  // Mark current owners as used - they always have relationships to the property
+  pc.personCurrentOwners.forEach((idx) => {
+    usedPersonIndices.add(idx);
+  });
+  pc.companyCurrentOwners.forEach((idx) => {
+    usedCompanyIndices.add(idx);
+  });
+
+  // Write mailing address if available
   // Only write mailing_address.json if there are current owners to link it to
   const hasCurrentOwners = pc.personCurrentOwners.length > 0 || pc.companyCurrentOwners.length > 0;
   const hasOwnerMailingAddress = mailingAddressData && hasCurrentOwners;
   if (hasOwnerMailingAddress) {
     writeJSON(path.join("data", "mailing_address.json"), mailingAddressData);
-    pc.personCurrentOwners.forEach((idx) => {
-      usedPersonIndices.add(idx);
-    });
-    pc.companyCurrentOwners.forEach((idx) => {
-      usedCompanyIndices.add(idx);
-    });
   }
 
   // Build name-to-path maps for sales matching
