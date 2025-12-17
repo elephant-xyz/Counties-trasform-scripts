@@ -16117,6 +16117,160 @@ function enforceFinalCountyAddressOneOf(addressPath, options = {}) {
   writeJSON(addressPath, rawOut);
 }
 
+// Rebuild the final address payload so exactly one oneOf branch is satisfied.
+// Prefer a fully populated normalized address; otherwise emit the raw branch
+// with the complete nullable field surface to avoid missing required keys.
+function rebuildFinalCountyAddress(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath) || {};
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const unnormalizedSource =
+    options.unnormalizedSource && typeof options.unnormalizedSource === "object"
+      ? options.unnormalizedSource
+      : {};
+  const seedSource =
+    options.seedSource && typeof options.seedSource === "object"
+      ? options.seedSource
+      : {};
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.unnormalized_address,
+      unnormalizedSource.unnormalized_address,
+      unnormalizedSource.full_address,
+      ...(options.rawCandidates || []),
+    ]),
+  );
+
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...payload })
+      : null;
+  const normalizedComplete =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.request_identifier,
+      options.requestIdentifier,
+      ...(options.requestIdentifierCandidates || []),
+      seedSource.request_identifier,
+      unnormalizedSource.request_identifier,
+    ]),
+  );
+  const resolvedSourceHttp =
+    resolveSourceHttpRequest(
+      payload.source_http_request,
+      options.sourceHttpRequest,
+      ...(options.sourceHttpRequestCandidates || []),
+    ) ||
+    resolveSourceHttpRequest(
+      undefined,
+      unnormalizedSource.source_http_request,
+      seedSource.source_http_request,
+    );
+
+  if (normalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      if (field === "request_identifier") {
+        normalizedOut[field] =
+          resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier;
+        return;
+      }
+      if (field === "source_http_request") {
+        normalizedOut[field] = prepareSourceHttpRequest(resolvedSourceHttp) || null;
+        return;
+      }
+      let value =
+        normalizedSurface[field] !== undefined
+          ? normalizedSurface[field]
+          : payload[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      normalizedOut[field] = sanitizeAddressFieldValue(field, value);
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")) {
+      delete normalizedOut.unnormalized_address;
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      rawOut[field] = rawValue;
+      return;
+    }
+    if (field === "request_identifier") {
+      rawOut[field] =
+        resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier;
+      return;
+    }
+    if (field === "source_http_request") {
+      rawOut[field] = prepareSourceHttpRequest(resolvedSourceHttp) || null;
+      return;
+    }
+    let value = payload[field];
+    if (value === undefined) {
+      value = unnormalizedSource[field];
+    }
+    if (value === undefined) {
+      value = seedSource[field];
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    rawOut[field] = sanitizeAddressFieldValue(field, value);
+  });
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = "US";
+  }
+
+  writeJSON(addressPath, rawOut);
+}
+
 function finalizeAddressOneOfSelection(addressPath) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
 
@@ -24905,6 +25059,25 @@ async function main() {
     sourceHttpRequest: resolvedSourceHttp,
     fallbackCountyName:
       inferredCounty || formattedCountyName || countyName || "Palm Beach",
+  });
+
+  rebuildFinalCountyAddress(addressOutputPath, {
+    rawCandidates,
+    requestIdentifier: resolvedRequestIdentifier,
+    requestIdentifierCandidates: [
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unnormalizedSource.request_identifier,
+    ],
+    sourceHttpRequest: resolvedSourceHttp,
+    sourceHttpRequestCandidates: [
+      sourceHttpCandidate,
+      unnormalizedSource.source_http_request,
+      seedSource.source_http_request,
+    ],
+    unnormalizedSource,
+    seedSource,
   });
 
   // Guarantee relationships are left for downstream population (no local URs).
