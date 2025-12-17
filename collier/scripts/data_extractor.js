@@ -107,6 +107,14 @@ function isValidFirstOrLastName(name) {
   return /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(trimmed);
 }
 
+function isValidMiddleName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  return /^[A-Z][a-zA-Z\s\-',.]*$/.test(trimmed);
+}
+
 function resolveUseCode(map, useCodeText) {
   if (!useCodeText) return null;
   const match = useCodeText.match(/\d+/);
@@ -844,9 +852,14 @@ function main() {
             return;
           }
 
-          const middleName = owner.middle_name
-            ? capitalizeProperName(owner.middle_name)
-            : null;
+          // Validate and set middle_name - only include if it matches the required pattern
+          let middleName = null;
+          if (owner.middle_name) {
+            const capitalizedMiddle = capitalizeProperName(owner.middle_name);
+            if (capitalizedMiddle && isValidMiddleName(capitalizedMiddle)) {
+              middleName = capitalizedMiddle;
+            }
+          }
 
           const person = {
             birth_date: owner.birth_date || null,

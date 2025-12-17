@@ -336,6 +336,32 @@ function classifyOwner(raw) {
       return { valid: true, owners: persons };
     }
 
+    // Check if there's "&" separator (like "ROBERT J & NANCY B") indicating multiple people with same last name
+    if (firstMiddle.includes(" & ")) {
+      const names = firstMiddle.split(" & ").map((s) => s.trim()).filter(Boolean);
+      const persons = [];
+
+      for (const name of names) {
+        const tokens = name.split(/\s+/).filter(Boolean);
+        if (tokens.length === 0) continue;
+
+        const firstName = titleCase(tokens[0]);
+        const middleName =
+          tokens.length > 1 ? tokens.slice(1).map(titleCase).join(" ") : null;
+
+        persons.push({
+          type: "person",
+          first_name: firstName,
+          last_name: lastName,
+          middle_name: middleName,
+          suffix_name: suffixName,
+        });
+      }
+
+      // Return multiple owners
+      return { valid: true, owners: persons };
+    }
+
     const firstMiddleTokens = firstMiddle.split(/\s+/).filter(Boolean);
 
     if (firstMiddleTokens.length === 0) {
