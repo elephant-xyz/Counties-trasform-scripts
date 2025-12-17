@@ -2901,110 +2901,17 @@ function main() {
   writeJSON(path.join("data", "address.json"), address);
   console.log(address)
   
-  // Extract mailing address and owner info from ownership section
+  // Extract mailing address from ownership section
   const ownershipHtml = $(".ownership").html();
   const mailingAddr = ownershipHtml ? extractMailingAddress(ownershipHtml) : null;
-  const ownerInfo = extractOwnerInfo(ownershipHtml);
-  // console.log("Ownerinfo",ownerInfo);
 
-  // Initialize counters for person/company files
+  // NOTE: Person/company files will only be created if there are sales history records
+  // to link them to. If there are no sales, we won't create orphaned person/company entities.
+  // Mailing address is also only created when there are sales to link owners to.
+
+  // Initialize person/company counters for sales processing
   let personCounter = 0;
   let companyCounter = 0;
-  const initialPersonFiles = [];
-  const initialCompanyFiles = [];
-  
-  
-  // Create owner objects for each owner
-  ownerInfo.forEach((owner, index) => {
-    if (owner.type === 'Company') {
-      const company = {
-        source_http_request: {
-          method: "GET",
-          url: seed.source_http_request.url
-        },
-        request_identifier: parcelIdentifier || seed.parcel_id || "",
-        name: owner.name
-      };
-      companyCounter++;
-      const companyFileName = `company_${companyCounter}.json`;
-      writeJSON(path.join("data", companyFileName), company);
-      initialCompanyFiles.push(companyFileName);
-    } else {
-      // Parse person name with prefix/suffix extraction
-      const parsed = parsePerson(owner.name);
-      const firstNameRaw = formatName(parsed.firstName);
-      const lastNameRaw = formatName(parsed.lastName);
-      let middleName = formatName(parsed.middleName);
-      const firstName = validatePersonName(firstNameRaw, 'first_name');
-      const lastName = validatePersonName(lastNameRaw, 'last_name');
-      if (middleName != null) {
-        middleName = validatePersonName(middleName, 'middle_name');
-      }
-      
-      const person = {
-        source_http_request: {
-          method: "GET",
-          url: seed.source_http_request.url
-        },
-        request_identifier: parcelIdentifier || seed.parcel_id || "",
-        birth_date: null,
-        first_name: firstName,
-        last_name: lastName,
-        middle_name: middleName,
-        prefix_name: parsed.prefix ? validatePrefix(parsed.prefix) : null,
-        suffix_name: parsed.suffix ? validateSuffix(parsed.suffix) : null,
-        us_citizenship_status: null,
-        veteran_status: null
-      };
-      personCounter++;
-      const personFileName = `person_${personCounter}.json`;
-      writeJSON(path.join("data", personFileName), person);
-      initialPersonFiles.push(personFileName);
-      }
-  });
-  
-  const mailingAddress = {
-    source_http_request: {
-      method: "GET",
-      url: seed.source_http_request.url
-    },
-    request_identifier: parcelIdentifier || seed.parcel_id || "",
-    // county_name: null,
-    unnormalized_address: mailingAddr,
-    longitude: null,
-    latitude: null
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
-  
-  // Track if relationships were created for initial owners
-  let initialRelationshipsCreated = false;
-  
-  // Create relationships between owners and mailing address
-  if (personCounter > 0 || companyCounter > 0) {
-    initialRelationshipsCreated = true;
-    
-    for (let i = 1; i <= personCounter; i++) {
-      const rel = {
-        from: { "/": `./person_${i}.json` },
-        to: { "/": `./mailing_address.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_person_${i}_has_mailing_address.json`),
-        rel,
-      );
-    }
-    
-    for (let i = 1; i <= companyCounter; i++) {
-      const rel = {
-        from: { "/": `./company_${i}.json` },
-        to: { "/": `./mailing_address.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_company_${i}_has_mailing_address.json`),
-        rel,
-      );
-    }
-  }
   
     //Tax jsons creation
   function extractAndWriteTaxData($) {
@@ -3265,6 +3172,21 @@ function main() {
       return companyIndexByKey.get(key);
     }
 
+    // Create mailing address only if we have sales records
+    if (salesFileRefs.length > 0 && mailingAddr) {
+      const mailingAddress = {
+        source_http_request: {
+          method: "GET",
+          url: seed.source_http_request.url
+        },
+        request_identifier: parcelIdentifier || seed.parcel_id || "",
+        unnormalized_address: mailingAddr,
+        longitude: null,
+        latitude: null
+      };
+      writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
+    }
+
     // Create relationships for each sale date
     salesFileRefs.forEach((sref) => {
       const ownersForDate = ownersByDate[sref.date] || [];
@@ -3300,63 +3222,42 @@ function main() {
       });
     });
 
-    // Additionally link the first sale to the owner files created from the ownership section
-    const firstSaleRef = salesFileRefs[0];
-    if (firstSaleRef) {
-      initialPersonFiles.forEach((personFile, idx) => {
-        const rel = {
-          from: { "/": `./${firstSaleRef.salesFileName}` },
-          to: { "/": `./${personFile}` },
-        };
-        writeJSON(
-          path.join(
-            "data",
-            `relationship_sales_history_${firstSaleRef.index}_has_initial_person_${idx + 1}.json`,
-          ),
-          rel,
-        );
-      });
-
-      initialCompanyFiles.forEach((companyFile, idx) => {
-        const rel = {
-          from: { "/": `./${firstSaleRef.salesFileName}` },
-          to: { "/": `./${companyFile}` },
-        };
-        writeJSON(
-          path.join(
-            "data",
-            `relationship_sales_history_${firstSaleRef.index}_has_initial_company_${idx + 1}.json`,
-          ),
-          rel,
-        );
-      });
-    }
-    
-    
-    // Create person-mailing address relationships for current owners only if not already created
-    if (!initialRelationshipsCreated) {
+    // Create person-mailing address relationships for current owners only if we have sales
+    // (mailing address relationships are only created when owners are linked to sales)
+    if (salesFileRefs.length > 0 && mailingAddr) {
       const currentOwners = ownersByDate["current"] || [];
-      currentOwners.forEach((owner, j) => {
+      const seenPersonIndices = new Set();
+      const seenCompanyIndices = new Set();
+
+      currentOwners.forEach((owner) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
-          const rel = {
-            from: { "/": `./${personFile}` },
-            to: { "/": `./mailing_address.json` },
-          };
-          writeJSON(
-            path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
-            rel,
-          );
+          const personIndex = parseInt(personFile.match(/person_(\d+)\.json/)?.[1]);
+          if (personIndex && !seenPersonIndices.has(personIndex)) {
+            seenPersonIndices.add(personIndex);
+            const rel = {
+              from: { "/": `./${personFile}` },
+              to: { "/": `./mailing_address.json` },
+            };
+            writeJSON(
+              path.join("data", `relationship_person_${personIndex}_has_mailing_address.json`),
+              rel,
+            );
+          }
         } else if (owner.type === "company") {
           const companyFile = ensureCompany(owner);
-          const rel = {
-            from: { "/": `./${companyFile}` },
-            to: { "/": `./mailing_address.json` },
-          };
-          writeJSON(
-            path.join("data", `relationship_company_${j + 1}_has_mailing_address.json`),
-            rel,
-          );
+          const companyIndex = parseInt(companyFile.match(/company_(\d+)\.json/)?.[1]);
+          if (companyIndex && !seenCompanyIndices.has(companyIndex)) {
+            seenCompanyIndices.add(companyIndex);
+            const rel = {
+              from: { "/": `./${companyFile}` },
+              to: { "/": `./mailing_address.json` },
+            };
+            writeJSON(
+              path.join("data", `relationship_company_${companyIndex}_has_mailing_address.json`),
+              rel,
+            );
+          }
         }
       });
     }
