@@ -1096,6 +1096,10 @@ function main() {
   if (!parcelId) throw new Error("Missing parcel identifier");
   if (!property_type) property_type = DEFAULT_PROPERTY_TYPE;
   if (!property_usage_type) property_usage_type = DEFAULT_PROPERTY_USAGE_TYPE;
+  if (!build_status) {
+    // Default to a valid enum so schema validation never receives null.
+    build_status = property_type === "LandParcel" ? "VacantLand" : "Improved";
+  }
   writeJson(path.join(dataDir, "property.json"), {
     parcel_identifier: parcelId,
     property_type,
@@ -1535,6 +1539,9 @@ function main() {
     property_type === "LandParcel" || build_status === "VacantLand";
   const buildingLayoutsGenerated = [];
   const layoutRelationships = [];
+  const structureFiles = getStructureFiles(dataDir);
+  const utilityFiles = getUtilityFiles(dataDir);
+  const propertyFilePath = "./property.json";
   let layoutCounter = 0;
 
   if (!isLandProperty) {
@@ -1593,13 +1600,9 @@ function main() {
       );
     });
 
-    const structureFiles = getStructureFiles(dataDir);
-    const utilityFiles = getUtilityFiles(dataDir);
-    const propertyFilePath = "./property.json";
-
     if (structureFiles.length) {
       if (buildingLayoutsGenerated.length <= 1) {
-        structureFiles.forEach((structureFile, sIdx) => {
+        structureFiles.forEach((structureFile) => {
           const targetLayout = buildingLayoutsGenerated[0];
           const layoutId = layoutIdFromFile(targetLayout.file);
           const structureBase = baseNameFromFile(structureFile);
@@ -1732,6 +1735,35 @@ function main() {
     }
   }
 
+  if (!buildingLayoutsGenerated.length) {
+    structureFiles.forEach((structureFile) => {
+      const structureBase = baseNameFromFile(structureFile);
+      writeJson(
+        path.join(
+          dataDir,
+          `relationship_property_has_${structureBase}.json`,
+        ),
+        {
+          from: { "/": propertyFilePath },
+          to: { "/": `./${structureFile}` },
+        },
+      );
+    });
+    utilityFiles.forEach((utilityFile) => {
+      const utilityBase = baseNameFromFile(utilityFile);
+      writeJson(
+        path.join(
+          dataDir,
+          `relationship_property_has_${utilityBase}.json`,
+        ),
+        {
+          from: { "/": propertyFilePath },
+          to: { "/": `./${utilityFile}` },
+        },
+      );
+    });
+  }
+
   // OWNERS/BUYERS + RELS
   const personIndex = new Map();
   const companyIndex = new Map();
@@ -1856,7 +1888,7 @@ function main() {
       mailingAddressValue = mailingSpan.text().replace(/\s+/g, " ").trim();
     }
   }
-  if (mailingAddressValue) {
+  if (mailingAddressValue && mailingOwnerRefs.length > 0) {
     writeJson(path.join(dataDir, "mailing_address.json"), {
       unnormalized_address: mailingAddressValue,
       latitude: null,

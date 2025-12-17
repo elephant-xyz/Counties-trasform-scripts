@@ -40,6 +40,24 @@ function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
+const BOOLEAN_TRUE_VALUES = new Set(["y", "yes", "true", "t", "1"]);
+const BOOLEAN_FALSE_VALUES = new Set(["n", "no", "false", "f", "0"]);
+
+function normalizeBooleanFlag(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  if (value == null) return false;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return false;
+    return value !== 0;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized.length) return false;
+  if (BOOLEAN_TRUE_VALUES.has(normalized)) return true;
+  if (BOOLEAN_FALSE_VALUES.has(normalized)) return false;
+  return false;
+}
+
 function slugify(value) {
   const text = value == null ? "" : String(value);
   const sanitized = text.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
@@ -497,6 +515,8 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     if (!part) return part;
     // Remove any non-letter characters except internal spaces, hyphens, apostrophes, commas, periods
     let cleaned = part.replace(/[^A-Za-z\s\-',.]/g, "").trim();
+    // Remove leading delimiters (periods, commas, hyphens, apostrophes) to match pattern
+    cleaned = cleaned.replace(/^[ \-',.]+/, '');
     // Remove trailing delimiters (periods, commas, hyphens, apostrophes) to match pattern
     cleaned = cleaned.replace(/[ \-',.]+$/, '');
     return cleaned;
@@ -784,7 +804,7 @@ const PROPERTY_USE_DESCRIPTION_MAP = new Map([
   ["MINERAL PROCESSING", { property_usage_type: "MineralProcessing" }],
   ["MINI MART", { property_usage_type: "RetailStore" }],
   ["MISCELLANEOUS", { property_usage_type: "Unknown" }],
-  ["MIXED COMMERCIAL", { property_usage_type: "MixedUse" }],
+  ["MIXED COMMERCIAL", { property_usage_type: "Commercial" }],
   ["MOBILE HOME", { property_usage_type: "Residential", property_type: "ManufacturedHome", structure_form: "ManufacturedHousing" }],
   ["MODULAR HOME", { property_usage_type: "Residential", property_type: "ManufacturedHome", structure_form: "ManufacturedHousing" }],
   ["MORTUARY CEMETE", { property_usage_type: "MortuaryCemetery", property_type: "LandParcel", build_status: "Improved" }],
@@ -895,7 +915,7 @@ const PROPERTY_USE_DESCRIPTION_PATTERNS = [
   },
   {
     pattern: /MIXED/i,
-    overrides: { property_usage_type: "MixedUse" },
+    overrides: { property_usage_type: "Commercial" },
   },
 ];
 
@@ -2275,25 +2295,123 @@ function main() {
     request_identifier: requestIdentifier,
   };
 
-  const structureItems = (() => {
-    const wrap = (entry, buildingIndex = null) => ({
-      data: {
-        ...baseStructure,
-        ...entry,
-        source_http_request:
-          entry && entry.source_http_request != null
-            ? entry.source_http_request
-            : clone(defaultSourceHttpRequest),
-        request_identifier:
-          entry && entry.request_identifier != null
-            ? entry.request_identifier
-            : requestIdentifier,
-      },
-      buildingIndex:
-        Number.isFinite(parseIntSafe(buildingIndex)) ?
-          parseIntSafe(buildingIndex) :
-          null,
+  const cleanStructureEntry = (entry) => {
+    if (!entry || typeof entry !== "object") return {};
+    const cleaned = { ...entry };
+    delete cleaned.buildings;
+    return cleaned;
+  };
+
+  const baseUtility = {
+    heating_system_type: null,
+    heating_fuel_type: null,
+    cooling_system_type: null,
+    public_utility_type: null,
+    sewer_type: null,
+    water_source_type: null,
+    plumbing_system_type: null,
+    plumbing_system_type_other_description: null,
+    electrical_panel_capacity: null,
+    electrical_wiring_type: null,
+    hvac_condensing_unit_present: null,
+    electrical_wiring_type_other_description: null,
+    solar_panel_present: null,
+    solar_panel_type: null,
+    solar_panel_type_other_description: null,
+    solar_inverter_visible: null,
+    smart_home_features: null,
+    smart_home_features_other_description: null,
+    hvac_unit_condition: null,
+    hvac_unit_issues: null,
+  };
+
+  const UTILITY_ALLOWED_KEYS = new Set([
+    "heating_system_type",
+    "heating_fuel_type",
+    "cooling_system_type",
+    "public_utility_type",
+    "sewer_type",
+    "water_source_type",
+    "plumbing_system_type",
+    "plumbing_system_type_other_description",
+    "electrical_panel_capacity",
+    "electrical_wiring_type",
+    "hvac_condensing_unit_present",
+    "electrical_wiring_type_other_description",
+    "solar_panel_present",
+    "solar_panel_type",
+    "solar_panel_type_other_description",
+    "solar_inverter_visible",
+    "smart_home_features",
+    "smart_home_features_other_description",
+    "hvac_unit_condition",
+    "hvac_unit_issues",
+    "source_http_request",
+    "request_identifier",
+  ]);
+
+  const UTILITY_VALUE_KEYS = [
+    "heating_system_type",
+    "heating_fuel_type",
+    "cooling_system_type",
+    "public_utility_type",
+    "sewer_type",
+    "water_source_type",
+    "plumbing_system_type",
+    "plumbing_system_type_other_description",
+    "electrical_panel_capacity",
+    "electrical_wiring_type",
+    "hvac_condensing_unit_present",
+    "electrical_wiring_type_other_description",
+    "solar_panel_present",
+    "solar_panel_type",
+    "solar_panel_type_other_description",
+    "solar_inverter_visible",
+    "smart_home_features",
+    "smart_home_features_other_description",
+    "hvac_unit_condition",
+    "hvac_unit_issues",
+  ];
+
+  const sanitizeUtilityEntry = (entry) => {
+    if (!entry || typeof entry !== "object") return {};
+    return Object.keys(entry).reduce((acc, key) => {
+      if (UTILITY_ALLOWED_KEYS.has(key)) {
+        acc[key] = entry[key];
+      }
+      return acc;
+    }, {});
+  };
+
+  const hasUtilityValues = (entry) =>
+    UTILITY_VALUE_KEYS.some((key) => {
+      const value = entry[key];
+      if (Array.isArray(value)) return value.length > 0;
+      return value !== null && value !== undefined;
     });
+
+  const structureItems = (() => {
+    const wrap = (entry, buildingIndex = null) => {
+      const sanitizedEntry = cleanStructureEntry(entry);
+      return {
+        data: {
+          ...baseStructure,
+          ...sanitizedEntry,
+          source_http_request:
+            sanitizedEntry && sanitizedEntry.source_http_request != null
+              ? sanitizedEntry.source_http_request
+              : clone(defaultSourceHttpRequest),
+          request_identifier:
+            sanitizedEntry && sanitizedEntry.request_identifier != null
+              ? sanitizedEntry.request_identifier
+              : requestIdentifier,
+        },
+        buildingIndex:
+          Number.isFinite(parseIntSafe(buildingIndex)) ?
+            parseIntSafe(buildingIndex) :
+            null,
+      };
+    };
 
     if (
       structureEntry &&
@@ -2302,15 +2420,19 @@ function main() {
       Array.isArray(structureEntry.buildings) &&
       structureEntry.buildings.length
     ) {
-      return structureEntry.buildings.map((rec) => {
-        const entry =
-          rec && typeof rec === "object" && rec.structure
-            ? rec.structure
-            : rec;
-        const buildingIndex =
-          rec && rec.building_index != null ? rec.building_index : null;
-        return wrap(entry || {}, buildingIndex);
-      });
+      const mapped = structureEntry.buildings
+        .map((rec) => {
+          const entry =
+            rec && typeof rec === "object" && rec.structure
+              ? rec.structure
+              : rec;
+          const buildingIndex =
+            rec && rec.building_index != null ? rec.building_index : null;
+          return wrap(entry || {}, buildingIndex);
+        })
+        .filter(Boolean);
+      if (mapped.length) return mapped;
+      return [];
     }
 
     if (Array.isArray(structureEntry)) {
@@ -2356,23 +2478,48 @@ function main() {
   });
 
   const utilityItems = (() => {
-    const wrap = (entry, buildingIndex = null) => ({
-      data: {
-        ...entry,
-        source_http_request:
-          entry && entry.source_http_request != null
-            ? entry.source_http_request
-            : clone(defaultSourceHttpRequest),
-        request_identifier:
-          entry && entry.request_identifier != null
-            ? entry.request_identifier
-            : requestIdentifier,
-      },
-      buildingIndex:
-        Number.isFinite(parseIntSafe(buildingIndex)) ?
-          parseIntSafe(buildingIndex) :
-          null,
-    });
+    const wrap = (entry, buildingIndex = null) => {
+      const sanitizedEntry = sanitizeUtilityEntry(entry);
+      if (!hasUtilityValues(sanitizedEntry)) return null;
+      const payload = {
+        ...baseUtility,
+        ...sanitizedEntry,
+      };
+      payload.source_http_request =
+        sanitizedEntry && sanitizedEntry.source_http_request != null
+          ? sanitizedEntry.source_http_request
+          : clone(defaultSourceHttpRequest);
+      payload.request_identifier =
+        sanitizedEntry && sanitizedEntry.request_identifier != null
+          ? sanitizedEntry.request_identifier
+          : requestIdentifier;
+      const hasSolarPanelPresent = Object.prototype.hasOwnProperty.call(
+        sanitizedEntry,
+        "solar_panel_present",
+      );
+      const hasSolarInverterVisible = Object.prototype.hasOwnProperty.call(
+        sanitizedEntry,
+        "solar_inverter_visible",
+      );
+      payload.solar_panel_present = normalizeBooleanFlag(
+        hasSolarPanelPresent ?
+          sanitizedEntry.solar_panel_present :
+          payload.solar_panel_present,
+      );
+      payload.solar_inverter_visible = normalizeBooleanFlag(
+        hasSolarInverterVisible ?
+          sanitizedEntry.solar_inverter_visible :
+          payload.solar_inverter_visible,
+      );
+
+      return {
+        data: payload,
+        buildingIndex:
+          Number.isFinite(parseIntSafe(buildingIndex)) ?
+            parseIntSafe(buildingIndex) :
+            null,
+      };
+    };
 
     if (
       utilitiesEntry &&
@@ -2381,19 +2528,25 @@ function main() {
       Array.isArray(utilitiesEntry.buildings) &&
       utilitiesEntry.buildings.length
     ) {
-      return utilitiesEntry.buildings.map((rec) => {
-        const entry =
-          rec && typeof rec === "object" && rec.utility
-            ? rec.utility
-            : rec;
-        const buildingIndex =
-          rec && rec.building_index != null ? rec.building_index : null;
-        return wrap(entry || {}, buildingIndex);
-      });
+      const mapped = utilitiesEntry.buildings
+        .map((rec) => {
+          const entry =
+            rec && typeof rec === "object" && rec.utility
+              ? rec.utility
+              : rec;
+          const buildingIndex =
+            rec && rec.building_index != null ? rec.building_index : null;
+          return wrap(entry || {}, buildingIndex);
+        })
+        .filter(Boolean);
+      if (mapped.length) return mapped;
+      return [];
     }
 
     if (Array.isArray(utilitiesEntry)) {
-      return utilitiesEntry.map((entry) => wrap(entry || {}, null));
+      return utilitiesEntry
+        .map((entry) => wrap(entry || {}, null))
+        .filter(Boolean);
     }
 
     if (
@@ -2401,11 +2554,14 @@ function main() {
       typeof utilitiesEntry === "object" &&
       Array.isArray(utilitiesEntry.utilities)
     ) {
-      return utilitiesEntry.utilities.map((entry) => wrap(entry || {}, null));
+      return utilitiesEntry.utilities
+        .map((entry) => wrap(entry || {}, null))
+        .filter(Boolean);
     }
 
     if (utilitiesEntry && typeof utilitiesEntry === "object") {
-      return [wrap(utilitiesEntry, null)];
+      const wrapped = wrap(utilitiesEntry, null);
+      return wrapped ? [wrapped] : [];
     }
 
     return [];
@@ -3270,12 +3426,34 @@ function main() {
     }
   }
 
-  // Only create mailing address files if there are owners to reference them
-  const mailingAddressFiles = [];
+  // First, determine which unique addresses will actually be used by owners
+  const usedAddressIndices = new Set();
   if (currentOwners.length > 0) {
-    ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
+    currentOwners.forEach((owner, idx) => {
+      if (!owner || !owner.type) return;
+      if (ownerMailingInfo.rawAddresses[idx] != null) {
+        const rawAddr = ownerMailingInfo.rawAddresses[idx];
+        const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
+        if (uniqueIdx >= 0) {
+          usedAddressIndices.add(uniqueIdx);
+        }
+      } else if (ownerMailingInfo.uniqueAddresses.length > 0) {
+        // Fallback: use index or last address
+        const fallbackIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
+        usedAddressIndices.add(fallbackIdx);
+      }
+    });
+  }
+
+  // Only create mailing address files for addresses that will be used
+  const mailingAddressFiles = [];
+  const oldToNewIndexMap = new Map();
+  if (currentOwners.length > 0 && usedAddressIndices.size > 0) {
+    const sortedIndices = Array.from(usedAddressIndices).sort((a, b) => a - b);
+    sortedIndices.forEach((oldIdx, newIdx) => {
+      const addr = ownerMailingInfo.uniqueAddresses[oldIdx];
       if (!addr) return;
-      const fileName = `mailing_address_${idx + 1}.json`;
+      const fileName = `mailing_address_${newIdx + 1}.json`;
       const mailingObj = {
         unnormalized_address: addr,
         latitude: null,
@@ -3284,7 +3462,8 @@ function main() {
         request_identifier: requestIdentifier,
       };
       writeJSON(path.join(dataDir, fileName), mailingObj);
-      mailingAddressFiles.push({ path: `./${fileName}` });
+      mailingAddressFiles.push({ path: `./${fileName}`, oldIdx });
+      oldToNewIndexMap.set(oldIdx, newIdx);
     });
   }
 
@@ -3328,10 +3507,17 @@ function main() {
     ) {
       const rawAddr = ownerMailingInfo.rawAddresses[idx];
       const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-      if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
+      if (uniqueIdx >= 0 && oldToNewIndexMap.has(uniqueIdx)) {
+        mailingIdx = oldToNewIndexMap.get(uniqueIdx);
+      }
     }
     if (mailingIdx == null && mailingAddressFiles.length) {
-      mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
+      const fallbackUniqueIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
+      if (oldToNewIndexMap.has(fallbackUniqueIdx)) {
+        mailingIdx = oldToNewIndexMap.get(fallbackUniqueIdx);
+      } else if (mailingAddressFiles.length > 0) {
+        mailingIdx = 0;
+      }
     }
     const mailingRecord =
       mailingIdx != null && mailingIdx >= 0
@@ -3693,6 +3879,17 @@ function main() {
     });
     saleBuyerStatus.set(latestSaleRef.salesPath, true);
   }
+
+  // Add previous owners from previousOwnerLookup to saleGrantorRelations
+  previousOwnerLookup.forEach((meta, ownerPath) => {
+    if (!ownerPath || !meta.dates || meta.dates.size === 0) return;
+    meta.dates.forEach((dateISO) => {
+      saleGrantorRelations.push({
+        ownerPath,
+        saleDateISO: dateISO,
+      });
+    });
+  });
 
   const saleOwnerRelationshipKeys = new Set();
   saleOwnerRelations.forEach((entry) => {
