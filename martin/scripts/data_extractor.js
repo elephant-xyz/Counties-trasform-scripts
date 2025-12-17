@@ -867,6 +867,68 @@ function titleCaseName(s) {
   return result;
 }
 
+function cleanMiddleName(s) {
+  if (s == null) return null;
+  s = String(s).trim();
+  if (!s) return null;
+
+  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
+  s = s.replace(/[^a-zA-Z\s\-',.]/g, '');
+  if (!s) return null;
+
+  // Remove leading/trailing separators and collapse multiple spaces
+  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '').replace(/\s+/g, ' ');
+  if (!s) return null;
+
+  // For middle names, we use title case but preserve the more lenient pattern
+  // Convert to lowercase for processing
+  const lower = s.toLowerCase();
+
+  // Split by separators while preserving them
+  const parts = [];
+  let currentWord = '';
+  let lastWasSeparator = false;
+
+  for (let i = 0; i < lower.length; i++) {
+    const char = lower[i];
+    if (/[\s\-',.]/.test(char)) {
+      if (currentWord) {
+        parts.push({ type: 'word', value: currentWord });
+        currentWord = '';
+      }
+      if (!lastWasSeparator) {
+        parts.push({ type: 'sep', value: char });
+        lastWasSeparator = true;
+      }
+    } else {
+      currentWord += char;
+      lastWasSeparator = false;
+    }
+  }
+  if (currentWord) {
+    parts.push({ type: 'word', value: currentWord });
+  }
+
+  // Build result with proper capitalization
+  let result = '';
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.type === 'word') {
+      // Capitalize first letter, rest lowercase
+      result += part.value.charAt(0).toUpperCase() + part.value.slice(1);
+    } else {
+      result += part.value;
+    }
+  }
+
+  result = result.trim();
+
+  // Ensure result matches the middle name pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  // This pattern is more lenient than first/last name pattern
+  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+  return result;
+}
+
 function getValueByStrong($, label) {
   let out = null;
   $("td > strong").each((i, el) => {
@@ -1918,13 +1980,10 @@ function main() {
     const idx = persons.length + 1;
     const first = titleCaseName(p.first_name);
     const last = titleCaseName(p.last_name);
-    let middle = p.middle_name ? titleCaseName(p.middle_name) : null;
+    let middle = p.middle_name ? cleanMiddleName(p.middle_name) : null;
     // Ensure first and last names are valid after title casing
     if (!first || !last) return null;
-    // Ensure middle name is either null or a valid non-empty string matching the pattern
-    if (middle !== null && (typeof middle !== 'string' || middle.length === 0 || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(middle))) {
-      middle = null;
-    }
+    // Middle name is already validated by cleanMiddleName (returns null if invalid)
     const personObj = {
       birth_date: null,
       first_name: first,
