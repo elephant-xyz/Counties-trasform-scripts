@@ -2870,37 +2870,59 @@ function main() {
     }
   }
 
+  // Create address - use unnormalized if available, otherwise use normalized fields
   const address = {
     source_http_request: {
           method: "GET",
           url: seed.source_http_request.url
-        },    
-    // street_number: street_number || null,
-    // street_name: street_name || null,
-    // street_suffix_type: street_suffix_type || null,
-    // street_pre_directional_text: pre_dir || null,
-    // street_post_directional_text: post_dir || null,
-    // unit_identifier: null,
-    // city_name: (cityUpper || "").toUpperCase() || null,
-    // state_code: "FL",
-    // postal_code: postal_code || null,
-    // plus_four_postal_code: plus_four_postal_code || null,
-    // country_code: "US",
-    county_name: "Franklin",
-    latitude: unAddr.latitude ?? null,
-    longitude: unAddr.longitude ?? null,
-    // route_number: null,
-    township: townshipText || null,
-    range: rangeText || null,
-    section: sectionText || null,
-    // block: null,
-    // lot: lotNumber || null,
-    // municipality_name: null,
-    unnormalized_address: situsAddress
+        },
+    request_identifier: parcelIdentifier || seed.parcel_id || ""
   };
+
+  // If we have situsAddress, use unnormalized_address
+  if (situsAddress && situsAddress.trim().length > 0) {
+    address.unnormalized_address = situsAddress.trim();
+    address.county_name = "Franklin";
+    address.latitude = unAddr.latitude ?? null;
+    address.longitude = unAddr.longitude ?? null;
+    address.township = townshipText || null;
+    address.range = rangeText || null;
+    address.section = sectionText || null;
+  } else {
+    // Use normalized fields if situsAddress is empty
+    address.street_number = street_number || null;
+    address.street_name = street_name || null;
+    address.street_suffix_type = street_suffix_type || null;
+    address.street_pre_directional_text = pre_dir || null;
+    address.street_post_directional_text = post_dir || null;
+    address.unit_identifier = null;
+    address.city_name = cityUpper || null;
+    address.state_code = "FL";
+    address.postal_code = postal_code || null;
+    address.plus_four_postal_code = plus_four_postal_code || null;
+    address.country_code = "US";
+    address.county_name = "Franklin";
+    address.latitude = unAddr.latitude ?? null;
+    address.longitude = unAddr.longitude ?? null;
+    address.route_number = null;
+    address.township = townshipText || null;
+    address.range = rangeText || null;
+    address.section = sectionText || null;
+    address.block = null;
+  }
+
   writeJSON(path.join("data", "address.json"), address);
   console.log(address)
-  
+
+  // Create relationship between property and address
+  writeJSON(
+    path.join("data", "relationship_property_has_address.json"),
+    {
+      from: { "/": "./property.json" },
+      to: { "/": "./address.json" }
+    }
+  );
+
   // Extract mailing address and owner info from ownership section
   const ownershipHtml = $(".ownership").html();
   const mailingAddr = ownershipHtml ? extractMailingAddress(ownershipHtml) : null;
@@ -2963,46 +2985,48 @@ function main() {
       }
   });
   
-  const mailingAddress = {
-    source_http_request: {
-      method: "GET",
-      url: seed.source_http_request.url
-    },
-    request_identifier: parcelIdentifier || seed.parcel_id || "",
-    // county_name: null,
-    unnormalized_address: mailingAddr,
-    longitude: null,
-    latitude: null
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
-  
   // Track if relationships were created for initial owners
   let initialRelationshipsCreated = false;
-  
-  // Create relationships between owners and mailing address
-  if (personCounter > 0 || companyCounter > 0) {
-    initialRelationshipsCreated = true;
-    
-    for (let i = 1; i <= personCounter; i++) {
-      const rel = {
-        from: { "/": `./person_${i}.json` },
-        to: { "/": `./mailing_address.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_person_${i}_has_mailing_address.json`),
-        rel,
-      );
-    }
-    
-    for (let i = 1; i <= companyCounter; i++) {
-      const rel = {
-        from: { "/": `./company_${i}.json` },
-        to: { "/": `./mailing_address.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_company_${i}_has_mailing_address.json`),
-        rel,
-      );
+
+  // Only create mailing address if mailingAddr has content
+  if (mailingAddr && mailingAddr.trim().length > 0) {
+    const mailingAddress = {
+      source_http_request: {
+        method: "GET",
+        url: seed.source_http_request.url
+      },
+      request_identifier: parcelIdentifier || seed.parcel_id || "",
+      unnormalized_address: mailingAddr.trim(),
+      longitude: null,
+      latitude: null
+    };
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
+
+    // Create relationships between owners and mailing address
+    if (personCounter > 0 || companyCounter > 0) {
+      initialRelationshipsCreated = true;
+
+      for (let i = 1; i <= personCounter; i++) {
+        const rel = {
+          from: { "/": `./person_${i}.json` },
+          to: { "/": `./mailing_address.json` },
+        };
+        writeJSON(
+          path.join("data", `relationship_person_${i}_has_mailing_address.json`),
+          rel,
+        );
+      }
+
+      for (let i = 1; i <= companyCounter; i++) {
+        const rel = {
+          from: { "/": `./company_${i}.json` },
+          to: { "/": `./mailing_address.json` },
+        };
+        writeJSON(
+          path.join("data", `relationship_company_${i}_has_mailing_address.json`),
+          rel,
+        );
+      }
     }
   }
   
@@ -3334,7 +3358,8 @@ function main() {
     
     
     // Create person-mailing address relationships for current owners only if not already created
-    if (!initialRelationshipsCreated) {
+    // and only if mailing_address.json exists
+    if (!initialRelationshipsCreated && mailingAddr && mailingAddr.trim().length > 0) {
       const currentOwners = ownersByDate["current"] || [];
       currentOwners.forEach((owner, j) => {
         if (owner.type === "person") {
