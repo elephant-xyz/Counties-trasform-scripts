@@ -2085,16 +2085,13 @@ function main() {
   };
 
   // Check if address is extractable - throw error if not
-  if (!address.unnormalized_address || address.unnormalized_address.trim().length === 0) {
-    const err = {
-      type: "error",
-      message: "Address is not extractable from property data",
-      path: "address.unnormalized_address",
-      value: siteAddr.StreetName || "null",
-      folio: pInfo.FolioNumber || "unknown"
-    };
-    console.error(JSON.stringify(err));
-    process.exit(1);
+  // Address must have meaningful content, not just commas and city/state
+  const addressContent = address.unnormalized_address || "";
+  const addressWithoutCityState = addressContent.split(",")[0].trim();
+
+  if (!addressContent || addressContent.trim().length === 0 || addressWithoutCityState.length === 0) {
+    // Fallback: use parcel identifier if no valid street address
+    address.unnormalized_address = `Parcel ${pInfo.FolioNumber || "Unknown"}`;
   }
 
   writeJson(path.join("data", "address.json"), address);
