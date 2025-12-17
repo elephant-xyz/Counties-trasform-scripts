@@ -2937,14 +2937,8 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     fence_height: null,
     fence_length: null,
     driveway_material: null,
-    driveway_condition: "Good",
-    lot_condition_issues: null,
-    paving_type: "None",
-    paving_area_sqft: null,
-    paving_installation_date: null,
-    site_lighting_type: "None",
-    site_lighting_fixture_count: null,
-    site_lighting_installation_date: null
+    driveway_condition: null,
+    lot_condition_issues: null
   };
 
   let hasStructureData = false;
@@ -3053,14 +3047,8 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         fence_height: null,
         fence_length: null,
         driveway_material: null,
-        driveway_condition: "Good",
-        lot_condition_issues: null,
-        paving_type: "None",
-        paving_area_sqft: null,
-        paving_installation_date: null,
-        site_lighting_type: "None",
-        site_lighting_fixture_count: null,
-        site_lighting_installation_date: null
+        driveway_condition: null,
+        lot_condition_issues: null
       };
     }
 
@@ -3080,34 +3068,29 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     if (!existingLotData.hasOwnProperty('fence_height')) {
       existingLotData.fence_height = null;
     }
-    if (!existingLotData.hasOwnProperty('paving_type')) {
-      existingLotData.paving_type = "None";
-    }
-    if (!existingLotData.hasOwnProperty('site_lighting_type')) {
-      existingLotData.site_lighting_type = "None";
-    }
     if (!existingLotData.hasOwnProperty('driveway_condition')) {
-      existingLotData.driveway_condition = "Good";
+      existingLotData.driveway_condition = null;
+    }
+    if (!existingLotData.hasOwnProperty('lot_condition_issues')) {
+      existingLotData.lot_condition_issues = null;
     }
 
-    // Merge with new data, preserving all existing fields and ensuring required properties
+    // Merge with new data, creating clean object with only valid properties
     const finalLotData = {
-      ...existingLotData,
-      lot_area_sqft: lotAreaSqft !== null ? lotAreaSqft : existingLotData.lot_area_sqft || null,
-      lot_type: lot_type !== null ? lot_type : existingLotData.lot_type || null,
-      lot_size_acre: lotSizeAcre !== null ? lotSizeAcre : existingLotData.lot_size_acre || null,
-      // Ensure landscaping_features is always present (required property, can be null)
+      ...appendSourceInfo(seed),
+      lot_type: lot_type !== null ? lot_type : (existingLotData.lot_type || null),
+      lot_length_feet: existingLotData.lot_length_feet !== undefined ? existingLotData.lot_length_feet : null,
+      lot_width_feet: existingLotData.lot_width_feet !== undefined ? existingLotData.lot_width_feet : null,
+      lot_area_sqft: lotAreaSqft !== null ? lotAreaSqft : (existingLotData.lot_area_sqft || null),
+      lot_size_acre: lotSizeAcre !== null ? lotSizeAcre : (existingLotData.lot_size_acre || null),
       landscaping_features: existingLotData.landscaping_features !== undefined ? existingLotData.landscaping_features : null,
-      // Ensure lot_condition_issues is always present (even if null)
-      lot_condition_issues: existingLotData.lot_condition_issues !== undefined ? existingLotData.lot_condition_issues : null,
-      // Ensure fence_height is always present (even if null)
-      fence_height: existingLotData.fence_height !== undefined ? existingLotData.fence_height : null,
-      // Ensure fencing_type is always present (even if null)
-      fencing_type: existingLotData.fencing_type !== undefined ? existingLotData.fencing_type : null,
-      // Ensure view is always present (required property, can be null)
       view: existingLotData.view !== undefined ? existingLotData.view : null,
-      // Ensure driveway_condition defaults to "Good" if null or missing
-      driveway_condition: existingLotData.driveway_condition || "Good"
+      fencing_type: existingLotData.fencing_type !== undefined ? existingLotData.fencing_type : null,
+      fence_height: existingLotData.fence_height !== undefined ? existingLotData.fence_height : null,
+      fence_length: existingLotData.fence_length !== undefined ? existingLotData.fence_length : null,
+      driveway_material: existingLotData.driveway_material !== undefined ? existingLotData.driveway_material : null,
+      driveway_condition: existingLotData.driveway_condition !== undefined ? existingLotData.driveway_condition : null,
+      lot_condition_issues: existingLotData.lot_condition_issues !== undefined ? existingLotData.lot_condition_issues : null
     };
     // console.log("FINAL LOT ",finalLotData)
     writeJson(lotPath, finalLotData);
@@ -3138,14 +3121,8 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         fence_height: null,
         fence_length: null,
         driveway_material: null,
-        driveway_condition: "Good",
-        lot_condition_issues: null,
-        paving_type: "None",
-        paving_area_sqft: null,
-        paving_installation_date: null,
-        site_lighting_type: "None",
-        site_lighting_fixture_count: null,
-        site_lighting_installation_date: null
+        driveway_condition: null,
+        lot_condition_issues: null
       };
       writeJson(lotPath, minimalLot);
 
