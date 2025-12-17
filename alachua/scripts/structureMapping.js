@@ -136,7 +136,7 @@ function mapRoofCover(token) {
   if (!token) return null;
   const upper = token.toUpperCase();
   if (upper.includes("ASPHALT")) return "Architectural Asphalt Shingle";
-  if (upper.includes("TAR") && upper.includes("GRAVEL")) return "Built-Up Roof";
+  if (upper.includes("TAR") && upper.includes("GRAVEL")) return "Built-Up";
   if (upper.includes("MINIMUM") || upper.includes("N/A")) return null;
   return null;
 }
@@ -264,7 +264,7 @@ function buildStructureForBuilding(building, requestIdentifier) {
   let roofMaterialType = null;
   if (roofCover === "Architectural Asphalt Shingle") {
     roofMaterialType = "Shingle";
-  } else if (roofCover === "Built-Up Roof") {
+  } else if (roofCover === "Built-Up") {
     roofMaterialType = "Built-Up";
   }
   const roofDesign = mapRoofDesign(left["roof type"]);
