@@ -1543,13 +1543,11 @@ function main() {
     }
     if (deedType && book && page) {
       fileIndex += 1;
-      const fileLink = `https://apps.putnam-fl.com/pa/property/?Xaction=print&report=OfficialRecord&book=${book}&page=${page}`;
       const file = {
         document_type: "Title",
         file_format: null,
         ipfs_url: null,
         name: `Deed ${book}/${page}`,
-        original_url: fileLink,
       };
       writeOut(`file_${fileIndex}.json`, file);
       const relDeedFile = {
