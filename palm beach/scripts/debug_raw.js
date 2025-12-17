@@ -15859,6 +15859,128 @@ function parseCoordinate(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+const NORMALIZED_CORE_COUNTY_FIELDS = Object.freeze([
+  "street_number",
+  "street_name",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "country_code",
+  ...ADDRESS_COORDINATE_FIELDS,
+]);
+
+function lockFinalCountyAddressBranch(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedCandidate = {};
+  NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+    let value = snapshot[field];
+    if (field === "source_http_request") {
+      normalizedCandidate[field] = prepareSourceHttpRequest(value) || null;
+      return;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      normalizedCandidate[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      normalizedCandidate[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    normalizedCandidate[field] = value === undefined ? null : value;
+  });
+
+  const hasNormalizedCoverage = NORMALIZED_CORE_COUNTY_FIELDS.every((field) => {
+    const value = normalizedCandidate[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      return Number.isFinite(value);
+    }
+    return hasMeaningfulAddressValue(value);
+  });
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      snapshot.unnormalized_address,
+      snapshot.full_address,
+      snapshot.address,
+      snapshot.site_address,
+    ]),
+  );
+
+  if (hasNormalizedCoverage) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      normalizedOut[field] = normalizedCandidate[field];
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+  NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+    if (field === "source_http_request") {
+      rawOut[field] = prepareSourceHttpRequest(snapshot.source_http_request) || null;
+      return;
+    }
+    if (field === "request_identifier") {
+      rawOut[field] =
+        snapshot.request_identifier === undefined ? null : snapshot.request_identifier;
+      return;
+    }
+    let value = snapshot[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rawOut[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    rawOut[field] = value === undefined ? null : value;
+  });
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = "US";
+  }
+  writeJSON(addressPath, rawOut);
+}
+
 function finalizeAddressOneOfSelection(addressPath) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
 
@@ -24555,6 +24677,10 @@ async function main() {
   } else {
     removeFileIfExists(addressOutputPath);
   }
+
+  // Ensure the final address aligns with a single oneOf branch: prefer normalized when
+  // we have full coverage, otherwise emit the raw branch with a complete schema surface.
+  lockFinalCountyAddressBranch(addressOutputPath);
 
   // Guarantee relationships are left for downstream population (no local URs).
   enforcePropertyRelationshipNulls(propertyFilePath);
