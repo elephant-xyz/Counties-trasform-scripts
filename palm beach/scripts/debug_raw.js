@@ -22182,9 +22182,17 @@ async function main() {
   const inputHTML = readText("input.html");
   const unAddr = readJSON("unnormalized_address.json");
   const seed = readJSON("property_seed.json");
-  // Prefer the normalized branch when we can satisfy it; we'll flip this to
-  // true later only if normalized coverage is incomplete.
-  let prefersRawAddressBranch = false;
+  const hasUnnormalizedInput =
+    (unAddr &&
+      typeof unAddr.full_address === "string" &&
+      unAddr.full_address.trim().length > 0) ||
+    (unAddr &&
+      typeof unAddr.unnormalized_address === "string" &&
+      unAddr.unnormalized_address.trim().length > 0);
+  // Prefer the raw/unnormalized branch whenever the source provides it; only
+  // fall back to normalized when the source already supplies a complete
+  // normalized address.
+  let prefersRawAddressBranch = !!hasUnnormalizedInput;
   let bestNormalizedAddress = null;
   let finalUnnormalizedCandidates = [];
   let fallbackPostalValue = null;
@@ -22193,6 +22201,7 @@ async function main() {
   let sourceHttpCandidate = null;
   let hasNormalizedFinal = false;
   let finalRawCandidateClamp = null;
+  let canonicalUnnormalized = "";
 
   // Input owners/utilities/layout
   let ownersData = {};
@@ -22979,7 +22988,7 @@ async function main() {
         ? resolvedUnnormalized.trim()
         : "";
 
-    const canonicalUnnormalized = trimmedUnnormalized.length
+    canonicalUnnormalized = trimmedUnnormalized.length
       ? trimmedUnnormalized
       : "";
 
@@ -23417,10 +23426,11 @@ async function main() {
       normalizedSurfaceForPreference &&
       hasCompleteNormalizedAddress({ ...normalizedSurfaceForPreference });
 
-    if (normalizedCompleteForPreference) {
-      prefersRawAddressBranch = false;
-    } else if (!prefersRawAddressBranch && canonicalUnnormalized) {
+    if (!prefersRawAddressBranch && canonicalUnnormalized) {
       prefersRawAddressBranch = true;
+    }
+    if (normalizedCompleteForPreference && !canonicalUnnormalized) {
+      prefersRawAddressBranch = false;
     }
 
     finalizeCountyAddressFile(addressFilePath);
@@ -25646,6 +25656,30 @@ async function main() {
     fallbackStateCode: "FL",
     fallbackCountryCode: "US",
   });
+  // Ensure the final address stays on the raw oneOf branch when we have an
+  // unnormalized source string, while still keeping full schema coverage.
+  enforceRawPreferenceWhenAvailable(addressOutputPath, {
+    preferRaw: true,
+    rawCandidates: [
+      canonicalUnnormalized,
+      ...finalUnnormalizedCandidates,
+      ...rawCandidates,
+    ],
+    requestIdentifierCandidates: [
+      resolvedRequestIdentifier,
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unnormalizedSource.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      unnormalizedSource.source_http_request,
+      seedSource.source_http_request,
+    ],
+  });
+
   enforceAddressOneOfSurface(addressOutputPath, {
     defaultCountyName: formattedCountyName || countyName || "Palm Beach",
     defaultStateCode: inferredStateCode || "FL",
