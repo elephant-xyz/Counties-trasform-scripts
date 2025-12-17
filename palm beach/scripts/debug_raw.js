@@ -26359,6 +26359,203 @@ async function main() {
     removeFileIfExists(addressOutputPath);
   }
 
+  // Deterministically pick the final address oneOf branch: prefer the raw
+  // variant when any unnormalized string exists, otherwise emit a fully
+  // populated normalized payload. This keeps all schema fields present so the
+  // relationship validator doesn't flag missing latitude/longitude or street
+  // components.
+  if (fs.existsSync(addressOutputPath)) {
+    const terminalSnapshot = readJSONIfExists(addressOutputPath) || {};
+    const terminalRawAddress = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalSnapshot.unnormalized_address,
+        ...rawCandidates,
+        canonicalUnnormalized,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+        siteLocationLine,
+        combinedModelAddress,
+        addressLineCombined,
+      ]),
+    );
+    const terminalNormalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...terminalSnapshot });
+    const terminalNormalizedReady =
+      terminalNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...terminalNormalizedSurface });
+
+    let finalPayload = null;
+
+    if (terminalRawAddress) {
+      const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+      RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+        rawOut[field] = null;
+      });
+      rawOut.unnormalized_address = terminalRawAddress;
+
+      rawOut.request_identifier =
+        safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            terminalSnapshot.request_identifier,
+            resolvedRequestIdentifier,
+            trimmedRequestIdentifier,
+            parcelId,
+            seed && seed.request_identifier,
+            unnormalizedSource.request_identifier,
+          ]),
+        ) ?? null;
+
+      rawOut.source_http_request =
+        resolveSourceHttpRequest(
+          terminalSnapshot.source_http_request,
+          resolvedSourceHttp,
+          sourceHttpCandidate,
+          unnormalizedSource.source_http_request,
+          seedSource.source_http_request,
+        ) || null;
+
+      const numericLat = parseCoordinate(
+        resolveFirstNonEmptyString(
+          flattenCandidateValues(
+            terminalSnapshot.latitude,
+            terminalNormalizedSurface && terminalNormalizedSurface.latitude,
+            unnormalizedSource.latitude,
+            unAddr && unAddr.latitude,
+          ),
+        ),
+      );
+      const numericLon = parseCoordinate(
+        resolveFirstNonEmptyString(
+          flattenCandidateValues(
+            terminalSnapshot.longitude,
+            terminalNormalizedSurface && terminalNormalizedSurface.longitude,
+            unnormalizedSource.longitude,
+            unAddr && unAddr.longitude,
+          ),
+        ),
+      );
+      if (Number.isFinite(numericLat) && Number.isFinite(numericLon)) {
+        rawOut.latitude = numericLat;
+        rawOut.longitude = numericLon;
+      }
+
+      const fillField = (field, candidates = []) => {
+        const value = safeNullIfEmpty(resolveFirstNonEmptyString(candidates));
+        rawOut[field] = value ?? rawOut[field];
+      };
+
+      fillField("section", [terminalSnapshot.section, section]);
+      fillField("township", [terminalSnapshot.township, township]);
+      fillField("range", [terminalSnapshot.range, range]);
+      fillField("block", [terminalSnapshot.block, block]);
+      fillField("lot", [terminalSnapshot.lot, lotNo]);
+      fillField("city_name", [terminalSnapshot.city_name, normalizedCity, resolvedCity]);
+      fillField("municipality_name", [
+        terminalSnapshot.municipality_name,
+        normalizedMunicipality ? toTitleCase(normalizedMunicipality) : null,
+        resolvedCity,
+      ]);
+      fillField("postal_code", [
+        terminalSnapshot.postal_code,
+        sanitizedPostalCode,
+        postalCode,
+      ]);
+      fillField("plus_four_postal_code", [
+        terminalSnapshot.plus_four_postal_code,
+        sanitizedPlus4,
+        plus4,
+      ]);
+      fillField("state_code", [terminalSnapshot.state_code, inferredStateCode, "FL"]);
+      fillField("county_name", [
+        terminalSnapshot.county_name,
+        formattedCountyName,
+        countyName,
+        "Palm Beach",
+      ]);
+      fillField("country_code", [
+        terminalSnapshot.country_code,
+        rawOut.state_code ? "US" : null,
+      ]);
+
+      if (!rawOut.postal_code) {
+        rawOut.plus_four_postal_code = null;
+      }
+      if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+        rawOut.latitude = null;
+        rawOut.longitude = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rawOut.state_code) &&
+        !hasMeaningfulAddressValue(rawOut.country_code)
+      ) {
+        rawOut.country_code = "US";
+      }
+
+      finalPayload = rawOut;
+    } else if (terminalNormalizedReady) {
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        let value = terminalNormalizedSurface[field];
+        if (field === "request_identifier") {
+          value =
+            resolvedRequestIdentifier === undefined
+              ? terminalSnapshot.request_identifier
+              : resolvedRequestIdentifier;
+        } else if (field === "source_http_request") {
+          value =
+            resolveSourceHttpRequest(
+              terminalSnapshot.source_http_request,
+              terminalNormalizedSurface.source_http_request,
+              resolvedSourceHttp,
+              sourceHttpCandidate,
+              seedSource.source_http_request,
+            ) || null;
+        } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          value = Number.isFinite(numeric) ? numeric : null;
+        } else if (typeof value === "string") {
+          const trimmed = value.trim();
+          value = trimmed.length ? trimmed : null;
+        } else if (value === undefined) {
+          value = null;
+        }
+        normalizedOut[field] = value;
+      });
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if (
+        (normalizedOut.latitude == null) !==
+        (normalizedOut.longitude == null)
+      ) {
+        normalizedOut.latitude = null;
+        normalizedOut.longitude = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOut,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOut.unnormalized_address;
+      }
+      finalPayload = normalizedOut;
+    }
+
+    if (finalPayload) {
+      writeJSON(addressOutputPath, finalPayload);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  }
+
   // Guarantee relationships are left for downstream population (no local URs).
   enforcePropertyRelationshipNulls(propertyFilePath);
   [
