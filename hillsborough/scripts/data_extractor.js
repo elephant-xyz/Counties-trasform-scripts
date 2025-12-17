@@ -4050,11 +4050,11 @@ function main() {
   const propertyObj = {
     ...appendSourceInfo(seed),
     parcel_identifier: propertyIdentifier,
-    property_type: property_type || "MAPPING NOT AVAILABLE",
+    property_type: property_type || "",
     property_legal_description_text: legalDesc || "",
     subdivision: subdivision,
     ownership_estate_type: ownership_estate_type || null,
-    build_status: build_status || "MAPPING NOT AVAILABLE",
+    build_status: build_status || null,
     structure_form: structure_form || null,
     property_usage_type: property_usage_type || null
 
@@ -4070,6 +4070,7 @@ function main() {
   // const parsed = parseFullAddress(addressToUse);
   const addressObj = {
     ...appendSourceInfo(seed),
+    county_name: unAddr.county_jurisdiction || "Hillsborough",
     latitude: unAddr.latitude ?? null,
     longitude: unAddr.longitude ?? null,
     section: section,
