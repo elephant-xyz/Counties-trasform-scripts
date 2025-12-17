@@ -40,6 +40,24 @@ function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
+const BOOLEAN_TRUE_VALUES = new Set(["y", "yes", "true", "t", "1"]);
+const BOOLEAN_FALSE_VALUES = new Set(["n", "no", "false", "f", "0"]);
+
+function normalizeBooleanFlag(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  if (value == null) return false;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return false;
+    return value !== 0;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized.length) return false;
+  if (BOOLEAN_TRUE_VALUES.has(normalized)) return true;
+  if (BOOLEAN_FALSE_VALUES.has(normalized)) return false;
+  return false;
+}
+
 function slugify(value) {
   const text = value == null ? "" : String(value);
   const sanitized = text.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
@@ -786,7 +804,7 @@ const PROPERTY_USE_DESCRIPTION_MAP = new Map([
   ["MINERAL PROCESSING", { property_usage_type: "MineralProcessing" }],
   ["MINI MART", { property_usage_type: "RetailStore" }],
   ["MISCELLANEOUS", { property_usage_type: "Unknown" }],
-  ["MIXED COMMERCIAL", { property_usage_type: "MixedUse" }],
+  ["MIXED COMMERCIAL", { property_usage_type: "Commercial" }],
   ["MOBILE HOME", { property_usage_type: "Residential", property_type: "ManufacturedHome", structure_form: "ManufacturedHousing" }],
   ["MODULAR HOME", { property_usage_type: "Residential", property_type: "ManufacturedHome", structure_form: "ManufacturedHousing" }],
   ["MORTUARY CEMETE", { property_usage_type: "MortuaryCemetery", property_type: "LandParcel", build_status: "Improved" }],
@@ -897,7 +915,7 @@ const PROPERTY_USE_DESCRIPTION_PATTERNS = [
   },
   {
     pattern: /MIXED/i,
-    overrides: { property_usage_type: "MixedUse" },
+    overrides: { property_usage_type: "Commercial" },
   },
 ];
 
@@ -2475,6 +2493,24 @@ function main() {
         sanitizedEntry && sanitizedEntry.request_identifier != null
           ? sanitizedEntry.request_identifier
           : requestIdentifier;
+      const hasSolarPanelPresent = Object.prototype.hasOwnProperty.call(
+        sanitizedEntry,
+        "solar_panel_present",
+      );
+      const hasSolarInverterVisible = Object.prototype.hasOwnProperty.call(
+        sanitizedEntry,
+        "solar_inverter_visible",
+      );
+      payload.solar_panel_present = normalizeBooleanFlag(
+        hasSolarPanelPresent ?
+          sanitizedEntry.solar_panel_present :
+          payload.solar_panel_present,
+      );
+      payload.solar_inverter_visible = normalizeBooleanFlag(
+        hasSolarInverterVisible ?
+          sanitizedEntry.solar_inverter_visible :
+          payload.solar_inverter_visible,
+      );
 
       return {
         data: payload,
