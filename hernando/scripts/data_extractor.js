@@ -310,7 +310,13 @@ function stripInvalidNameChars(s) {
 function toTitleCaseName(s) {
   if (!s) return "";
   const lower = s.toLowerCase();
-  return lower.replace(/\b[a-z]/g, (m) => m.toUpperCase());
+  // Capitalize first letter
+  let result = lower.charAt(0).toUpperCase() + lower.slice(1);
+  // Capitalize after space, hyphen, apostrophe, comma, or period
+  result = result.replace(/([ \-',.])([a-z])/g, (match, separator, letter) => {
+    return separator + letter.toUpperCase();
+  });
+  return result;
 }
 function isSuffixToken(t) {
   const u = t.replace(/\./g, "").toUpperCase();
@@ -376,10 +382,11 @@ function parseFullName(full) {
   f = toTitleCaseName(stripInvalidNameChars(f || ""));
   m = toTitleCaseName(stripInvalidNameChars(m || ""));
   l = toTitleCaseName(stripInvalidNameChars(l || ""));
+  suffix = toTitleCaseName(stripInvalidNameChars(suffix || ""));
   if (l) l = l.replace(/[',.]+$/g, "");
   if (f) f = f.replace(/[',.]+$/g, "");
   if (m) m = m.replace(/[',.]+$/g, "");
-  suffix = stripInvalidNameChars(suffix || "");
+  if (suffix) suffix = suffix.replace(/[',.]+$/g, "");
   suffix = suffix || null;
 
   // Ensure required last_name satisfies schema minLength/pattern
@@ -430,10 +437,23 @@ function normalizePersonFields(p) {
   }
 
   // Final guards for schema compliance
-  if (!result.last_name || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result.last_name)) {
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+
+  if (!result.last_name || !namePattern.test(result.last_name)) {
     result.last_name = "Unknown";
   }
-  if (!result.first_name) result.first_name = "Unknown";
+  if (!result.first_name || !namePattern.test(result.first_name)) {
+    result.first_name = "Unknown";
+  }
+  if (result.middle_name && !namePattern.test(result.middle_name)) {
+    result.middle_name = null;
+  }
+  if (result.prefix_name && !namePattern.test(result.prefix_name)) {
+    result.prefix_name = null;
+  }
+  if (result.suffix_name && !namePattern.test(result.suffix_name)) {
+    result.suffix_name = null;
+  }
 
   return result;
 }
@@ -1515,6 +1535,9 @@ function main() {
     property_type === "LandParcel" || build_status === "VacantLand";
   const buildingLayoutsGenerated = [];
   const layoutRelationships = [];
+  const structureFiles = getStructureFiles(dataDir);
+  const utilityFiles = getUtilityFiles(dataDir);
+  const propertyFilePath = "./property.json";
   let layoutCounter = 0;
 
   if (!isLandProperty) {
@@ -1573,13 +1596,9 @@ function main() {
       );
     });
 
-    const structureFiles = getStructureFiles(dataDir);
-    const utilityFiles = getUtilityFiles(dataDir);
-    const propertyFilePath = "./property.json";
-
     if (structureFiles.length) {
       if (buildingLayoutsGenerated.length <= 1) {
-        structureFiles.forEach((structureFile, sIdx) => {
+        structureFiles.forEach((structureFile) => {
           const targetLayout = buildingLayoutsGenerated[0];
           const layoutId = layoutIdFromFile(targetLayout.file);
           const structureBase = baseNameFromFile(structureFile);
@@ -1710,6 +1729,35 @@ function main() {
         }
       }
     }
+  }
+
+  if (!buildingLayoutsGenerated.length) {
+    structureFiles.forEach((structureFile) => {
+      const structureBase = baseNameFromFile(structureFile);
+      writeJson(
+        path.join(
+          dataDir,
+          `relationship_property_has_${structureBase}.json`,
+        ),
+        {
+          from: { "/": propertyFilePath },
+          to: { "/": `./${structureFile}` },
+        },
+      );
+    });
+    utilityFiles.forEach((utilityFile) => {
+      const utilityBase = baseNameFromFile(utilityFile);
+      writeJson(
+        path.join(
+          dataDir,
+          `relationship_property_has_${utilityBase}.json`,
+        ),
+        {
+          from: { "/": propertyFilePath },
+          to: { "/": `./${utilityFile}` },
+        },
+      );
+    });
   }
 
   // OWNERS/BUYERS + RELS

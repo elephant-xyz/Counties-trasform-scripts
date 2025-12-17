@@ -262,12 +262,21 @@ function splitOwnerCandidates(text) {
   const parts = cleaned.split(/\n+/).filter(Boolean);
   const out = [];
   parts.forEach((p) => {
-    p.split(/\s+(?:and|AND|And)\s+|\s*&\s*/).forEach((x) => {
-      const z = normSpace(x);
-      // Filter out date patterns like "DATED 06-12-2024" or standalone dates
-      if (z && !/^(?:DATED\s+)?[\d\-\/]+$|^DATED\s/i.test(z)) {
-        out.push(z);
-      }
+    // First split by 2+ consecutive spaces (common separator for multiple owners on same line)
+    p.split(/\s{2,}/).forEach((segment) => {
+      // Then split by "and" or "&"
+      segment.split(/\s+(?:and|AND|And)\s+|\s*&\s*/).forEach((x) => {
+        const z = normSpace(x);
+        // Filter out date patterns like "DATED 06-12-2024" or standalone dates
+        // Filter out date + interest patterns like "9/23/22 1/2 INT"
+        // Filter out just interest fractions like "1/2 INT"
+        if (z &&
+            !/^(?:DATED\s+)?[\d\-\/]+$|^DATED\s/i.test(z) &&
+            !/^[\d\/\s]+INT/i.test(z) &&
+            !/^\d{1,2}\/\d{1,2}\/\d{2,4}/i.test(z)) {
+          out.push(z);
+        }
+      });
     });
   });
   return out;

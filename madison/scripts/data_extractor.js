@@ -2220,9 +2220,9 @@ function main() {
         layoutFiles: [],
         buildingCount: 0,
       };
-    writeUtility(parcelId, propertyInfo, layoutContext);
-    writeStructure(parcelId, propertyInfo, layoutContext);
-    // Seed data group does not include person, company, or sales_history classes
+    // Seed data group does not include utility, structure, person, company, or sales_history classes
+    // writeUtility(parcelId, propertyInfo, layoutContext);
+    // writeStructure(parcelId, propertyInfo, layoutContext);
     // writePersonCompaniesSalesRelationships(
     //   parcelId,
     //   salesRecords,

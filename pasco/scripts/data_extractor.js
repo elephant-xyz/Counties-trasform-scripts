@@ -1690,7 +1690,10 @@ function main() {
     ? readJSON(structurePath)
     : null;
 
-  const parcelId = textOrNull($("#lblParcelID"));
+  let parcelId = textOrNull($("#lblParcelID"));
+  if (!parcelId && propSeed && propSeed.parcel_id) {
+    parcelId = String(propSeed.parcel_id).trim() || null;
+  }
   if (!parcelId) {
     // throw new Error("Parcel ID not found in input.html");
   }
@@ -1705,6 +1708,14 @@ function main() {
     (addrSeed && addrSeed.request_identifier) ||
       parcelId ||
       null;
+  const sharedSourceHttpRequest =
+    (propSeed && propSeed.source_http_request) ||
+    (addrSeed && addrSeed.source_http_request) ||
+    null;
+  const sharedCountryCode =
+    (propSeed && propSeed.country_code) ||
+    (addrSeed && addrSeed.country_code) ||
+    "US";
 
   // PROPERTY
   const classification =
@@ -1716,11 +1727,11 @@ function main() {
   const property_type =
     (propertyMapping && propertyMapping.property_type) ||
     propSeed.property_type ||
-    null;
+    (parcelId ? "LandParcel" : null);
   const property_usage_type =
     (propertyMapping && propertyMapping.property_usage_type) ||
     propSeed.property_usage_type ||
-    null;
+    "Unknown";
   const ownership_estate_type =
     (propertyMapping && propertyMapping.ownership_estate_type) ||
     propSeed.ownership_estate_type ||
@@ -1732,7 +1743,7 @@ function main() {
   const build_status =
     (propertyMapping && propertyMapping.build_status) ||
     propSeed.build_status ||
-    null;
+    "VacantLand";
 
   const number_of_units_type =
     deriveNumberOfUnitsType(structure_form) ||
@@ -1786,6 +1797,8 @@ function main() {
     property_effective_built_year: null,
     total_area: null,
     historic_designation: undefined, // omit
+    source_http_request: sharedSourceHttpRequest,
+    request_identifier: sharedRequestIdentifier,
   };
   writeJSON("property.json", property);
 
@@ -2145,10 +2158,7 @@ function main() {
         addressParts.length > 0 ? addressParts.join(", ") : null;
       if (unnormalizedMailing) {
         const mailingAddress = {
-          source_http_request:
-            (propSeed && propSeed.source_http_request) ||
-            (addrSeed && addrSeed.source_http_request) ||
-            null,
+          source_http_request: sharedSourceHttpRequest,
           request_identifier: sharedRequestIdentifier,
           unnormalized_address: unnormalizedMailing,
           latitude: null,
@@ -2210,6 +2220,8 @@ function main() {
     driveway_material: driveway_material || null,
     driveway_condition: null,
     lot_condition_issues: null,
+    source_http_request: sharedSourceHttpRequest,
+    request_identifier: sharedRequestIdentifier,
   };
   writeJSON("lot.json", lot);
 
