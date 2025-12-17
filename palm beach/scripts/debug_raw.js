@@ -27040,6 +27040,81 @@ async function main() {
     }
   }
 
+  // Emit a single raw-branch address when the source only provides an
+  // unnormalized string. This keeps every schema field present (nullable) so
+  // the oneOf required set is satisfied without inventing partial normalized
+  // values, and prevents relationship validators from complaining about
+  // missing latitude/longitude or street components.
+  if (fs.existsSync(addressOutputPath)) {
+    const snapshot = readJSONIfExists(addressOutputPath) || {};
+    const normalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...snapshot });
+    const normalizedReady =
+      normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+    const rawBranchValue = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        snapshot.unnormalized_address,
+        ...rawCandidates,
+        canonicalUnnormalized,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+
+    if (rawBranchValue && !normalizedReady) {
+      const rawOut = {};
+      ADDRESS_SCHEMA_FIELDS.forEach((field) => {
+        rawOut[field] = null;
+      });
+      rawOut.unnormalized_address = rawBranchValue;
+      rawOut.request_identifier =
+        safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            snapshot.request_identifier,
+            resolvedRequestIdentifier,
+            trimmedRequestIdentifier,
+            parcelId,
+            seed && seed.request_identifier,
+            unnormalizedSource.request_identifier,
+          ]),
+        ) ?? null;
+      rawOut.source_http_request =
+        resolveSourceHttpRequest(
+          snapshot.source_http_request,
+          normalizedSurface && normalizedSurface.source_http_request,
+          resolvedSourceHttp,
+          sourceHttpCandidate,
+          unnormalizedSource.source_http_request,
+          seedSource.source_http_request,
+        ) || null;
+      rawOut.county_name =
+        safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            snapshot.county_name,
+            formattedCountyName,
+            countyName,
+          ]),
+        ) || null;
+      rawOut.state_code =
+        safeNullIfEmpty(snapshot.state_code || inferredStateCode || "FL") || null;
+      if (!rawOut.postal_code) {
+        rawOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rawOut.state_code) &&
+        !hasMeaningfulAddressValue(rawOut.country_code)
+      ) {
+        rawOut.country_code = "US";
+      }
+      originalWriteFileSync.call(
+        fs,
+        addressOutputPath,
+        `${JSON.stringify(rawOut, null, 2)}\n`,
+      );
+    }
+  }
+
   // Guarantee relationships are left for downstream population (no local URs).
   enforcePropertyRelationshipNulls(propertyFilePath);
   [
