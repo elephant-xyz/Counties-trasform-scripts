@@ -123,6 +123,8 @@ const companyKeywords = [
   "TR",
   "LP",
   "LLP",
+  "LLLP",
+  "L.L.L.P",
   "PLC",
   "HOLDINGS",
   "BANK",
