@@ -1737,35 +1737,37 @@ function sanitizeAddressPayloadForWrite(payload) {
     return normalizedOut;
   }
 
-  // Otherwise emit a lean raw branch with just the raw string and a few
-  // optional fields so the oneOf does not demand normalized components.
+  // Otherwise emit a raw branch that carries the full schema surface (nullable)
+  // so the raw oneOf branch still satisfies required keys.
   if (trimmedUnnormalized.length) {
-    const latNum = parseCoordinate(payload.latitude);
-    const lonNum = parseCoordinate(payload.longitude);
-    const rawOut = {
-      unnormalized_address: trimmedUnnormalized,
-      request_identifier: safeNullIfEmpty(payload.request_identifier) ?? null,
-      source_http_request: prepareSourceHttpRequest(
-        payload.source_http_request,
-      ) || null,
-      county_name: safeNullIfEmpty(payload.county_name) ?? null,
-      state_code: safeNullIfEmpty(payload.state_code) ?? null,
-      country_code:
-        safeNullIfEmpty(payload.country_code) ||
-        (payload.state_code ? "US" : null),
-      latitude: Number.isFinite(latNum) ? latNum : null,
-      longitude: Number.isFinite(lonNum) ? lonNum : null,
-      section: payload.section ?? null,
-      township: payload.township ?? null,
-      range: payload.range ?? null,
-      lot: payload.lot ?? null,
-      municipality_name: payload.municipality_name ?? null,
-      postal_code: safeNullIfEmpty(payload.postal_code) ?? null,
-      plus_four_postal_code: safeNullIfEmpty(payload.postal_code)
-        ? safeNullIfEmpty(payload.plus_four_postal_code) ?? null
-        : null,
-      route_number: payload.route_number ?? null,
-    };
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        rawOut[field] = trimmedUnnormalized;
+        return;
+      }
+      if (field === "request_identifier") {
+        const identifier = safeNullIfEmpty(payload.request_identifier);
+        rawOut[field] = identifier === undefined ? null : identifier;
+        return;
+      }
+      if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(payload.source_http_request);
+        rawOut[field] = prepared ? prepared : null;
+        return;
+      }
+      let value = payload[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      rawOut[field] = value;
+    });
     if (!rawOut.postal_code) {
       rawOut.plus_four_postal_code = null;
     }
@@ -1774,6 +1776,10 @@ function sanitizeAddressPayloadForWrite(payload) {
       !hasMeaningfulAddressValue(rawOut.country_code)
     ) {
       rawOut.country_code = "US";
+    }
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
     }
     return rawOut;
   }
