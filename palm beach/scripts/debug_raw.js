@@ -25981,6 +25981,56 @@ async function main() {
     }
   }
 
+  // Final reconciliation: prefer the raw branch when we don't have full normalized
+  // coverage, and make sure every schema field exists (nullable) so oneOf
+  // validation doesn't complain about missing properties.
+  if (fs.existsSync(addressOutputPath)) {
+    const payload = readJSONIfExists(addressOutputPath) || {};
+    const normalizedReady =
+      typeof hasCompleteNormalizedAddress === "function" &&
+      hasCompleteNormalizedAddress({ ...payload });
+
+    if (normalizedReady) {
+      const normalizedOut =
+        (typeof ensureNormalizedAddressSchemaSurface === "function" &&
+          ensureNormalizedAddressSchemaSurface({ ...payload })) ||
+        { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      if (
+        Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")
+      ) {
+        delete normalizedOut.unnormalized_address;
+      }
+      writeJSON(addressOutputPath, normalizedOut);
+    } else {
+      const rawValue = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          payload.unnormalized_address,
+          ...rawCandidates,
+          unnormalizedSource.unnormalized_address,
+        ]),
+      );
+      if (rawValue) {
+        const rawOut =
+          ensureRawAddressSchemaDefaults(
+            { ...payload, unnormalized_address: rawValue },
+            RAW_ONE_OF_ALLOWED_FIELDS,
+          ) || null;
+        if (rawOut) {
+          Object.keys(rawOut).forEach((key) => {
+            if (!RAW_ONE_OF_ALLOWED_FIELD_SET.has(key)) {
+              delete rawOut[key];
+            }
+          });
+          writeJSON(addressOutputPath, rawOut);
+        } else {
+          removeFileIfExists(addressOutputPath);
+        }
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
+  }
+
   // Guarantee relationships are left for downstream population (no local URs).
   enforcePropertyRelationshipNulls(propertyFilePath);
   [
