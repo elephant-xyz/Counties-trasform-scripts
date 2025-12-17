@@ -4050,11 +4050,11 @@ function main() {
   const propertyObj = {
     ...appendSourceInfo(seed),
     parcel_identifier: propertyIdentifier,
-    property_type: property_type || "",
+    property_type: property_type || "Building",
     property_legal_description_text: legalDesc || null,
     subdivision: subdivision,
     ownership_estate_type: ownership_estate_type || null,
-    build_status: build_status || null,
+    build_status: build_status || "Improved",
     structure_form: structure_form || null,
     property_usage_type: property_usage_type || null
 
@@ -4064,7 +4064,8 @@ function main() {
 
   // ADDRESS
   const addressToUse = siteAddress || unAddr.full_address;
-  if (!addressToUse) {
+  const trimmedAddress = (addressToUse || "").trim();
+  if (!trimmedAddress) {
     throw new Error("No address found in site address or unnormalized address");
   }
   // const parsed = parseFullAddress(addressToUse);
@@ -4076,7 +4077,7 @@ function main() {
     section: section,
     township: township,
     range: range,
-    unnormalized_address: addressToUse
+    unnormalized_address: trimmedAddress
   };
   writeJson(path.join(dataDir, "address.json"), addressObj);
 
