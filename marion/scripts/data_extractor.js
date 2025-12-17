@@ -1491,6 +1491,107 @@ function main() {
       idx++;
     }
   }
+
+  // Create person/company files from owner_data.json and connect them to sales
+  if (ownersData && sales.length > 0) {
+    const personMap = new Map();
+    const companyMap = new Map();
+
+    // Collect all unique persons and companies from owner_data.json
+    const ownersByDate = ownersData[key] ? ownersData[key].owners_by_date : null;
+    if (ownersByDate) {
+      Object.values(ownersByDate).forEach((arr) => {
+        (arr || []).forEach((o) => {
+          if (o && o.type === "person") {
+            const pKey = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+            if (pKey && !personMap.has(pKey)) {
+              personMap.set(pKey, {
+                first_name: titleCaseName(o.first_name),
+                middle_name: o.middle_name ? titleCaseName(o.middle_name) : null,
+                last_name: titleCaseName(o.last_name),
+                prefix_name: o.prefix_name || null,
+                suffix_name: o.suffix_name || null,
+              });
+            }
+          } else if (o && o.type === "company") {
+            const cKey = (o.name || "").trim().toUpperCase();
+            if (cKey && !companyMap.has(cKey)) {
+              companyMap.set(cKey, { name: o.name });
+            }
+          }
+        });
+      });
+    }
+
+    // Create person files
+    let personIdx = 0;
+    const personFiles = new Map();
+    personMap.forEach((personData, pKey) => {
+      personIdx++;
+      const person = {
+        birth_date: null,
+        first_name: personData.first_name || null,
+        last_name: personData.last_name || null,
+        middle_name: personData.middle_name,
+        prefix_name: personData.prefix_name,
+        suffix_name: personData.suffix_name,
+        us_citizenship_status: null,
+        veteran_status: null,
+      };
+      writeJSON(path.join(dataDir, `person_${personIdx}.json`), person);
+      personFiles.set(pKey, `person_${personIdx}.json`);
+    });
+
+    // Create company files
+    let companyIdx = 0;
+    const companyFiles = new Map();
+    companyMap.forEach((companyData, cKey) => {
+      companyIdx++;
+      const company = {
+        name: companyData.name || null,
+      };
+      writeJSON(path.join(dataDir, `company_${companyIdx}.json`), company);
+      companyFiles.set(cKey, `company_${companyIdx}.json`);
+    });
+
+    // Create relationships from sales to persons/companies
+    // Link the first (most recent) sale to current owners
+    if (sales.length > 0 && ownersByDate && ownersByDate["current"]) {
+      const currentOwners = ownersByDate["current"];
+      let relPersonIdx = 0;
+      let relCompanyIdx = 0;
+
+      currentOwners.forEach((o) => {
+        if (o && o.type === "person") {
+          const pKey = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+          const personFile = personFiles.get(pKey);
+          if (personFile) {
+            relPersonIdx++;
+            writeJSON(
+              path.join(dataDir, `relationship_sales_person_${relPersonIdx}.json`),
+              {
+                from: { "/": "./sales_history_1.json" },
+                to: { "/": `./${personFile}` },
+              }
+            );
+          }
+        } else if (o && o.type === "company") {
+          const cKey = (o.name || "").trim().toUpperCase();
+          const companyFile = companyFiles.get(cKey);
+          if (companyFile) {
+            relCompanyIdx++;
+            writeJSON(
+              path.join(dataDir, `relationship_sales_company_${relCompanyIdx}.json`),
+              {
+                from: { "/": "./sales_history_1.json" },
+                to: { "/": `./${companyFile}` },
+              }
+            );
+          }
+        }
+      });
+    }
+  }
 }
 
 main();

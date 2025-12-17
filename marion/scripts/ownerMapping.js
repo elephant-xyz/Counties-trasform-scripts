@@ -244,11 +244,28 @@ function extractOwnerCandidates($) {
     "permit search",
     "property record card",
     "map it+",
+    "view",
+    "print",
+    "no images",
+    "not available",
+    "capped",
+    "base value",
+    "911 address",
+    "vid:",
+    "homestead",
+    "non-homestead",
+    "cap 10",
+    "images are",
   ];
   const filtered = candidates.filter((c) => {
-    const lc = (c || "").toLowerCase();
+    const lc = (c || "").toLowerCase().replace(/[\/\-]/g, ' ');
     if (!lc || lc.length < 2) return false;
     if (banned.some((b) => lc.includes(b))) return false;
+    // Filter out single words that look like UI elements
+    const words = lc.trim().split(/\s+/);
+    if (words.length === 1 && words[0].length < 3) return false;
+    // Filter out anything that starts with a number or special character
+    if (/^[0-9\.\$\:]/.test(lc)) return false;
     return true;
   });
 
