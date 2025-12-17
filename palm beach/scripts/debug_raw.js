@@ -1797,6 +1797,15 @@ function writeJSON(p, obj) {
       }
     }
   }
+  if (typeof p === "string" && p.endsWith("property.json") && payload && typeof payload === "object") {
+    const relationships =
+      payload.relationships && typeof payload.relationships === "object"
+        ? { ...payload.relationships }
+        : {};
+    relationships.property_has_address = null;
+    relationships.address_has_fact_sheet = null;
+    payload.relationships = relationships;
+  }
   fs.writeFileSync(p, JSON.stringify(payload, null, 2));
 }
 
@@ -20450,6 +20459,10 @@ function finalizeAddressBranchForOutput(addressPath, options = {}) {
       ...(options.rawCandidates || []),
     ]),
   );
+  const hasRawCandidate = !!rawValue;
+  const preferRawBranch =
+    options.preferRaw === true ||
+    (hasRawCandidate && options.allowNormalizedWhenRaw !== true);
   const normalizedSurface =
     typeof ensureNormalizedAddressSchemaSurface === "function"
       ? ensureNormalizedAddressSchemaSurface({ ...payload })
@@ -20459,7 +20472,7 @@ function finalizeAddressBranchForOutput(addressPath, options = {}) {
     typeof hasCompleteNormalizedAddress === "function" &&
     hasCompleteNormalizedAddress({ ...normalizedSurface });
 
-  if (normalizedReady) {
+  if (normalizedReady && !preferRawBranch) {
     const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
       let value =
@@ -27543,6 +27556,7 @@ async function main() {
     sourceHttpRequest: resolvedSourceHttp || sourceHttpCandidate,
     countyFallback: formattedCountyName || countyName || "Palm Beach",
     stateFallback: inferredStateCode || "FL",
+    preferRaw: prefersRawAddressBranch,
   });
 
   // Guarantee relationships are left for downstream population (no local URs).
