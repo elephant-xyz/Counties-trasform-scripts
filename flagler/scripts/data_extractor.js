@@ -2207,13 +2207,7 @@ function main() {
     structure_form: propertyUse.structure_form || null,
     property_usage_type: propertyUse.property_usage_type || null,
     property_type: propertyUse.property_type,
-    number_of_units_type: binfo.type === "DUPLEX" ? "Two" :
-                          binfo.type === "TRI/QUADRAPLEX" ? "TwoToFour" : "One",
     property_structure_built_year: parseIntSafe(binfo.actYear),
-    property_effective_built_year: parseIntSafe(binfo.effYear),
-    livable_floor_area: binfo.heatedArea ? `${parseIntSafe(binfo.heatedArea).toLocaleString()} sq ft` : null,
-    total_area: binfo.totalArea ? `${parseIntSafe(binfo.totalArea).toLocaleString()} sq ft` : null,
-    area_under_air: binfo.heatedArea ? `${parseIntSafe(binfo.heatedArea).toLocaleString()} sq ft` : null,
     property_legal_description_text: legalDesc || null,
     subdivision: subdivision && subdivision.length ? subdivision : null,
     zoning: zoning || null,
@@ -2225,7 +2219,6 @@ function main() {
   };
   if (property.property_type === "LandParcel") {
     property.number_of_units = null;
-    property.number_of_units_type = null;
   }
   const propertyFilename = "property.json";
   const propertyPath = `./${propertyFilename}`;
