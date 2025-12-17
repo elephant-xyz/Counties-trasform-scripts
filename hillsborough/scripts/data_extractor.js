@@ -4076,9 +4076,9 @@ function main() {
 
   const propertyObj = {
     ...appendSourceInfo(seed),
-    parcel_identifier: propertyIdentifier,
+    parcel_identifier: propertyIdentifier || seed?.parcel_id || "UNKNOWN",
     property_type: property_type,
-    property_legal_description_text: legalDesc || "",
+    property_legal_description_text: legalDesc || null,
     subdivision: subdivision,
     ownership_estate_type: ownership_estate_type || null,
     build_status: build_status,
