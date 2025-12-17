@@ -3079,12 +3079,14 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       existingLotData.site_lighting_type = "None";
     }
 
-    // Merge with new data, preserving all existing fields
+    // Merge with new data, preserving all existing fields and ensuring required properties
     const finalLotData = {
       ...existingLotData,
       lot_area_sqft: lotAreaSqft !== null ? lotAreaSqft : existingLotData.lot_area_sqft || null,
       lot_type: lot_type !== null ? lot_type : existingLotData.lot_type || null,
-      lot_size_acre: lotSizeAcre !== null ? lotSizeAcre : existingLotData.lot_size_acre || null
+      lot_size_acre: lotSizeAcre !== null ? lotSizeAcre : existingLotData.lot_size_acre || null,
+      // Ensure lot_condition_issues is always present (even if null)
+      lot_condition_issues: existingLotData.lot_condition_issues !== undefined ? existingLotData.lot_condition_issues : null
     };
     // console.log("FINAL LOT ",finalLotData)
     writeJson(lotPath, finalLotData);
