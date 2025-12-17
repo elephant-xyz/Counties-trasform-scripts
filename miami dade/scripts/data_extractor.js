@@ -2633,6 +2633,21 @@ function main() {
       }
       checkCompanyIdx++;
     }
+  } else {
+    // If the condition is false, clean up ALL person and company files
+    // These would be orphaned from previous runs since we're not creating new ones
+    if (fs.existsSync("data")) {
+      let idx = 1;
+      while (fs.existsSync(path.join("data", `person_${idx}.json`))) {
+        fs.unlinkSync(path.join("data", `person_${idx}.json`));
+        idx++;
+      }
+      idx = 1;
+      while (fs.existsSync(path.join("data", `company_${idx}.json`))) {
+        fs.unlinkSync(path.join("data", `company_${idx}.json`));
+        idx++;
+      }
+    }
   }
 
   // UTILITY
