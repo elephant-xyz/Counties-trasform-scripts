@@ -542,8 +542,8 @@ function main() {
       if (
         /^company_\d+\.json$/i.test(f) ||
         /^person_\d+\.json$/i.test(f) ||
-        /^relationship_sales_company_\d+_\d+\.json$/i.test(f) ||
-        /^relationship_sales_person_\d+_\d+\.json$/i.test(f)
+        /^relationship_sales_history_\d+_buyer_company_\d+\.json$/i.test(f) ||
+        /^relationship_sales_history_\d+_buyer_person_\d+\.json$/i.test(f)
       ) {
         try {
           fs.unlinkSync(path.join(dataDir, f));
@@ -762,7 +762,7 @@ function main() {
       purchase_price_amount: s.amount || 0, // Use 0 if amount is 0
     };
     fs.writeFileSync(
-      path.join(dataDir, `sales_${idx + 1}.json`),
+      path.join(dataDir, `sales_history_${idx + 1}.json`),
       JSON.stringify(saleObj, null, 2),
     );
   });
@@ -775,11 +775,11 @@ function main() {
     if (orig !== -1) {
       const deedIdx = orig + 1;
       const rel = {
-        from: { "/": `./sales_${idx + 1}.json` },
+        from: { "/": `./sales_history_${idx + 1}.json` },
         to: { "/": `./deed_${deedIdx}.json` },
       };
       fs.writeFileSync(
-        path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
+        path.join(dataDir, `relationship_sales_history_${idx + 1}_has_deed.json`),
         JSON.stringify(rel, null, 2),
       );
     }
@@ -801,8 +801,8 @@ function main() {
         .readdirSync(dataDir)
         .filter(
           (f) =>
-            f.startsWith("relationship_sales_company") ||
-            f.startsWith("relationship_sales_person"),
+            f.startsWith("relationship_sales_history") &&
+            (f.includes("_buyer_company_") || f.includes("_buyer_person_")),
         );
       for (const f of files) {
         try {
@@ -859,13 +859,13 @@ function main() {
         // Link to all person files
         personFiles.forEach((personFile, pi) => {
           const rel = {
+            from: { "/": `./sales_history_${si + 1}.json` },
             to: { "/": `./${personFile}` },
-            from: { "/": `./sales_${si + 1}.json` },
           };
           fs.writeFileSync(
             path.join(
               dataDir,
-              `relationship_sales_person_${pi + 1}_${si + 1}.json`,
+              `relationship_sales_history_${si + 1}_buyer_person_${pi + 1}.json`,
             ),
             JSON.stringify(rel, null, 2),
           );
@@ -875,13 +875,13 @@ function main() {
         // Link to all company files
         companyFiles.forEach((companyFile, ci) => {
           const rel = {
+            from: { "/": `./sales_history_${si + 1}.json` },
             to: { "/": `./${companyFile}` },
-            from: { "/": `./sales_${si + 1}.json` },
           };
           fs.writeFileSync(
             path.join(
               dataDir,
-              `relationship_sales_company_${ci + 1}_${si + 1}.json`,
+              `relationship_sales_history_${si + 1}_buyer_company_${ci + 1}.json`,
             ),
             JSON.stringify(rel, null, 2),
           );
