@@ -1592,10 +1592,10 @@ function main() {
       {
         escambia_property_type: "LEASEHOLD INTEREST",
         ownership_estate_type: "Leasehold",
-        build_status: null,
+        build_status: "Improved",
         structure_form: null,
-        property_usage_type: "Unknown",
-        property_type: "LandParcel",
+        property_usage_type: "Commercial",
+        property_type: "Building",
       },
       {
         escambia_property_type: "UTILITY, GAS, ELECT.",
@@ -2417,6 +2417,14 @@ function main() {
         }
       });
     }
+  }
+
+  // Create property->layout relationships for building layouts
+  if (layoutBuildingIndices.length > 0) {
+    layoutBuildingIndices.forEach((layoutIdx) => {
+      const layoutFile = `layout_${layoutIdx}.json`;
+      writeRelationship("property.json", layoutFile);
+    });
   }
 
   const mapStructureToSource = (structureFile, layoutIdx) => {
