@@ -2937,7 +2937,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     fence_height: null,
     fence_length: null,
     driveway_material: null,
-    driveway_condition: null,
+    driveway_condition: "Good",
     lot_condition_issues: null,
     paving_type: "None",
     paving_area_sqft: null,
@@ -3051,7 +3051,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         fence_height: null,
         fence_length: null,
         driveway_material: null,
-        driveway_condition: null,
+        driveway_condition: "Good",
         lot_condition_issues: null,
         paving_type: "None",
         paving_area_sqft: null,
@@ -3081,6 +3081,9 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     if (!existingLotData.hasOwnProperty('site_lighting_type')) {
       existingLotData.site_lighting_type = "None";
     }
+    if (!existingLotData.hasOwnProperty('driveway_condition')) {
+      existingLotData.driveway_condition = "Good";
+    }
 
     // Merge with new data, preserving all existing fields and ensuring required properties
     const finalLotData = {
@@ -3095,7 +3098,9 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       // Ensure fencing_type is always present (even if null)
       fencing_type: existingLotData.fencing_type !== undefined ? existingLotData.fencing_type : null,
       // Ensure view is always present (required property, can be null)
-      view: existingLotData.view !== undefined ? existingLotData.view : null
+      view: existingLotData.view !== undefined ? existingLotData.view : null,
+      // Ensure driveway_condition defaults to "Good" if null or missing
+      driveway_condition: existingLotData.driveway_condition || "Good"
     };
     // console.log("FINAL LOT ",finalLotData)
     writeJson(lotPath, finalLotData);
