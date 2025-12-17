@@ -297,10 +297,12 @@ function classifyOwner(raw) {
     // Parse right side (first + middle names)
     const firstMiddle = parts[1].trim();
 
-    // Check if there's "=&" separator indicating multiple people with same last name
-    if (firstMiddle.includes("=&")) {
+    // Check if there's "=" separator (like "C=JULIA" or "=&") indicating multiple people with same last name
+    // Handle both "=&" and standalone "=" as separators
+    if (firstMiddle.includes("=")) {
+      // Split on both "=&" and standalone "=" to handle various formats
       const names = firstMiddle
-        .split("=&")
+        .split(/=&|=/)
         .map((s) => s.trim())
         .filter(Boolean);
       const persons = [];
