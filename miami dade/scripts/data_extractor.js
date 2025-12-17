@@ -2202,8 +2202,8 @@ function main() {
 
   const lot = {
     lot_type: lotTypeFromSqft(lotSize),
-    lot_length_feet: lotLength != null ? lotLength : null,
-    lot_width_feet: lotWidth != null ? lotWidth : null,
+    lot_length_feet: lotLength != null && lotLength >= 1 ? lotLength : null,
+    lot_width_feet: lotWidth != null && lotWidth >= 1 ? lotWidth : null,
     lot_area_sqft: lotSize != null ? Math.round(lotSize) : null,
     landscaping_features: null,
     view: null,
