@@ -3118,6 +3118,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       {
         from: { "/": "./property.json" },
         to: { "/": "./lot.json" },
+        type: "property_has_lot"
       }
     );
     console.log("Created/updated lot.json and relationship_property_has_lot.json");
