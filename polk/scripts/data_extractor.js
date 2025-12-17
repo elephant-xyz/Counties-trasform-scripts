@@ -4111,6 +4111,9 @@ function main() {
       relSalesDeed,
     );
 
+    // COMMENTED OUT: sales_history_has_person is not a valid relationship class in the data group
+    // The removeUnusedOwnerFiles() function will clean up any unreferenced person files
+    /*
     // Create person from grantee if available and valid
     if (s.parsedGrantee && s.parsedGrantee.first_name && s.parsedGrantee.last_name) {
       const pg = s.parsedGrantee;
@@ -4153,9 +4156,11 @@ function main() {
         );
       }
     }
+    */
   });
 
-  // Write person files for sales grantees
+  // Write person files for sales grantees (COMMENTED OUT - see above)
+  /*
   salesPersons.forEach((person, i) => {
     const personIdx = i + 1;
     // Final validation: ensure suffix_name is either null or a valid enum value
@@ -4174,6 +4179,7 @@ function main() {
     if (person.middle_name === "") person.middle_name = null;
     writeJSON(path.join("data", `person_${personIdx}.json`), person);
   });
+  */
 
   // Owners (persons/companies)
   const pc = buildPersonsAndCompanies(ownerJSON, parcelId);
