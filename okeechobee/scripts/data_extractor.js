@@ -3001,14 +3001,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
   if (hasLotData) {
     console.log("Creating lot.json with data:", lotData);
     writeJson(path.join("data", "lot.json"), lotData);
-    writeJson(
-      path.join("data", "relationship_property_has_lot.json"),
-      {
-        from: { "/": "./property.json" },
-        to: { "/": "./lot.json" },
-      }
-    );
-    console.log("Created lot.json and relationship_property_has_lot.json");
+    console.log("Created lot.json from extra features");
   } else {
     console.log("No lot data found in extra features");
   }
@@ -3038,7 +3031,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         lotSizeAcre > 0.25
           ? "GreaterThanOneQuarterAcre"
           : "LessThanOrEqualToOneQuarterAcre";
-    
+
     // Read existing lot data if it exists
     let existingLotData = {};
     const lotPath = path.join("data", "lot.json");
@@ -3068,7 +3061,18 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         site_lighting_installation_date: null
       };
     }
-    
+
+    // Ensure all required properties exist with defaults if missing
+    if (!existingLotData.hasOwnProperty('fencing_type')) {
+      existingLotData.fencing_type = null;
+    }
+    if (!existingLotData.hasOwnProperty('paving_type')) {
+      existingLotData.paving_type = "None";
+    }
+    if (!existingLotData.hasOwnProperty('site_lighting_type')) {
+      existingLotData.site_lighting_type = "None";
+    }
+
     // Merge with new data, preserving all existing fields
     const finalLotData = {
       ...existingLotData,
@@ -3078,6 +3082,16 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     };
     // console.log("FINAL LOT ",finalLotData)
     writeJson(lotPath, finalLotData);
+
+    // Create relationship after lot.json is finalized
+    writeJson(
+      path.join("data", "relationship_property_has_lot.json"),
+      {
+        from: { "/": "./property.json" },
+        to: { "/": "./lot.json" },
+      }
+    );
+    console.log("Created/updated lot.json and relationship_property_has_lot.json");
   } catch (e) {}
 
 }
