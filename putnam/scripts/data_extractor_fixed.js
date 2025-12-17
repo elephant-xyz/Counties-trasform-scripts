@@ -1586,13 +1586,18 @@ function main() {
     const impVal = getVal(/Improvement Value/i);
     const marketVal = getVal(/Market Value/i);
 
+    // Ensure required numeric fields always have number values
+    const assessedValue = (typeof marketVal === 'number' && Number.isFinite(marketVal)) ? marketVal : 0;
+    const marketValue = (typeof marketVal === 'number' && Number.isFinite(marketVal)) ? marketVal : 0;
+    const taxableValue = (typeof marketVal === 'number' && Number.isFinite(marketVal)) ? marketVal : 0;
+
     const taxObj = {
       tax_year: year,
-      property_assessed_value_amount: marketVal || null,
-      property_market_value_amount: marketVal || null,
-      property_building_amount: impVal || null,
-      property_land_amount: landVal || null,
-      property_taxable_value_amount: marketVal || null,
+      property_assessed_value_amount: assessedValue,
+      property_market_value_amount: marketValue,
+      property_building_amount: (typeof impVal === 'number' && Number.isFinite(impVal)) ? impVal : null,
+      property_land_amount: (typeof landVal === 'number' && Number.isFinite(landVal)) ? landVal : null,
+      property_taxable_value_amount: taxableValue,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
