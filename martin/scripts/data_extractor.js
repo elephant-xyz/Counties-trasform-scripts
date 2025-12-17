@@ -820,24 +820,51 @@ function titleCaseName(s) {
   s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '').replace(/\s+/g, ' ');
   if (!s) return null;
 
+  // Convert to lowercase for processing
   s = s.toLowerCase();
 
-  // Apply title casing: uppercase letter after start or after a separator
-  const result = s.replace(
-    /(^|[\s\-',.])([a-z])/g,
-    (m, p1, p2) => p1 + p2.toUpperCase()
-  );
+  // Split by separators while preserving them
+  const parts = [];
+  let currentWord = '';
+  let lastWasSeparator = false;
 
-  // Remove any consecutive separators (reduce to single space)
-  let cleaned = result;
-  while (/[\s\-',.]{2,}/.test(cleaned)) {
-    cleaned = cleaned.replace(/[\s\-',.]{2,}/g, ' ');
+  for (let i = 0; i < s.length; i++) {
+    const char = s[i];
+    if (/[\s\-',.]/.test(char)) {
+      if (currentWord) {
+        parts.push({ type: 'word', value: currentWord });
+        currentWord = '';
+      }
+      if (!lastWasSeparator) {
+        parts.push({ type: 'sep', value: char });
+        lastWasSeparator = true;
+      }
+    } else {
+      currentWord += char;
+      lastWasSeparator = false;
+    }
   }
-  cleaned = cleaned.trim();
+  if (currentWord) {
+    parts.push({ type: 'word', value: currentWord });
+  }
 
-  // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-  if (!cleaned || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(cleaned)) return null;
-  return cleaned;
+  // Build result with proper capitalization
+  let result = '';
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.type === 'word') {
+      // Capitalize first letter, rest lowercase
+      result += part.value.charAt(0).toUpperCase() + part.value.slice(1);
+    } else {
+      result += part.value;
+    }
+  }
+
+  result = result.trim();
+
+  // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  if (!result || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) return null;
+  return result;
 }
 
 function getValueByStrong($, label) {
