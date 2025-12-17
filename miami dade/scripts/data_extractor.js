@@ -2458,12 +2458,12 @@ function main() {
       deedIdx++;
     }
 
-    // relationship_sales_history_has_deed (deed → sales_history)
+    // relationship_sales_history_deed (deed → sale)
     let relSDIdx = 1;
     for (const [sIndex, dIndex] of deedMap.entries()) {
       const relSD = {
-        from: { "/": `./deed_${dIndex}.json` },
-        to: { "/": `./sales_history_${sIndex}.json` },
+        from: { "/": `./sales_history_${sIndex}.json` },
+        to: { "/": `./deed_${dIndex}.json` },
       };
       writeJson(path.join("data", `relationship_sales_history_${relSDIdx}_has_deed.json`), relSD);
       relSDIdx++;
