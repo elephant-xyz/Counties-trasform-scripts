@@ -96,6 +96,34 @@ function isValidName(s) {
   return namePattern.test(str);
 }
 
+function properCaseName(s) {
+  if (!s) return s;
+
+  // Convert to string and trim whitespace
+  const str = String(s).trim();
+  if (!str) return str;
+
+  // Normalize whitespace (replace multiple spaces with single space)
+  const normalized = str.replace(/\s+/g, ' ');
+
+  // Split on word boundaries (spaces, hyphens, apostrophes) while preserving separators
+  const words = normalized.split(/(\s+|[-',.])/);
+
+  // Capitalize each word segment (non-separator parts)
+  const result = words.map((word, index) => {
+    // If it's a separator or empty, keep as-is
+    if (!word || /^[\s\-',.]$/.test(word)) {
+      return word;
+    }
+
+    // Capitalize first letter, lowercase the rest
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }).join('');
+
+  // Remove trailing separators (apostrophes, hyphens, commas, periods) and trim
+  return result.replace(/[\s\-',.]+$/, '').trim();
+}
+
 function normalizeSuffix(suffix) {
   if (!suffix) return null;
   const s = String(suffix).trim().toUpperCase();
@@ -226,9 +254,9 @@ function parsePersonName(raw, inferredLastName) {
 
     const person = {
       type: "person",
-      first_name: first,
-      last_name: lastPart,
-      middle_name: middleValid,
+      first_name: properCaseName(first),
+      last_name: properCaseName(lastPart),
+      middle_name: middleValid ? properCaseName(middleValid) : null,
     };
 
     // Normalize and add suffix if found
@@ -247,8 +275,8 @@ function parsePersonName(raw, inferredLastName) {
     if (inferredLastName && isValidName(tokens[0]) && isValidName(inferredLastName)) {
       return {
         type: "person",
-        first_name: tokens[0],
-        last_name: inferredLastName,
+        first_name: properCaseName(tokens[0]),
+        last_name: properCaseName(inferredLastName),
         middle_name: null,
       };
     }
@@ -268,9 +296,9 @@ function parsePersonName(raw, inferredLastName) {
 
   return {
     type: "person",
-    first_name: first,
-    last_name: last,
-    middle_name: middleValid,
+    first_name: properCaseName(first),
+    last_name: properCaseName(last),
+    middle_name: middleValid ? properCaseName(middleValid) : null,
   };
 }
 
@@ -350,9 +378,9 @@ function processOwnerObject(obj, options = {}) {
     const middleValid = middleNormalized && isValidName(middleNormalized) ? middleNormalized : null;
     const person = {
       type: "person",
-      first_name: normWS(first),
-      last_name: normWS(last),
-      middle_name: middleValid,
+      first_name: properCaseName(first),
+      last_name: properCaseName(last),
+      middle_name: middleValid ? properCaseName(middleValid) : null,
     };
     // Normalize suffix to match allowed enum values
     const normalizedSuffix = suffix ? normalizeSuffix(suffix) : null;
