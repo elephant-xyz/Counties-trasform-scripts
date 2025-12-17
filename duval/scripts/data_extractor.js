@@ -2365,8 +2365,8 @@ function main() {
           payload.middle_name = middleName;
           const prefixName = titleCaseNamePart(owner.prefix_name);
           payload.prefix_name = prefixName;
-          const suffixName = titleCaseNamePart(owner.suffix);
-          payload.suffix_name = suffixName;
+          // Don't apply titleCaseNamePart to suffix - ownerMapping.js already provides it in schema-compliant format
+          payload.suffix_name = owner.suffix || null;
           payload.birth_date = owner.birth_date || null;
           payload.us_citizenship_status =
             owner.us_citizenship_status != null
