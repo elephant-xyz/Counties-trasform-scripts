@@ -1399,53 +1399,6 @@ function main() {
   //     }
   //   }
   // }
-
-  // Process owners data to create person files and relationships
-  if (ownersData) {
-    // Try multiple keys to find the owner data
-    let ownerInfo = null;
-    const keysToTry = [
-      `property_${parcelIdentifier}`,
-      `property_${requestIdentifier}`,
-      `property_${parcelIdFromPage}`,
-      `property_${key_part}`
-    ].filter(k => k !== 'property_null' && k !== 'property_undefined');
-
-    for (const tryKey of keysToTry) {
-      if (ownersData[tryKey]) {
-        ownerInfo = ownersData[tryKey];
-        break;
-      }
-    }
-
-    if (ownerInfo && ownerInfo.owners_by_date) {
-      const currentOwners = ownerInfo.owners_by_date.current || [];
-      let personIdx = 0;
-      currentOwners.forEach((owner) => {
-        if (owner && owner.type === "person") {
-          personIdx++;
-          const personFile = {
-            first_name: owner.first_name || null,
-            last_name: owner.last_name || null,
-            middle_name: owner.middle_name || null,
-            prefix_name: null,
-            suffix_name: null,
-            birth_date: null,
-            us_citizenship_status: null,
-            veteran_status: null,
-          };
-          writeJSON(path.join(dataDir, `person_${personIdx}.json`), personFile);
-
-          // Create property -> person relationship
-          writeJSON(path.join(dataDir, `relationship_property_has_person_${personIdx}.json`), {
-            from: { "/": "./property.json" },
-            to: { "/": `./person_${personIdx}.json` },
-          });
-        }
-      });
-    }
-  }
-
     // Layout extraction from owners/layout_data.json
   if (layoutData) {
     let layoutBuildingMap = {};
