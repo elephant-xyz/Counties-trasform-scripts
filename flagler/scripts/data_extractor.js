@@ -3873,6 +3873,12 @@ function main() {
     saleBuyerStatus.set(latestSaleRef.salesPath, true);
   }
 
+  // Link all current owners directly to the property to ensure they're not orphaned
+  currentOwnerEntities.forEach((entity) => {
+    if (!entity.path) return;
+    writeRelationshipUnique(propertyPath, entity.path);
+  });
+
   // Add previous owners from previousOwnerLookup to saleGrantorRelations
   previousOwnerLookup.forEach((meta, ownerPath) => {
     if (!ownerPath || !meta.dates || meta.dates.size === 0) return;
