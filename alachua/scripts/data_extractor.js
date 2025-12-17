@@ -1898,9 +1898,13 @@ function main() {
       permit_issue_date: permitIssueDate,
       completion_date: completionDate,
       contractor_type: contractorType || "Unknown",
-      permit_required: permitNumber ? true : null,
       request_identifier: improvementRequestId,
     };
+
+    // Only add permit_required if permitNumber exists (must be boolean, not null)
+    if (permitNumber) {
+      improvement.permit_required = true;
+    }
 
     const cleanedImprovement = {};
     Object.entries(improvement).forEach(([key, value]) => {
