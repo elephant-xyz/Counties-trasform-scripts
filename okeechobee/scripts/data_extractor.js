@@ -3117,12 +3117,49 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       path.join("data", "relationship_property_has_lot.json"),
       {
         from: { "/": "./property.json" },
-        to: { "/": "./lot.json" },
-        type: "property_has_lot"
+        to: { "/": "./lot.json" }
       }
     );
     console.log("Created/updated lot.json and relationship_property_has_lot.json");
-  } catch (e) {}
+  } catch (e) {
+    console.error("Error creating lot data:", e);
+    // If lot.json doesn't exist yet, create a minimal one with required properties
+    const lotPath = path.join("data", "lot.json");
+    if (!fs.existsSync(lotPath)) {
+      const minimalLot = {
+        ...appendSourceInfo(seed),
+        lot_type: null,
+        lot_length_feet: null,
+        lot_width_feet: null,
+        lot_area_sqft: null,
+        landscaping_features: null,
+        view: null,
+        fencing_type: null,
+        fence_height: null,
+        fence_length: null,
+        driveway_material: null,
+        driveway_condition: "Good",
+        lot_condition_issues: null,
+        paving_type: "None",
+        paving_area_sqft: null,
+        paving_installation_date: null,
+        site_lighting_type: "None",
+        site_lighting_fixture_count: null,
+        site_lighting_installation_date: null
+      };
+      writeJson(lotPath, minimalLot);
+
+      // Create relationship
+      writeJson(
+        path.join("data", "relationship_property_has_lot.json"),
+        {
+          from: { "/": "./property.json" },
+          to: { "/": "./lot.json" }
+        }
+      );
+      console.log("Created minimal lot.json with all required properties");
+    }
+  }
 
 }
 
