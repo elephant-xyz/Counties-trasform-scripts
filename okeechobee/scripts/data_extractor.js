@@ -2931,6 +2931,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     lot_length_feet: null,
     lot_width_feet: null,
     lot_area_sqft: null,
+    lot_size_acre: null,
     landscaping_features: null,
     view: null,
     fencing_type: null,
@@ -2938,7 +2939,13 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     fence_length: null,
     driveway_material: null,
     driveway_condition: null,
-    lot_condition_issues: null
+    lot_condition_issues: null,
+    paving_area_sqft: null,
+    paving_installation_date: null,
+    paving_type: null,
+    site_lighting_fixture_count: null,
+    site_lighting_installation_date: null,
+    site_lighting_type: null
   };
 
   let hasStructureData = false;
@@ -3046,6 +3053,7 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         lot_length_feet: null,
         lot_width_feet: null,
         lot_area_sqft: null,
+        lot_size_acre: null,
         landscaping_features: null,
         view: null,
         fencing_type: null,
@@ -3053,7 +3061,13 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
         fence_length: null,
         driveway_material: null,
         driveway_condition: null,
-        lot_condition_issues: null
+        lot_condition_issues: null,
+        paving_area_sqft: null,
+        paving_installation_date: null,
+        paving_type: null,
+        site_lighting_fixture_count: null,
+        site_lighting_installation_date: null,
+        site_lighting_type: null
       };
     }
     
@@ -3066,6 +3080,15 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     };
     // console.log("FINAL LOT ",finalLotData)
     writeJson(lotPath, finalLotData);
+
+    // Create relationship file if it doesn't exist
+    const relationshipPath = path.join("data", "relationship_property_has_lot.json");
+    if (!fs.existsSync(relationshipPath)) {
+      writeJson(relationshipPath, {
+        from: { "/": "./property.json" },
+        to: { "/": "./lot.json" },
+      });
+    }
   } catch (e) {}
 
 }
