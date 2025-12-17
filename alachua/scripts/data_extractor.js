@@ -1110,22 +1110,48 @@ function parsePermitTable($) {
   const rows = [];
   table.find("tbody tr").each((_, tr) => {
     const $tr = $(tr);
-    const permitNumber = cleanText($tr.find("th").first().text());
+    const thCell = $tr.find("th").first();
+    const permitNumber = cleanText(thCell.text());
+
+    // Check if first cell is actually a td (not th) - this means column offset
+    const firstCell = $tr.find("> *").first();
+    const hasThForPermitNumber = firstCell.is("th");
+
     const cells = [];
     $tr.find("td").each((idx, td) => {
       cells.push(cleanText($(td).text()));
     });
+
     const hasContent =
       permitNumber ||
       cells.some((val) => val && val.length > 0);
     if (!hasContent) return;
+
+    // If first cell is td (not th), all columns are shifted by 1
+    let type, primary, active, issueDate, value;
+    if (!hasThForPermitNumber && cells.length >= 6) {
+      // Columns shifted: cells[0] is empty permit#, cells[1] is type, etc.
+      type = cells[1] || null;
+      primary = cells[2] || null;
+      active = cells[3] || null;
+      issueDate = cells[4] || null;
+      value = cells[5] || null;
+    } else {
+      // Normal case: cells[0] is type, cells[1] is primary, etc.
+      type = cells[0] || null;
+      primary = cells[1] || null;
+      active = cells[2] || null;
+      issueDate = cells[3] || null;
+      value = cells[4] || null;
+    }
+
     rows.push({
       permitNumber: permitNumber || null,
-      type: cells[0] || null,
-      primary: cells[1] || null,
-      active: cells[2] || null,
-      issueDate: cells[3] || null,
-      value: cells[4] || null,
+      type,
+      primary,
+      active,
+      issueDate,
+      value,
     });
   });
   return rows;
