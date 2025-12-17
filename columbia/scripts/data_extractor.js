@@ -1475,18 +1475,25 @@ const specificDocumentTypeMap = {
     const { book, page } = parseBookPage(row.bookPageTxt);
     const instrumentNumber = toSafeString(
       row.rcodeTxt || row.clerkRef || row.bookPageTxt,
-      "",
+      null,
     );
-    const volume = toSafeString(book, "");
+    const safeBook = toSafeString(book, null);
+    const safePage = toSafeString(page, null);
     const deedTypeValue = deedCodeMap[row.deedCode] || null;
     const deed = {
       source_http_request: cloneSourceHttp(),
       request_identifier: hyphenParcel,
-      book: book || null,
-      page: page || null,
-      volume,
-      instrument_number: instrumentNumber,
     };
+    if (safeBook) {
+      deed.book = safeBook;
+      deed.volume = safeBook;
+    }
+    if (safePage) {
+      deed.page = safePage;
+    }
+    if (instrumentNumber) {
+      deed.instrument_number = instrumentNumber;
+    }
     if (deedTypeValue != null) {
       deed.deed_type = deedTypeValue;
     }
