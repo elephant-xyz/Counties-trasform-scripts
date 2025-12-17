@@ -90,6 +90,7 @@ function splitTokens(raw) {
 }
 
 function mapExteriorMaterial(token) {
+  if (!token) return null;
   const upper = token.toUpperCase();
   if (upper.includes("ALUMIN")) return "Metal Siding";
   if (upper.includes("BRICK")) return "Brick";
@@ -110,6 +111,7 @@ function mapExteriorMaterial(token) {
 }
 
 function mapExteriorMaterialSecondary(token) {
+  if (!token) return null;
   const upper = token.toUpperCase();
   if (upper.includes("BRICK")) return "Brick Accent";
   if (upper.includes("STONE")) return "Stone Accent";
@@ -124,6 +126,7 @@ function mapExteriorMaterialSecondary(token) {
 }
 
 function mapInteriorMaterial(token) {
+  if (!token) return null;
   const upper = token.toUpperCase();
   if (upper.includes("DRYWALL")) return "Drywall";
   if (upper.includes("PLASTER")) return "Plaster";
@@ -155,6 +158,7 @@ function mapRoofDesign(val) {
 }
 
 function mapFrameMaterial(token) {
+  if (!token) return null;
   const upper = token.toUpperCase();
   if (upper.includes("WOOD")) return "Wood Frame";
   if (upper.includes("MASONRY")) return "Masonry";
@@ -166,6 +170,7 @@ function mapFrameMaterial(token) {
 }
 
 function mapFloorMaterial(token) {
+  if (!token) return null;
   const upper = token.toUpperCase();
   if (upper.includes("CARPET")) return "Carpet";
   if (upper.includes("HARDWOOD") || upper.includes("PINE") || upper.includes("SOFT WOOD")) {
@@ -180,6 +185,7 @@ function mapFloorMaterial(token) {
 
 function mapFloorMaterialSecondary(token) {
   // Valid values for flooring_material_secondary enum
+  if (!token) return null;
   const upper = token.toUpperCase();
   if (upper.includes("CARPET")) return "Carpet";
   if (upper.includes("HARDWOOD") || upper.includes("PINE") || upper.includes("SOFT WOOD")) {
