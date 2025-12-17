@@ -139,6 +139,8 @@ const companyKeywords = [
   "GROUP",
   "ENTERPRISES",
   "HOLDING",
+  "HOMEOWNERS",
+  "ASSOCIATES",
 ];
 
 function looksLikeCompany(name) {
@@ -147,7 +149,8 @@ function looksLikeCompany(name) {
   const result = companyKeywords.some((k) => {
     const kw = k.toUpperCase();
     // Use word boundary regex that works with uppercase text
-    const re = new RegExp(`(^|\\s)${kw}(\\s|$)`);
+    // Allow punctuation (., comma, etc.) or whitespace or end of string after keyword
+    const re = new RegExp(`(^|\\s)${kw}([\\s.,;:!?]|$)`);
     const matches = re.test(t);
     if (matches) {
       console.log(`  ✓ Matched keyword: "${kw}"`);
