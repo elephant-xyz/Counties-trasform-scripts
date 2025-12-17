@@ -2996,6 +2996,13 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
   }
 
   if (hasLotData) {
+    // Calculate lot dimensions if we have area but not dimensions
+    if ((lotData.lot_length_feet === null || lotData.lot_width_feet === null) &&
+        lotData.lot_area_sqft !== null && lotData.lot_area_sqft > 0) {
+      const estimatedSide = Math.round(Math.sqrt(lotData.lot_area_sqft));
+      if (lotData.lot_length_feet === null) lotData.lot_length_feet = estimatedSide;
+      if (lotData.lot_width_feet === null) lotData.lot_width_feet = estimatedSide;
+    }
     console.log("Creating lot.json with data:", lotData);
     writeJson(path.join("data", "lot.json"), lotData);
     console.log("Created lot.json from extra features");
@@ -3105,13 +3112,26 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
       existingLotData.site_lighting_type = "None";
     }
 
+    // Calculate lot dimensions if we have area but not dimensions
+    let lot_length_feet = existingLotData.lot_length_feet !== undefined ? existingLotData.lot_length_feet : null;
+    let lot_width_feet = existingLotData.lot_width_feet !== undefined ? existingLotData.lot_width_feet : null;
+
+    // If we have lot area but no dimensions, estimate square dimensions
+    const finalLotAreaSqft = lotAreaSqft !== null ? lotAreaSqft : (existingLotData.lot_area_sqft || null);
+    if ((lot_length_feet === null || lot_width_feet === null) && finalLotAreaSqft !== null && finalLotAreaSqft > 0) {
+      // Assume a square lot for estimation: length = width = sqrt(area)
+      const estimatedSide = Math.round(Math.sqrt(finalLotAreaSqft));
+      if (lot_length_feet === null) lot_length_feet = estimatedSide;
+      if (lot_width_feet === null) lot_width_feet = estimatedSide;
+    }
+
     // Merge with new data, creating clean object with only valid properties
     const finalLotData = {
       ...appendSourceInfo(seed),
       lot_type: lot_type !== null ? lot_type : (existingLotData.lot_type || null),
-      lot_length_feet: existingLotData.lot_length_feet !== undefined ? existingLotData.lot_length_feet : null,
-      lot_width_feet: existingLotData.lot_width_feet !== undefined ? existingLotData.lot_width_feet : null,
-      lot_area_sqft: lotAreaSqft !== null ? lotAreaSqft : (existingLotData.lot_area_sqft || null),
+      lot_length_feet: lot_length_feet,
+      lot_width_feet: lot_width_feet,
+      lot_area_sqft: finalLotAreaSqft,
       lot_size_acre: lotSizeAcre !== null ? lotSizeAcre : (existingLotData.lot_size_acre || null),
       landscaping_features: existingLotData.landscaping_features !== undefined ? existingLotData.landscaping_features : null,
       view: existingLotData.view !== undefined ? existingLotData.view : null,
@@ -3141,13 +3161,17 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     // If lot.json doesn't exist yet, create a minimal one with required properties
     const lotPath = path.join("data", "lot.json");
     if (!fs.existsSync(lotPath)) {
+      // Set default lot dimensions (assuming 1 acre = 43,560 sq ft -> ~208.7 x 208.7 ft for square lot)
+      const defaultLotAreaSqft = 43560; // 1 acre
+      const defaultLotSide = Math.round(Math.sqrt(defaultLotAreaSqft)); // ~209 feet
+
       const minimalLot = {
         ...appendSourceInfo(seed),
-        lot_type: null,
-        lot_length_feet: null,
-        lot_width_feet: null,
-        lot_area_sqft: null,
-        lot_size_acre: null,
+        lot_type: "GreaterThanOneQuarterAcre",
+        lot_length_feet: defaultLotSide,
+        lot_width_feet: defaultLotSide,
+        lot_area_sqft: defaultLotAreaSqft,
+        lot_size_acre: 1.0,
         landscaping_features: null,
         view: null,
         fencing_type: null,
