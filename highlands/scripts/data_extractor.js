@@ -2383,6 +2383,7 @@ function main() {
     view: null,
   };
   writeJson(path.join("data", "lot.json"), lot);
+  writeRelationshipFile("relationship_property_has_lot.json", "./property.json", "./lot.json");
 }
 
 try {
