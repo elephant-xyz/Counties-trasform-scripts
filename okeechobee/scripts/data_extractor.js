@@ -3517,7 +3517,9 @@ function main() {
       const companies = globalThis.__ownerCompanyFiles || [];
       const persons = globalThis.__ownerPersonFiles || [];
       if (companies.length > 0) {
-        companies.forEach((companyPath, idx) =>
+        companies.forEach((companyPath, idx) => {
+          globalThis.__usedFiles = globalThis.__usedFiles || new Set();
+          globalThis.__usedFiles.add(companyPath);
           writeJson(
             path.join(
               "data",
@@ -3526,10 +3528,12 @@ function main() {
                 : `relationship_sales_history_company_${idx + 1}.json`,
             ),
             {  from: { "/": mostRecentSale },to: { "/": companyPath } },
-          ),
-        );
+          );
+        });
       } else if (persons.length > 0) {
-        persons.forEach((personPath, idx) =>
+        persons.forEach((personPath, idx) => {
+          globalThis.__usedFiles = globalThis.__usedFiles || new Set();
+          globalThis.__usedFiles.add(personPath);
           writeJson(
             path.join(
               "data",
@@ -3538,8 +3542,8 @@ function main() {
                 : `relationship_sales_history_person_${idx + 1}.json`,
             ),
             {  from: { "/": mostRecentSale },to: { "/": personPath }},
-          ),
-        );
+          );
+        });
       }
     }
   }
@@ -3930,7 +3934,7 @@ function main() {
   const companies = globalThis.__ownerCompanyFiles || [];
   const persons = globalThis.__ownerPersonFiles || [];
 
-  if (companies.length > 0 || persons.length > 0) {
+  if ((companies.length > 0 || persons.length > 0) && mailingAddressRaw) {
     const mailingAddressOutput = {
       ...appendSourceInfo(seed),
       unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
@@ -3939,6 +3943,8 @@ function main() {
 
     // Create mailing address relationships with current owners
     companies.forEach((companyPath, idx) => {
+      globalThis.__usedFiles = globalThis.__usedFiles || new Set();
+      globalThis.__usedFiles.add(companyPath);
       writeJson(
         path.join("data", `relationship_company_has_mailing_address_${idx + 1}.json`),
         {
@@ -3949,6 +3955,8 @@ function main() {
     });
 
     persons.forEach((personPath, idx) => {
+      globalThis.__usedFiles = globalThis.__usedFiles || new Set();
+      globalThis.__usedFiles.add(personPath);
       writeJson(
         path.join("data", `relationship_person_has_mailing_address_${idx + 1}.json`),
         {
@@ -3963,6 +3971,22 @@ function main() {
   //Extra Features Extraction.Adds lot area as well.
   extractExtraFeatures($, hyphenParcel, seed,appendSourceInfo);
   
+  // Log relationship usage summary and delete unused files
+  const allOwnerFiles = [...companies, ...persons];
+  const usedFiles = globalThis.__usedFiles || new Set();
+  const unusedFiles = allOwnerFiles.filter(file => !usedFiles.has(file));
+  
+  console.log("Files used in relationships:", Array.from(usedFiles));
+  console.log("Unused owner files:", unusedFiles);
+  
+  // Delete unused files
+  unusedFiles.forEach(file => {
+    const filePath = path.join("data", file.replace("./", ""));
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log("Deleted unused file:", filePath);
+    }
+  });
 }
 
 main();
