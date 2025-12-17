@@ -26839,28 +26839,67 @@ async function main() {
     let finalPayload = null;
 
     if (terminalRawAddress) {
-      finalPayload = {
-        unnormalized_address: terminalRawAddress,
-        request_identifier:
-          safeNullIfEmpty(
-            resolveFirstNonEmptyString([
-              terminalSnapshot.request_identifier,
-              resolvedRequestIdentifier,
-              trimmedRequestIdentifier,
-              parcelId,
-              seed && seed.request_identifier,
-              unnormalizedSource.request_identifier,
-            ]),
-          ) ?? null,
-        source_http_request:
-          resolveSourceHttpRequest(
-            terminalSnapshot.source_http_request,
-            resolvedSourceHttp,
-            sourceHttpCandidate,
-            unnormalizedSource.source_http_request,
-            seedSource.source_http_request,
-          ) || null,
-      };
+      // Keep the raw branch on the full address schema surface so oneOf doesn't
+      // complain about missing normalized fields when only an unnormalized
+      // string is available from the source.
+      const normalizedRequestId = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          terminalSnapshot.request_identifier,
+          resolvedRequestIdentifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+          unnormalizedSource.request_identifier,
+        ]),
+      );
+      const resolvedSource =
+        resolveSourceHttpRequest(
+          terminalSnapshot.source_http_request,
+          resolvedSourceHttp,
+          sourceHttpCandidate,
+          unnormalizedSource.source_http_request,
+          seedSource.source_http_request,
+        ) || null;
+
+      const hydratedRaw =
+        ensureRawAddressSchemaDefaults(
+          {
+            ...terminalSnapshot,
+            unnormalized_address: terminalRawAddress,
+            request_identifier: normalizedRequestId ?? null,
+            source_http_request: resolvedSource,
+            county_name:
+              safeNullIfEmpty(terminalSnapshot.county_name) ||
+              safeNullIfEmpty(formattedCountyName) ||
+              safeNullIfEmpty(countyName) ||
+              null,
+            state_code:
+              safeNullIfEmpty(terminalSnapshot.state_code) ||
+              safeNullIfEmpty(inferredStateCode) ||
+              "FL",
+          },
+          RAW_ADDRESS_ALLOWED_FIELDS,
+        ) || null;
+
+      if (hydratedRaw) {
+        if (!hydratedRaw.postal_code) {
+          hydratedRaw.plus_four_postal_code = null;
+        }
+        if (
+          (hydratedRaw.latitude == null) !==
+          (hydratedRaw.longitude == null)
+        ) {
+          hydratedRaw.latitude = null;
+          hydratedRaw.longitude = null;
+        }
+        if (
+          hasMeaningfulAddressValue(hydratedRaw.state_code) &&
+          !hasMeaningfulAddressValue(hydratedRaw.country_code)
+        ) {
+          hydratedRaw.country_code = "US";
+        }
+        finalPayload = hydratedRaw;
+      }
     } else if (terminalNormalizedReady) {
       const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
       NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
