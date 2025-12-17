@@ -3063,6 +3063,12 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     }
 
     // Ensure all required properties exist with defaults if missing
+    if (!existingLotData.hasOwnProperty('lot_width_feet')) {
+      existingLotData.lot_width_feet = null;
+    }
+    if (!existingLotData.hasOwnProperty('lot_length_feet')) {
+      existingLotData.lot_length_feet = null;
+    }
     if (!existingLotData.hasOwnProperty('fencing_type')) {
       existingLotData.fencing_type = null;
     }
