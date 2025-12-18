@@ -77,16 +77,58 @@ function normalizeOwnerKey(owner) {
 
 function formatNameToPattern(name) {
   if (!name) return null;
-  const cleaned = name.trim().replace(/\s+/g, ' ');
-  return cleaned.split(' ').map(part =>
-    part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
-  ).join(' ');
+  let cleaned = name.trim();
+
+  // Return null if empty after trimming
+  if (!cleaned) return null;
+
+  // Replace forward slashes with hyphens to conform to the schema pattern
+  // This is a logical replacement as '/' often implies a separation similar to '-'
+  cleaned = cleaned.replace(/\//g, '-');
+
+  // Replace multiple spaces with a single space
+  cleaned = cleaned.replace(/\s+/g, ' ');
+
+  // Remove trailing delimiters (periods, commas, hyphens, apostrophes)
+  cleaned = cleaned.replace(/[ \-',.]+$/, '');
+
+  // Return null if empty after removing trailing delimiters
+  if (!cleaned) return null;
+
+  // Split by spaces, hyphens, apostrophes, commas, periods, keeping the delimiters
+  const result = cleaned.split(/([ \-',.])/)
+    .map((part) => {
+      if (!part) return ''; // Handle empty parts from splitting
+      if (part.match(/[ \-',.]/)) { // If it's a delimiter, return it as is
+        return part;
+      }
+      // For actual name parts, capitalize the first letter and lowercase the rest
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join('')
+    .trim();
+
+  // Remove any trailing delimiters that might have been added during processing
+  const finalResult = result.replace(/[ \-',.]+$/, '');
+
+  // Validate the result matches the required pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!finalResult || !namePattern.test(finalResult)) {
+    return null;
+  }
+
+  return finalResult;
 }
 
 // Build owner object(s) from a raw string
 function buildOwnersFromRaw(raw) {
   const owners = [];
-  const s = norm(raw);
+  let s = norm(raw);
+  if (!s) return owners;
+
+  // Remove continuation markers early
+  s = s.replace(/\s*-CONT-?\s*/gi, " ").trim();
   if (!s) return owners;
 
   // Exclude lines that clearly are not owner names
@@ -116,7 +158,9 @@ function buildOwnersFromRaw(raw) {
 
 function buildPersonFromSingleName(s) {
   const out = [];
-  const cleaned = s.replace(/\s{2,}/g, " ");
+  // Remove continuation markers and other non-name patterns
+  let cleaned = s.replace(/\s{2,}/g, " ");
+  cleaned = cleaned.replace(/\s*-CONT-?\s*/gi, " ").trim();
   const parts = cleaned.split(/\s+/).filter(Boolean);
 
   if (parts.length < 2) {
@@ -189,9 +233,13 @@ function extractOwnerCandidates($) {
     const ownerLines = cleanOwner.split(/\n/).map(line => norm(line)).filter(Boolean);
     ownerLines.forEach(line => {
       // Filter out address lines (contains zip code, common street suffixes, or starts with a number)
-      if (!/\b(\d{5})(?:-\d{4})?$/.test(line) &&
-          !/\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) &&
-          !/^\d+\s/.test(line)) {
+      // BUT: Allow lines that start with numbers if they are company names (e.g., "3039 HIGHWAY 70 LLC")
+      const startsWithNumber = /^\d+\s/.test(line);
+      const looksLikeCompany = isCompanyName(line);
+      const isAddress = /\b(\d{5})(?:-\d{4})?$/.test(line) ||
+                        /\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) ||
+                        (startsWithNumber && !looksLikeCompany);
+      if (!isAddress) {
         cand.push(line);
       }
     });
@@ -209,10 +257,13 @@ function extractOwnerCandidates($) {
             // Split by <br> tags to get individual owner names
             const ownerLines = boldText.split(/\n/).map(line => norm(line)).filter(Boolean);
             ownerLines.forEach(line => {
-              // Filter out address lines
-              if (!/\b(\d{5})(?:-\d{4})?$/.test(line) &&
-                  !/\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) &&
-                  !/^\d+\s/.test(line)) {
+              // Filter out address lines (but allow company names that start with numbers)
+              const startsWithNumber = /^\d+\s/.test(line);
+              const looksLikeCompany = isCompanyName(line);
+              const isAddress = /\b(\d{5})(?:-\d{4})?$/.test(line) ||
+                                /\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) ||
+                                (startsWithNumber && !looksLikeCompany);
+              if (!isAddress) {
                 cand.push(line);
               }
             });

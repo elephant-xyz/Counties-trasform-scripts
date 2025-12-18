@@ -149,7 +149,7 @@ function normalizeTokenForMatch(token) {
 
 function formatNameValue(value) {
   if (!value) return null;
-  return value
+  const result = value
     .split(/\s+/)
     .map((token) => {
       if (!token) return "";
@@ -169,6 +169,8 @@ function formatNameValue(value) {
     })
     .filter(Boolean)
     .join(" ");
+  // Strip trailing punctuation (commas, periods, etc.) from the final result
+  return result.replace(/[,;.]+$/, "");
 }
 
 function sanitizeOwnerText(raw) {
@@ -380,6 +382,7 @@ function isCompanyName(name) {
   }
   if (/\b(association|assn|assoc)\b/i.test(normalized)) return true;
   if (/\b(trustee|ttee|tstee)\b/i.test(normalized)) return true;
+  if (/\btr\b/i.test(normalized)) return true;
   if (
     /\b(united\s+states|u\.?\s*s\.?\s*a\.?|us\s+government|state\s+of\s+[a-z]+|city\s+of\s+[a-z]+|county\s+of\s+[a-z]+|town\s+of\s+[a-z]+|village\s+of\s+[a-z]+|department\s+of\s+[a-z]+|board\s+of\s+[a-z]+|nature\s+conservancy|conservancy)\b/i.test(
       normalized,

@@ -1127,19 +1127,18 @@ function extractOwnerMailingAddress($) {
   return mailingAddress;
 }
 
-function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
-  let hasOwnerMailingAddress = false;
-  const inputCounty = (unnorm.county_jurisdiction || "").trim();
+function attemptWriteAddress(dataDir, unnorm, secTwpRng, siteAddress, mailingAddress) {
+  let mailingAddressObj = null;
+  let inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty) {
     inputCounty = (unnorm.county_name || "").trim();
   }
   const county_name = inputCounty || null;
   if (mailingAddress) {
-    const mailingAddressObj = {
+    mailingAddressObj = {
       unnormalized_address: mailingAddress,
     };
-    writeJson(path.join("data", "mailing_address.json"), mailingAddressObj);
-    hasOwnerMailingAddress = true;
+    // Don't write the file here - it will be written when relationships are created
   }
   if (siteAddress) {
     const addressObj = {
@@ -1151,13 +1150,13 @@ function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
       section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
       unnormalized_address: siteAddress,
     };
-    writeJson(path.join("data", "address.json"), addressObj);
-    writeJson(path.join("data", "relationship_property_has_address.json"), {
+    writeJson(path.join(dataDir, "address.json"), addressObj);
+    writeJson(path.join(dataDir, "relationship_property_has_address.json"), {
                 to: { "/": `./address.json` },
                 from: { "/": `./property.json` },
               });
   }
-  return hasOwnerMailingAddress;
+  return mailingAddressObj;
 }
 
 function extractTaxes($) {
@@ -1192,6 +1191,9 @@ function extractTaxes($) {
         }
       }
     });
+    if (!block.taxable) {
+      return null;
+    }
     return block;
   }
 
@@ -1563,20 +1565,64 @@ function createGeometryClass(geometryInstances) {
 
 function main() {
   try {
-    const dataDir = path.join(".", "data");
+    // Create data directory at workspace root, not relative to script location
+    const workspaceRoot = path.join(__dirname, "..", "..", "..");
+    const dataDir = path.join(workspaceRoot, "data");
     ensureDir(dataDir);
 
-    const html = fs.readFileSync("input.html", "utf-8");
+    // Look for HTML file in input directory
+    const inputDir = path.join(__dirname, "..", "..", "..", "input");
+    const htmlFiles = fs.readdirSync(inputDir).filter(f => f.endsWith('.html'));
+    if (htmlFiles.length === 0) {
+      throw new Error("No HTML file found in input directory");
+    }
+    const html = fs.readFileSync(path.join(inputDir, htmlFiles[0]), "utf-8");
     const $ = cheerio.load(html);
 
-    const unAddr = readJson("unnormalized_address.json");
-    const propSeed = readJson("property_seed.json");
+    const unAddr = readJson(path.join(inputDir, "unnormalized_address.json"));
+    const propSeed = readJson(path.join(inputDir, "property_seed.json"));
 
-    // Owners/utilities/layout must be built from their JSONs
-    const ownerData = readJson(path.join("owners", "owner_data.json"));
-    const utilitiesData = readJson(path.join("owners", "utilities_data.json"));
-    const structuresData = readJson(path.join("owners", "structure_data.json"));
-    const layoutData = readJson(path.join("owners", "layout_data.json"));
+    // Owners/utilities/layout must be built from their JSONs - handle if they don't exist
+    let ownerData = {};
+    let utilitiesData = {};
+    let structuresData = {};
+    let layoutData = {};
+
+    try {
+      const ownersDir = path.join(inputDir, "owners");
+      if (fs.existsSync(ownersDir)) {
+        ownerData = readJson(path.join(ownersDir, "owner_data.json"));
+      }
+    } catch (e) {
+      // owners data not available
+    }
+
+    try {
+      const ownersDir = path.join(inputDir, "owners");
+      if (fs.existsSync(ownersDir)) {
+        utilitiesData = readJson(path.join(ownersDir, "utilities_data.json"));
+      }
+    } catch (e) {
+      // utilities data not available
+    }
+
+    try {
+      const ownersDir = path.join(inputDir, "owners");
+      if (fs.existsSync(ownersDir)) {
+        structuresData = readJson(path.join(ownersDir, "structure_data.json"));
+      }
+    } catch (e) {
+      // structures data not available
+    }
+
+    try {
+      const ownersDir = path.join(inputDir, "owners");
+      if (fs.existsSync(ownersDir)) {
+        layoutData = readJson(path.join(ownersDir, "layout_data.json"));
+      }
+    } catch (e) {
+      // layout data not available
+    }
 
     try {
       const seedCsvPath = path.join(".", "input.csv");
@@ -1604,13 +1650,15 @@ function main() {
         path: "property.property_type",
       };
     }
+    const pid = extractParcelId($);
+    writeJson(path.join(dataDir, "parcel.json"), {parcel_identifier: pid || ""});
     writeJson(path.join(dataDir, "property.json"), property);
 
     // Address
     const secTwpRng = extractSecTwpRng($);
     const addressText = extractAddressText($);
     const mailingAddress = extractOwnerMailingAddress($);
-    const hasOwnerMailingAddress = attemptWriteAddress(unAddr, secTwpRng, addressText, mailingAddress);
+    const mailingAddressObj = attemptWriteAddress(dataDir, unAddr, secTwpRng, addressText, mailingAddress);
 
     // Taxes
     const taxes = extractTaxes($);
@@ -1627,7 +1675,7 @@ function main() {
         ownership_transfer_date: s.ownership_transfer_date,
         purchase_price_amount: s.purchase_price_amount,
       }
-      writeJson(path.join(dataDir, `sales_${i + 1}.json`), saleObj);
+      writeJson(path.join(dataDir, `sales_history_${i + 1}.json`), saleObj);
       if (s.deed) {
         let deedObj = {"deed_type": s.deed};
         if (s.book && s.page) {
@@ -1636,7 +1684,7 @@ function main() {
         }
         writeJson(path.join(dataDir, `deed_${i + 1}.json`), deedObj);
         const suffix = `_${i + 1}`;
-        const saleDeedRelName = `relationship_sales_deed${suffix}.json`;
+        const saleDeedRelName = `relationship_sales_history_${i + 1}_has_deed.json`;
         const file = {
           document_type: null,
           file_format: null,
@@ -1644,10 +1692,10 @@ function main() {
           name: s.bookPage ? `Deed ${s.bookPage}` : "Deed Document",
           original_url: s.link || null,
         };
-        writeJson(path.join("data", `file_${i + 1}.json`), file);
-        const deedFileRelName = `relationship_deed_file${suffix}.json`;
+        writeJson(path.join(dataDir, `file_${i + 1}.json`), file);
+        const deedFileRelName = `relationship_deed_${i + 1}_has_file_${i + 1}.json`;
         const saleDeedRel = {
-          from: { "/": `./sales_${i + 1}.json` },
+          from: { "/": `./sales_history_${i + 1}.json` },
           to: { "/": `./deed_${i + 1}.json` },
         };
         writeJson(path.join(dataDir, saleDeedRelName), saleDeedRel);
@@ -1663,23 +1711,29 @@ function main() {
     const parcelDashed =
       extractParcelId($) || (propSeed && propSeed.parcel_id) || "";
     const parcelFlat = parcelDashed.replace(/[-]/g, "");
-    const ownerFiles = writeOwners(
-      ownerData,
-      dataDir,
-      parcelDashed,
-      parcelFlat,
-    );
+    // Only create owner files if there are sales to link them to
+    let ownerFiles = { companyFiles: [], personFiles: [] };
+    if (sales.length > 0) {
+      ownerFiles = writeOwners(
+        ownerData,
+        dataDir,
+        parcelDashed,
+        parcelFlat,
+      );
+    }
     // Relationship sales -> owner (company or person) using first sale
     if (sales.length > 0) {
       if (ownerFiles.companyFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_company.json"), {
+        writeJson(path.join(dataDir, "relationship_sales_history_1_buyer_company_1.json"), {
+          from: { "/": "./sales_history_1.json" },
           to: { "/": `./${ownerFiles.companyFiles[0]}` },
-          from: { "/": "./sales_1.json" },
         });
-        if (hasOwnerMailingAddress) {
+        if (mailingAddressObj) {
+          // Write the mailing_address.json file here
+          writeJson(path.join(dataDir, "mailing_address.json"), mailingAddressObj);
           writeJson(
             path.join(
-              "data",
+              dataDir,
               `relationship_company_has_mailing_address.json`,
             ),
             {
@@ -1689,22 +1743,29 @@ function main() {
           );
         }
       } else if (ownerFiles.personFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_person.json"), {
-          to: { "/": `./${ownerFiles.personFiles[0]}` },
-          from: { "/": "./sales_1.json" },
+        // Create relationships for ALL person files, not just the first one
+        ownerFiles.personFiles.forEach((personFile, index) => {
+          const personCounter = index + 1;
+          writeJson(path.join(dataDir, `relationship_sales_history_1_buyer_person_${personCounter}.json`), {
+            from: { "/": "./sales_history_1.json" },
+            to: { "/": `./${personFile}` },
+          });
+          if (mailingAddressObj && index === 0) {
+            // Only create mailing address relationship for the first person
+            // Write the mailing_address.json file here
+            writeJson(path.join(dataDir, "mailing_address.json"), mailingAddressObj);
+            writeJson(
+              path.join(
+                dataDir,
+                `relationship_person_has_mailing_address.json`,
+              ),
+              {
+                from: { "/": `./${personFile}` },
+                to: { "/": `./mailing_address.json` },
+              },
+            );
+          }
         });
-        if (hasOwnerMailingAddress) {
-          writeJson(
-            path.join(
-              "data",
-              `relationship_person_has_mailing_address.json`,
-            ),
-            {
-              from: { "/": `./${ownerFiles.personFiles[0]}` },
-              to: { "/": `./mailing_address.json` },
-            },
-          );
-        }
       }
     }
 
@@ -1787,7 +1848,7 @@ function main() {
           story_type: l.story_type ?? null,
           total_area_sq_ft: l.total_area_sq_ft ?? null,
         };
-        writeJson(path.join("data", `layout_${idx}.json`), layoutOut);
+        writeJson(path.join(dataDir, `layout_${idx}.json`), layoutOut);
         if (l.space_type === "Building") {
           const building_number = l.building_number;
           layoutBuildingMap[building_number.toString()] = idx;
@@ -1796,7 +1857,7 @@ function main() {
           const building_number = l.building_number;
           if (building_number) {
             const building_layout_number = layoutBuildingMap[building_number.toString()];
-            writeJson(path.join("data", `relationship_layout_${building_layout_number}_to_layout_${idx}.json`), {
+            writeJson(path.join(dataDir, `relationship_layout_${building_layout_number}_to_layout_${idx}.json`), {
               to: { "/": `./layout_${idx}.json` },
               from: { "/": `./layout_${building_layout_number}.json` },
             });
@@ -1804,8 +1865,8 @@ function main() {
         }
         if (utilEntry && l.space_type === "Building") {
           if (l.building_number && l.building_number.toString() in utilEntry) {
-            writeJson(path.join("data", `utility_${idx}.json`), utilEntry[l.building_number.toString()]);
-            writeJson(path.join("data", `relationship_layout_to_utility_${idx}.json`), {
+            writeJson(path.join(dataDir, `utility_${idx}.json`), utilEntry[l.building_number.toString()]);
+            writeJson(path.join(dataDir, `relationship_layout_to_utility_${idx}.json`), {
                       to: { "/": `./utility_${idx}.json` },
                       from: { "/": `./layout_${idx}.json` },
             },);
@@ -1813,8 +1874,8 @@ function main() {
         }
         if (structureEntry && l.space_type === "Building") {
           if (l.building_number && l.building_number.toString() in structureEntry) {
-            writeJson(path.join("data", `structure_${idx}.json`), structureEntry[l.building_number.toString()]);
-            writeJson(path.join("data", `relationship_layout_to_structure_${idx}.json`), {
+            writeJson(path.join(dataDir, `structure_${idx}.json`), structureEntry[l.building_number.toString()]);
+            writeJson(path.join(dataDir, `relationship_layout_to_structure_${idx}.json`), {
                       to: { "/": `./structure_${idx}.json` },
                       from: { "/": `./layout_${idx}.json` },
             },);

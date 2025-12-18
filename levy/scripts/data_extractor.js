@@ -441,7 +441,24 @@ function tokenizeNamePart(part) {
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(token => {
+      // Remove continuation markers from tokens (e.g., "GERARDO-CONT" -> "GERARDO")
+      return token.replace(/[\-]*(cont|continued)[\-]*$/i, '').trim();
+    })
+    .filter(token => {
+      if (!token) return false;
+      // Filter out standalone continuation markers
+      const upperToken = token.toUpperCase();
+      if (upperToken === 'CONT' || upperToken === '-CONT-' || upperToken === 'CONTINUED') {
+        return false;
+      }
+      // Filter out tokens that are only hyphens or special characters
+      if (/^[\-]+$/.test(token)) {
+        return false;
+      }
+      return true;
+    });
 }
 
 function buildPersonFromTokens(tokens, fallbackLastName) {
@@ -599,7 +616,44 @@ function parseOwnersFromText(rawText) {
   return { owners: deduped, invalids };
 }
 
-function mapFileDocumentType() {
+const FILE_DOCUMENT_TYPE_ENUM = new Set([
+  "Title",
+  "ConveyanceDeed",
+  "ConveyanceDeedWarrantyDeed",
+  "ConveyanceDeedQuitClaimDeed",
+  "ConveyanceDeedBargainAndSaleDeed",
+]);
+
+const FILE_DOCUMENT_TYPE_BY_DEED_TYPE = Object.freeze({
+  "Warranty Deed": "ConveyanceDeedWarrantyDeed",
+  "Special Warranty Deed": "ConveyanceDeedWarrantyDeed",
+  "Quitclaim Deed": "ConveyanceDeedQuitClaimDeed",
+  "Bargain and Sale Deed": "ConveyanceDeedBargainAndSaleDeed",
+  "Grant Deed": "ConveyanceDeedBargainAndSaleDeed",
+  "Trustee's Deed": "ConveyanceDeed",
+  "Personal Representative Deed": "ConveyanceDeed",
+  "Sheriff's Deed": "ConveyanceDeed",
+  "Tax Deed": "ConveyanceDeed",
+  "Lady Bird Deed": "ConveyanceDeed",
+  "Transfer on Death Deed": "ConveyanceDeed",
+  "Deed in Lieu of Foreclosure": "ConveyanceDeed",
+  "Life Estate Deed": "ConveyanceDeed",
+  "Miscellaneous": "Title",
+});
+
+function coerceFileDocumentType(value) {
+  if (value && FILE_DOCUMENT_TYPE_ENUM.has(value)) return value;
+  return "Title";
+}
+
+function mapFileDocumentType(rawInstrument) {
+  const deedType = mapDeedType(rawInstrument);
+  if (FILE_DOCUMENT_TYPE_BY_DEED_TYPE[deedType]) {
+    return FILE_DOCUMENT_TYPE_BY_DEED_TYPE[deedType];
+  }
+  if (deedType && deedType.toUpperCase().includes("DEED")) {
+    return "ConveyanceDeed";
+  }
   return "Title";
 }
 
@@ -2224,6 +2278,7 @@ function parseSales($) {
     instrument: findHeaderIndex(["instrument", "deed"]),
     book: findHeaderIndex(["book"]),
     page: findHeaderIndex(["page"]),
+    volume: findHeaderIndex(["volume"]),
     qualification: findHeaderIndex(["qualification"]),
     vacantImproved: findHeaderIndex(["vacant", "improved"]),
     grantor: findHeaderIndex(["grantor", "seller"]),
@@ -2254,11 +2309,12 @@ function parseSales($) {
       columnIndex.date >= 0
         ? extractCellText(getCell(cells, columnIndex.date))
         : null;
-    const priceText =
+    const priceCell =
       columnIndex.price >= 0
-        ? extractCellText(getCell(cells, columnIndex.price))
+        ? getCell(cells, columnIndex.price)
         : null;
-    if (!dateText || !priceText) return;
+    const priceText = priceCell ? extractCellText(priceCell) : null;
+    if (!dateText) return;
 
     const instrumentText =
       columnIndex.instrument >= 0
@@ -2287,45 +2343,178 @@ function parseSales($) {
         ? extractCellText(getCell(cells, columnIndex.grantee))
         : null;
 
-    let clerkUrl = null;
+    let volumeText =
+      columnIndex.volume >= 0
+        ? extractCellText(getCell(cells, columnIndex.volume))
+        : null;
+
+    const docLinkMap = new Map();
+    const registerDocLink = (href, overrides = {}) => {
+      if (!href) return;
+      const trimmed = String(href).trim();
+      if (!trimmed) return;
+      const existing =
+        docLinkMap.get(trimmed) || {
+          url: trimmed,
+          book: null,
+          page: null,
+          volume: null,
+          instrument_number: null,
+        };
+      const parsed = parseDeedLink(trimmed);
+      const merged = {
+        url: trimmed,
+        book:
+          existing.book ||
+          overrides.book ||
+          parsed.book ||
+          null,
+        page:
+          existing.page ||
+          overrides.page ||
+          parsed.page ||
+          null,
+        volume:
+          existing.volume ||
+          overrides.volume ||
+          parsed.volume ||
+          null,
+        instrument_number:
+          existing.instrument_number ||
+          overrides.instrument_number ||
+          parsed.instrument_number ||
+          null,
+      };
+      docLinkMap.set(trimmed, merged);
+    };
+
+    if (bookCell && bookCell.length) {
+      const override = { book: bookText || null };
+      bookCell.find("a[href]").each((_, anchor) => {
+        registerDocLink($(anchor).attr("href"), override);
+      });
+    }
+
+    if (pageCell && pageCell.length) {
+      const override = {
+        book: bookText || null,
+        page: pageText || null,
+      };
+      pageCell.find("a[href]").each((_, anchor) => {
+        registerDocLink($(anchor).attr("href"), override);
+      });
+    }
+
+    const documents = Array.from(docLinkMap.values()).map((doc) => {
+      const docBook = normalizeId(doc.book);
+      const docPage = normalizeId(doc.page);
+      const docVolume = normalizeId(doc.volume);
+      const docInstrument = normalizeId(doc.instrument_number);
+      if (!volumeText && docVolume) {
+        volumeText = docVolume;
+      }
+      return {
+        url: doc.url,
+        book: docBook,
+        page: docPage,
+        volume: docVolume,
+        instrument_number: docInstrument,
+      };
+    });
+
+    let clerkUrl = documents.length ? documents[0].url : null;
     let instrumentNumber = null;
-    const linkSources = [];
-    if (bookCell) {
-      const link = bookCell.find("a[href]").first();
-      if (link && link.length) linkSources.push(link);
-    }
-    if (!linkSources.length && pageCell) {
-      const link = pageCell.find("a[href]").first();
-      if (link && link.length) linkSources.push(link);
-    }
-    if (linkSources.length) {
-      clerkUrl = linkSources[0].attr("href") || null;
-    }
-    if (clerkUrl) {
-      const docMatch = clerkUrl.match(/[?&](?:docid|instrument|inst|instrumentnumber)=(\d+)/i);
-      if (docMatch) {
-        instrumentNumber = docMatch[1];
+    documents.some((doc) => {
+      if (!instrumentNumber && doc.instrument_number) {
+        instrumentNumber = doc.instrument_number;
+      }
+      return instrumentNumber != null;
+    });
+    if (!instrumentNumber) {
+      const match =
+        instrumentText &&
+        instrumentText.match(/\b\d{5,}\b/);
+      if (match) {
+        instrumentNumber = match[0];
       }
     }
 
+    const firstDocWithBook = documents.find((doc) => doc.book);
+    const firstDocWithPage = documents.find((doc) => doc.page);
+    const firstDocWithVolume = documents.find((doc) => doc.volume);
+    const bookValue = normalizeId(bookText) || (firstDocWithBook ? firstDocWithBook.book : null);
+    const pageValue = normalizeId(pageText) || (firstDocWithPage ? firstDocWithPage.page : null);
+    const volumeValue = normalizeId(volumeText) || (firstDocWithVolume ? firstDocWithVolume.volume : null);
+    const instrumentValue = normalizeId(instrumentNumber);
+
     const priceValue = moneyToNumber(priceText);
-    if (dateText && (priceValue != null || priceText)) {
-      sales.push({
-        date: dateText,
-        price: priceValue,
-        instrument: instrumentText || null,
-        book: bookText || null,
-        page: pageText || null,
-        qualification: qualificationText || null,
-        vacantImproved: vacantImprovedText || null,
-        grantor: grantorText || null,
-        grantee: granteeText || null,
-        clerkUrl: clerkUrl || null,
-        instrumentNumber: instrumentNumber || null,
-      });
-    }
+    sales.push({
+      date: dateText,
+      price: priceValue,
+      instrument: instrumentText || null,
+      book: bookValue,
+      page: pageValue,
+      volume: volumeValue,
+      qualification: qualificationText || null,
+      vacantImproved: vacantImprovedText || null,
+      grantor: grantorText || null,
+      grantee: granteeText || null,
+      clerkUrl: clerkUrl || null,
+      instrument_number: instrumentValue,
+      documents,
+    });
   });
   return sales;
+}
+
+function parseDeedLink(href) {
+  if (!href) return {};
+  try {
+    const url = new URL(href, "https://example.com/");
+    const lowered = {};
+    url.searchParams.forEach((value, key) => {
+      if (value == null || value === "") return;
+      const normalizedKey = key.toLowerCase();
+      if (lowered[normalizedKey] != null) return;
+      lowered[normalizedKey] = value;
+    });
+    const book =
+      lowered.booknumber ||
+      lowered.book ||
+      null;
+    const page =
+      lowered.pagenumber ||
+      lowered.page ||
+      null;
+    const volume =
+      lowered.volume ||
+      lowered.vol ||
+      lowered.booktype ||
+      null;
+    const instrument =
+      lowered.docid ||
+      lowered.instrument ||
+      lowered.inst ||
+      lowered.instrumentnumber ||
+      lowered.docnumber ||
+      null;
+    return {
+      book: book || null,
+      page: page || null,
+      volume: volume || null,
+      instrument_number: instrument || null,
+    };
+  } catch {
+    const match = String(href).match(
+      /[?&](?:docid|instrument|inst|instrumentnumber|docnumber)=([A-Za-z0-9]+)/i,
+    );
+    return {
+      book: null,
+      page: null,
+      volume: null,
+      instrument_number: match ? match[1] : null,
+    };
+  }
 }
 
 function parseValuationsWorking($) {
@@ -2495,6 +2684,15 @@ function main() {
   const dataDir = path.join(".", "data");
   ensureDir(dataDir);
 
+  // Remove mailing_address.json if it exists from previous runs
+  // (not part of the County data group schema)
+  const mailingAddressPath = path.join(dataDir, "mailing_address.json");
+  if (fs.existsSync(mailingAddressPath)) {
+    try {
+      fs.unlinkSync(mailingAddressPath);
+    } catch {}
+  }
+
   const html = readText("input.html");
   const $ = cheerio.load(html);
 
@@ -2532,6 +2730,14 @@ function main() {
     parcelIdHtml ||
     normalizeId(seed && seed.parcel_id) ||
     null;
+  const propertySeed = readJSON("property_seed.json");
+  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
+    throw {
+      type: "error",
+      message: "Request identifier and parcel id don't match.",
+      path: "property.request_identifier",
+    };
+  }
   const propId =
     propIdHtml ||
     accountIdHtml ||
@@ -2604,10 +2810,46 @@ function main() {
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    const middleName = middleRaw ? middleRaw : null;
+    // Validate names against the pattern: must start with uppercase letter
+    const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+
+    // Validate and clean first_name
+    let validFirstName = firstName;
+    if (validFirstName && !namePattern.test(validFirstName)) {
+      // Try to clean it by removing leading/trailing hyphens and special chars
+      validFirstName = validFirstName.replace(/^[\-]+|[\-]+$/g, '').trim();
+      // If still invalid after cleaning, set to null
+      if (!validFirstName || !namePattern.test(validFirstName)) {
+        validFirstName = null;
+      }
+    }
+
+    // Validate and clean last_name
+    let validLastName = lastName;
+    if (validLastName && !namePattern.test(validLastName)) {
+      // Try to clean it by removing leading/trailing hyphens and special chars
+      validLastName = validLastName.replace(/^[\-]+|[\-]+$/g, '').trim();
+      // If still invalid after cleaning, set to null
+      if (!validLastName || !namePattern.test(validLastName)) {
+        validLastName = null;
+      }
+    }
+
+    // Skip if both first and last names are invalid
+    if (!validFirstName && !validLastName) {
+      return null;
+    }
+
+    // Set default empty string if name is null but we have at least one valid name
+    const finalFirstName = validFirstName || "";
+    const finalLastName = validLastName || "";
+
+    // Validate middle_name against the pattern
+    const middleName = middleRaw && namePattern.test(middleRaw) ? middleRaw : null;
+
     const key =
-      firstName || lastName
-        ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
+      finalFirstName || finalLastName
+        ? `${finalFirstName.toLowerCase()}|${middleRaw.toLowerCase()}|${finalLastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {
@@ -2618,8 +2860,8 @@ function main() {
     const filename = `person_${personIndex}.json`;
     const personObj = {
       birth_date: personData.birth_date || null,
-      first_name: firstName || "",
-      last_name: lastName || "",
+      first_name: finalFirstName,
+      last_name: finalLastName,
       middle_name: middleName,
       prefix_name:
         personData && personData.prefix_name != null
@@ -3730,7 +3972,7 @@ const structureItems = (() => {
     county_name:
       (unaddr &&
         (unaddr.county_jurisdiction || unaddr.county_name || unaddr.county)) ||
-      "Monroe",
+      "Levy",
     country_code: "US",
   };
   if (!address.unnormalized_address && addrFromHTML.addrLine1) {
@@ -3825,32 +4067,6 @@ const structureItems = (() => {
         (ownerMailingInfo.rawAddresses &&
           ownerMailingInfo.rawAddresses[0]))) ||
     null;
-  const mailingAddressFilename = "mailing_address.json";
-  const mailingAddressPath = `./${mailingAddressFilename}`;
-  const mailingAddressObj = {
-    unnormalized_address: primaryMailingAddress || null,
-    source_http_request: clone(defaultSourceHttpRequest),
-    request_identifier: requestIdentifier,
-    latitude: null,
-    longitude: null,
-  };
-  writeJSON(path.join(dataDir, mailingAddressFilename), mailingAddressObj);
-  const canonicalMailingPath = mailingAddressPath;
-
-  const mailingAddressFiles = [];
-  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-    if (!addr) return;
-    const fileName = `mailing_address_${idx + 1}.json`;
-    const mailingObj = {
-      unnormalized_address: addr,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    mailingAddressFiles.push({ path: `./${fileName}` });
-  });
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -3873,70 +4089,7 @@ const structureItems = (() => {
     }
   }
 
-  const currentOwnerEntities = [];
-  currentOwners.forEach((owner, idx) => {
-    if (!owner || !owner.type) return;
-    let mailingIdx = null;
-    if (
-      ownerMailingInfo.rawAddresses[idx] != null &&
-      mailingAddressFiles.length
-    ) {
-      const rawAddr = ownerMailingInfo.rawAddresses[idx];
-      const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-      if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
-    }
-    if (mailingIdx == null && mailingAddressFiles.length) {
-      mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
-    }
-    const mailingRecord =
-      mailingIdx != null && mailingIdx >= 0
-        ? mailingAddressFiles[mailingIdx]
-        : null;
-
-    if (owner.type === "person") {
-      const normalizedPerson = normalizeOwner(owner, ownersByDate);
-      const personPath = createPersonRecord(normalizedPerson);
-      if (personPath) {
-        currentOwnerEntities.push({
-          type: "person",
-          path: personPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
-          canonicalMailingPath,
-        });
-      }
-    } else if (owner.type === "company") {
-      const companyPath = createCompanyRecord(owner.name || "");
-      if (companyPath) {
-        currentOwnerEntities.push({
-          type: "company",
-          path: companyPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
-          canonicalMailingPath,
-        });
-      }
-    }
-  });
-
-  const mailingRelationshipKeys = new Set();
-  currentOwnerEntities.forEach((entity) => {
-    if (!entity.path) return;
-    const targets = [];
-    if (entity.mailingPath) targets.push(entity.mailingPath);
-    if (entity.canonicalMailingPath) targets.push(entity.canonicalMailingPath);
-    targets.forEach((targetPath) => {
-      if (!targetPath) return;
-      const relKey = `${entity.path}|${targetPath}`;
-      if (mailingRelationshipKeys.has(relKey)) return;
-      mailingRelationshipKeys.add(relKey);
-      const relFilename = makeRelationshipFilename(entity.path, targetPath);
-      if (!relFilename) return;
-      const relObj = {
-        from: { "/": entity.path },
-        to: { "/": targetPath },
-      };
-      writeJSON(path.join(dataDir, relFilename), relObj);
-    });
-  });
+  // Note: mailing_address.json creation removed as it's not part of the expected schema for this data group
 
   const work = parseValuationsWorking($);
   if (work) {
@@ -3976,57 +4129,152 @@ const structureItems = (() => {
     writeJSON(path.join(dataDir, `tax_${rec.year}.json`), tax);
   });
 
+  // Parse sales first to determine if we should create current owner entities
   const sales = parseSales($);
+
+  // Note: currentOwnerEntities will be created later, only if we have a valid sale to link them to
   const salesSorted = sales.sort(
     (a, b) => new Date(toISOFromMDY(b.date)) - new Date(toISOFromMDY(a.date)),
   );
 
   const saleFileRefs = [];
   const saleOwnerRelations = [];
-  const saleBuyerStatus = new Map();
+  const saleBuyerTargets = new Map();
+
+  const addSaleOwnerRelation = (fromPath, toPath) => {
+    if (!fromPath || !toPath) return;
+    let buyerSet = saleBuyerTargets.get(fromPath);
+    if (!buyerSet) {
+      buyerSet = new Set();
+      saleBuyerTargets.set(fromPath, buyerSet);
+    }
+    if (buyerSet.has(toPath)) return;
+    buyerSet.add(toPath);
+    saleOwnerRelations.push({
+      fromPath,
+      toPath,
+    });
+  };
+
+  let deedDocumentFileCounter = 0;
 
   salesSorted.forEach((s, idx) => {
     const iso = toISOFromMDY(s.date) || null;
     const saleIdx = idx + 1;
     const salesFilename = `sales_history_${saleIdx}.json`;
     const salesPath = `./${salesFilename}`;
+    const purchasePrice =
+      typeof s.price === "number" && Number.isFinite(s.price)
+        ? s.price
+        : null;
     const saleObj = {
       ownership_transfer_date: iso,
-      purchase_price_amount: s.price || 0,
+      purchase_price_amount: purchasePrice,
     };
     writeJSON(path.join(dataDir, salesFilename), saleObj);
-    saleBuyerStatus.set(salesPath, false);
+
+    const deedTypeLabel = mapDeedType(s.instrument);
+    const rawDocRecords = Array.isArray(s.documents)
+      ? s.documents.filter((doc) => doc && doc.url)
+      : [];
+    const normalizedDocRecords = [];
+    const seenDocUrls = new Set();
+    rawDocRecords.forEach((doc) => {
+      const url = doc.url ? String(doc.url).trim() : "";
+      if (!url) return;
+      const urlKey = url.toLowerCase();
+      if (seenDocUrls.has(urlKey)) return;
+      seenDocUrls.add(urlKey);
+      normalizedDocRecords.push({
+        url,
+        book: normalizeId(doc.book),
+        page: normalizeId(doc.page),
+        volume: normalizeId(doc.volume),
+        instrument_number: normalizeId(doc.instrument_number),
+      });
+    });
+    if (!normalizedDocRecords.length && s.clerkUrl) {
+      const fallbackUrl = String(s.clerkUrl).trim();
+      if (fallbackUrl) {
+        normalizedDocRecords.push({
+          url: fallbackUrl,
+          book: normalizeId(s.book),
+          page: normalizeId(s.page),
+          volume: normalizeId(s.volume),
+          instrument_number: normalizeId(s.instrument_number),
+        });
+      }
+    }
+
+    const findDocFieldValue = (field) => {
+      for (const doc of normalizedDocRecords) {
+        if (doc && doc[field]) return doc[field];
+      }
+      return null;
+    };
+
+    const bookVal = normalizeId(s.book) || findDocFieldValue("book");
+    const pageVal = normalizeId(s.page) || findDocFieldValue("page");
+    const volumeVal = normalizeId(s.volume) || findDocFieldValue("volume");
+    const instrumentVal =
+      normalizeId(s.instrument_number) || findDocFieldValue("instrument_number");
 
     let deedPath = null;
     const hasDeedInfo =
-      (s.instrument && s.instrument.trim()) ||
-      (s.book && s.book.trim()) ||
-      (s.page && s.page.trim()) ||
-      (s.instrumentNumber && s.instrumentNumber.trim()) ||
-      (s.clerkUrl && s.clerkUrl.trim());
+      normalizeId(s.instrument) ||
+      bookVal ||
+      pageVal ||
+      volumeVal ||
+      instrumentVal ||
+      normalizedDocRecords.length;
 
     if (hasDeedInfo) {
       const deedFilename = `deed_${saleIdx}.json`;
       deedPath = `./${deedFilename}`;
       const deedObj = {
-        deed_type: mapDeedType(s.instrument),
+        deed_type: deedTypeLabel,
       };
-      if (s.book) deedObj.book = String(s.book);
-      if (s.page) deedObj.page = String(s.page);
-      if (s.instrumentNumber) {
-        deedObj.instrument_number = String(s.instrumentNumber);
+      if (bookVal) deedObj.book = bookVal;
+      if (pageVal) deedObj.page = pageVal;
+      if (volumeVal) deedObj.volume = volumeVal;
+      if (instrumentVal) {
+        deedObj.instrument_number = instrumentVal;
       }
       writeJSON(path.join(dataDir, deedFilename), deedObj);
 
-      if (s.clerkUrl) {
-        const fileFilename = `file_${saleIdx}.json`;
+      const documentType = coerceFileDocumentType(
+        mapFileDocumentType(s.instrument),
+      );
+      normalizedDocRecords.forEach((docMeta) => {
+        if (!docMeta || !docMeta.url) return;
+        deedDocumentFileCounter += 1;
+        const fileFilename = `file_${deedDocumentFileCounter}.json`;
         const filePath = `./${fileFilename}`;
+        const nameParts = [];
+        if (deedTypeLabel && deedTypeLabel !== "Miscellaneous") {
+          nameParts.push(deedTypeLabel);
+        } else if (s.instrument) {
+          nameParts.push(String(s.instrument).trim());
+        }
+        if (docMeta.volume) nameParts.push(`Vol ${docMeta.volume}`);
+        if (docMeta.book) nameParts.push(`Book ${docMeta.book}`);
+        if (docMeta.page) nameParts.push(`Page ${docMeta.page}`);
+        const docInstrument =
+          docMeta.instrument_number || instrumentVal || null;
+        if (docInstrument) {
+          nameParts.push(`Instrument #${docInstrument}`);
+        }
+        if (!nameParts.length && iso) {
+          nameParts.push(`Recorded ${iso}`);
+        }
         const fileObj = {
-          file_format: "txt",
-          name: `${(iso || "").slice(0, 4)} Clerk Link`,
-          original_url: s.clerkUrl,
+          file_format: null,
+          name: nameParts.length
+            ? nameParts.join(" - ")
+            : `Deed Document ${saleIdx}`,
+          original_url: docMeta.url,
           ipfs_url: null,
-          document_type: mapFileDocumentType(),
+          document_type: documentType,
         };
         writeJSON(path.join(dataDir, fileFilename), fileObj);
 
@@ -4038,7 +4286,7 @@ const structureItems = (() => {
           };
           writeJSON(path.join(dataDir, relDeedFile), relDF);
         }
-      }
+      });
 
       const relSalesDeed = makeRelationshipFilename(salesPath, deedPath);
       if (relSalesDeed) {
@@ -4055,30 +4303,14 @@ const structureItems = (() => {
       if (!owner || !owner.type) return;
       if (owner.type === "person") {
         const personPath = createPersonRecord(owner);
-        if (personPath) {
-          saleOwnerRelations.push({
-            fromPath: salesPath,
-            toPath: personPath,
-          });
-          saleBuyerStatus.set(salesPath, true);
-        }
+        addSaleOwnerRelation(salesPath, personPath);
       } else if (owner.type === "company") {
         const companyPath = createCompanyRecord(owner.name || "");
-        if (companyPath) {
-          saleOwnerRelations.push({
-            fromPath: salesPath,
-            toPath: companyPath,
-          });
-          saleBuyerStatus.set(salesPath, true);
-        }
+        addSaleOwnerRelation(salesPath, companyPath);
       }
     });
 
-    if (iso) {
-      saleFileRefs.push({ saleIdx, dateISO: iso, salesPath });
-    } else {
-      saleFileRefs.push({ saleIdx, dateISO: null, salesPath });
-    }
+    saleFileRefs.push({ saleIdx, dateISO: iso, salesPath });
   });
 
   if (ownersEntry && ownersByDate && saleFileRefs.length) {
@@ -4091,48 +4323,57 @@ const structureItems = (() => {
       if (!saleDatesISO.has(dateKey)) return;
       const ref = saleDatesISO.get(dateKey);
       if (!ref || !ref.salesPath) return;
-      if (saleBuyerStatus.get(ref.salesPath)) return;
+      const existingBuyers = saleBuyerTargets.get(ref.salesPath);
+      if (existingBuyers && existingBuyers.size) return;
       const ownersArr = ownersByDate[dateKey] || [];
       ownersArr.forEach((owner) => {
         if (!owner || !owner.type) return;
         if (owner.type === "person") {
           const normalized = normalizeOwner(owner, ownersByDate);
           const personPath = createPersonRecord(normalized);
-          if (personPath) {
-            saleOwnerRelations.push({
-              fromPath: ref.salesPath,
-              toPath: personPath,
-            });
-            saleBuyerStatus.set(ref.salesPath, true);
-          }
+          addSaleOwnerRelation(ref.salesPath, personPath);
         } else if (owner.type === "company") {
           const companyPath = createCompanyRecord(owner.name || "");
-          if (companyPath) {
-            saleOwnerRelations.push({
-              fromPath: ref.salesPath,
-              toPath: companyPath,
-            });
-            saleBuyerStatus.set(ref.salesPath, true);
-          }
+          addSaleOwnerRelation(ref.salesPath, companyPath);
         }
       });
     });
   }
 
   const latestSaleRef = saleFileRefs.length ? saleFileRefs[0] : null;
-  if (
-    latestSaleRef &&
-    latestSaleRef.salesPath &&
-    !saleBuyerStatus.get(latestSaleRef.salesPath)
-  ) {
+
+  // Only create current owner entities if we have a valid sale to link them to
+  const currentOwnerEntities = [];
+  if (latestSaleRef && latestSaleRef.salesPath) {
+    // Create person/company records for current owners
+    currentOwners.forEach((owner) => {
+      if (!owner || !owner.type) return;
+
+      if (owner.type === "person") {
+        const normalizedPerson = normalizeOwner(owner, ownersByDate);
+        const personPath = createPersonRecord(normalizedPerson);
+        if (personPath) {
+          currentOwnerEntities.push({
+            type: "person",
+            path: personPath,
+          });
+        }
+      } else if (owner.type === "company") {
+        const companyPath = createCompanyRecord(owner.name || "");
+        if (companyPath) {
+          currentOwnerEntities.push({
+            type: "company",
+            path: companyPath,
+          });
+        }
+      }
+    });
+
+    // Link current owner entities to the latest sale
     currentOwnerEntities.forEach((entity) => {
       if (!entity.path) return;
-      saleOwnerRelations.push({
-        fromPath: latestSaleRef.salesPath,
-        toPath: entity.path,
-      });
+      addSaleOwnerRelation(latestSaleRef.salesPath, entity.path);
     });
-    saleBuyerStatus.set(latestSaleRef.salesPath, true);
   }
 
   const saleOwnerRelationshipKeys = new Set();

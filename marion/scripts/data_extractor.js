@@ -563,7 +563,7 @@ const DEFAULT_PROPERTY_CLASS = {
   property_usage_type: "Unknown",
   structure_form: null,
   number_of_units_type: null,
-  build_status: null,
+  build_status: "Improved",
 };
 
 function mapPropertyClass(pc) {
@@ -728,38 +728,61 @@ function extractSalesPrecise($) {
 }
 
 function extractLegalDescription($) {
-  let desc = null;
-  const a = $("a").filter((i, el) =>
-    /Property Description/i.test($(el).text()),
-  );
-  if (a.length) {
-    const center = a.closest("center");
-    const parts = [];
-    let el = center.next();
-    while (el && el.length) {
-      const tag = (el[0].tagName || "").toLowerCase();
-      if (tag === "hr") break;
-      const txt = el.text().trim();
-      if (txt) parts.push(txt);
-      el = el.next();
-    }
-    if (parts.length) {
-      desc = parts.join("\n");
-    }
+  const anchor = $('a[href*="LEGAHELP"]');
+  if (!anchor.length) {
+    return null;
   }
-  if (!desc) {
-    const html = $.html();
-    const m = html.match(/Property Description[\s\S]*?<br\/?>([\s\S]*?)<hr>/i);
-    if (m) {
-      desc = cheerio
-        .load("<div>" + m[1] + "</div>")("div")
-        .text()
-        .replace(/\s+$/, "")
-        .trim()
-        .replace(/\n{2,}/g, "\n");
+
+  const center = anchor.closest("center");
+  const startNode = center.length ? center[0] : anchor[0];
+  const lines = [];
+  let node = startNode.nextSibling;
+
+  // Walk siblings after the Property Description header until the next section starts.
+  while (node) {
+    if (node.type === "tag") {
+      if (["hr", "center", "table", "b"].includes(node.name)) {
+        break;
+      }
+      if (node.name === "br") {
+        node = node.nextSibling;
+        continue;
+      }
     }
+
+    if (node.type === "text") {
+      const normalized = node.data.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+      if (normalized) {
+        lines.push(normalized);
+      }
+    }
+
+    node = node.nextSibling;
   }
-  return desc || null;
+
+  return lines.length ? lines.join("\n") : null;
+}
+
+function parseLegalDescriptionDetails(description) {
+  if (!description) {
+    return null;
+  }
+
+  const text = description.replace(/\s+/g, " ").toUpperCase();
+  const extract = (pattern) => {
+    const match = text.match(pattern);
+    return match ? match[1].trim() : null;
+  };
+
+  const details = {
+    section: extract(/\bSEC(?:TION)?\s*([0-9A-Z]+)/i),
+    township: extract(/\bTWP(?:SHIP)?\s*([0-9A-Z]+)/i),
+    range: extract(/\bR(?:GE|NG|ANGE)\s*([0-9A-Z]+)/i),
+    block: extract(/\bBLK(?:OCK)?\s*([0-9A-Z-]+)/i),
+    lot: extract(/\bLOT\s*([0-9A-Z-]+)/i),
+  };
+
+  return Object.values(details).some(Boolean) ? details : null;
 }
 
 function parsePropertyAddress(html) {
@@ -786,6 +809,214 @@ function writeOut(filePath, obj) {
   const outPath = path.join("data", filePath);
   ensureDir(path.dirname(outPath));
   fs.writeFileSync(outPath, JSON.stringify(obj, null, 2), "utf8");
+}
+/**
+ * Minimal Geometry model that mirrors the Elephant Geometry class.
+ */
+class Geometry {
+  constructor({ latitude, longitude, polygon }) {
+    this.latitude = latitude ?? null;
+    this.longitude = longitude ?? null;
+    this.polygon = polygon ?? null;
+  }
+
+  /**
+   * Build a Geometry instance from a CSV record.
+   */
+  static fromRecord(record) {
+    return new Geometry({
+      latitude: toNumber(record.latitude),
+      longitude: toNumber(record.longitude),
+      polygon: parsePolygon(
+        record.parcel_polygon
+      )
+    });
+  }
+}
+
+const NORMALIZE_EOL_REGEX = /\r\n/g;
+
+function parseCsv(content) {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let insideQuotes = false;
+
+  for (let i = 0; i < content.length; i += 1) {
+    const char = content[i];
+
+    if (char === '"') {
+      if (insideQuotes && content[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !insideQuotes) {
+      row.push(current);
+      current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !insideQuotes) {
+      if (char === '\r' && content[i + 1] === '\n') {
+        i += 1;
+      }
+      row.push(current);
+      if (row.some((value) => value.length > 0)) {
+        rows.push(row);
+      }
+      row = [];
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0 || row.length > 0) {
+    row.push(current);
+    if (row.some((value) => value.length > 0)) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
+}
+
+function parsePolygon(value) {
+  if (!value) {
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (isGeoJsonGeometry(parsed)) {
+    return parsed;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return null;
+  }
+
+  const depth = coordinatesDepth(parsed);
+  if (depth === 4) {
+    return { type: 'MultiPolygon', coordinates: parsed };
+  }
+
+  if (depth === 3) {
+    return { type: 'Polygon', coordinates: parsed };
+  }
+
+  if (depth === 2) {
+    return { type: 'Polygon', coordinates: [parsed] };
+  }
+
+  return null;
+}
+
+function coordinatesDepth(value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    return 0;
+  }
+
+  return 1 + coordinatesDepth(value[0]);
+}
+
+function isGeoJsonGeometry(value) {
+  return (
+    value &&
+    typeof value === 'object' &&
+    (value.type === 'Polygon' || value.type === 'MultiPolygon') &&
+    Array.isArray(value.coordinates)
+  );
+}
+
+function toNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
+}
+
+function splitGeometry(record) {
+  const baseGeometry = Geometry.fromRecord(record);
+  const { polygon } = baseGeometry;
+
+  if (!polygon || polygon.type !== 'MultiPolygon') {
+    return [baseGeometry];
+  }
+
+  return polygon.coordinates.map((coords, index) => {
+    const identifier = baseGeometry.request_identifier
+      ? `${baseGeometry.request_identifier}#${index + 1}`
+      : null;
+
+    return new Geometry({
+      latitude: baseGeometry.latitude,
+      longitude: baseGeometry.longitude,
+      polygon: {
+        type: 'Polygon',
+        coordinates: coords,
+      },
+      request_identifier: identifier,
+    });
+  });
+}
+
+/**
+ * Read the provided CSV file (defaults to ./input.csv) and return Geometry instances.
+ */
+function createGeometryInstances(csvContent) {
+
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const headers = rows[0].map((header) => header.trim());
+  const records = rows.slice(1).map((values) =>
+    headers.reduce((acc, header, index) => {
+      acc[header] = values[index] ?? '';
+      return acc;
+    }, {})
+  );
+
+  return records.flatMap((record) => splitGeometry(record));
+}
+
+function createGeometryClass(geometryInstances) {
+  let geomIndex = 1;
+  for(let geom of geometryInstances) {
+    let polygon = [];
+    let geometry = {
+      "latitude": geom.latitude,
+      "longitude": geom.longitude,
+    }
+    if (geom && geom.polygon) {
+      for (const coordinate of geom.polygon.coordinates[0]) {
+        polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
+      }
+      geometry.polygon = polygon;
+    }
+    writeJSON(path.join("data", `geometry_${geomIndex}.json`), geometry);
+    writeJSON(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
+        from: { "/": `./parcel.json` },
+        to: { "/": `./geometry_${geomIndex}.json` },
+    });
+    geomIndex++;
+  }
 }
 
 function main() {
@@ -823,6 +1054,7 @@ function main() {
   const yearBuilt = extractYearBuiltCheerio($);
   const zoning = extractZoning($) || null;
   const legalDescription = extractLegalDescription($);
+  const legalDescriptionParsedInfo = parseLegalDescriptionDetails(legalDescription);
   const taxesAssess = extractTaxesAssessments($);
   const history = extractHistoryTaxes($);
   const sales = extractSalesPrecise($);
@@ -838,8 +1070,24 @@ function main() {
       : null);
   const key_part = requestIdentifier ?? parcelIdentifier ?? parcelIdFromPage ?? null;
   const key = `property_${key_part}`;
-  const util = utilsData[key];
-  const struct = structuresData[key];
+  const util = utilsData ? utilsData[key] : null;
+  const struct = structuresData ? structuresData[key] : null;
+  
+  try {
+    const seedCsvPath = path.join(".", "input.csv");
+    const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
+    createGeometryClass(createGeometryInstances(seedCsv));
+  } catch (e) {
+    const latitude = unnorm && unnorm.latitude ? unnorm.latitude : null;
+    const longitude = unnorm && unnorm.longitude ? unnorm.longitude : null;
+    if (latitude && longitude) {
+      const coordinate = new Geometry({
+        latitude: latitude,
+        longitude: longitude
+      });
+      createGeometryClass([coordinate]);
+    }
+  }
 
   // property.json
   const property = {
@@ -860,15 +1108,51 @@ function main() {
       zoning: zoning,
     };
     writeJSON(path.join(dataDir, "property.json"), property);
+    writeJSON(path.join(dataDir, "parcel.json"), {parcel_identifier: parcelIdentifier || ""});
+
+    // Create property -> parcel relationship
+    writeJSON(path.join(dataDir, "relationship_property_has_parcel.json"), {
+      from: { "/": "./property.json" },
+      to: { "/": "./parcel.json" },
+    });
   
 
   // address.json
   if (address) {
     const addressObj = {
       county_name: "Marion",
-      latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
-      longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
+      // latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
+      // longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
       unnormalized_address: address,
+    };
+    writeJSON(path.join(dataDir, "address.json"), addressObj);
+    writeJSON(path.join(dataDir, "relationship_property_has_address.json"), {
+                to: { "/": `./address.json` },
+                from: { "/": `./property.json` },
+              });
+  } else if (legalDescriptionParsedInfo) {
+    const addressObj = {
+      county_name: "Marion",
+      // latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
+      // longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
+      // unnormalized_address: address,
+      section: legalDescriptionParsedInfo.section,
+      township: legalDescriptionParsedInfo.township,
+      range: legalDescriptionParsedInfo.range,
+      block: legalDescriptionParsedInfo.block,
+      lot: legalDescriptionParsedInfo.lot,
+      city_name: null,
+      country_code: "US",
+      postal_code: null,
+      state_code: "FL",
+      street_name: null,
+      street_number: null,
+      street_suffix_type: null,
+      plus_four_postal_code: null,
+      street_post_directional_text: null,
+      street_pre_directional_text: null,
+      unit_identifier: null,
+      route_number: null,
     };
     writeJSON(path.join(dataDir, "address.json"), addressObj);
     writeJSON(path.join(dataDir, "relationship_property_has_address.json"), {
@@ -897,6 +1181,11 @@ function main() {
       tax.yearly_tax_amount = taxesAssess;
     }
     writeJSON(path.join(dataDir, `tax_${h.year}.json`), tax);
+    // Create property -> tax relationship
+    writeJSON(path.join(dataDir, `relationship_property_has_tax_${h.year}.json`), {
+      from: { "/": "./property.json" },
+      to: { "/": `./tax_${h.year}.json` },
+    });
   });
 
   // sales_*.json and deeds + files + relationships
@@ -910,6 +1199,12 @@ function main() {
     };
     const salePath = path.join(dataDir, `sales_${idx + 1}.json`);
     writeJSON(salePath, salesObj);
+
+    // Create property -> sales relationship
+    writeJSON(path.join(dataDir, `relationship_property_has_sales_${idx + 1}.json`), {
+      from: { "/": "./property.json" },
+      to: { "/": `./sales_${idx + 1}.json` },
+    });
 
     // Deed mapping
     let deed_type = null;
@@ -995,6 +1290,36 @@ function main() {
           });
         }
       });
+
+      // Create relationships between current owners and the most recent sale
+      if (sales.length > 0) {
+        const mostRecentSaleIdx = sales.length;
+        let relPersonCounter = 0;
+        let relCompanyCounter = 0;
+
+        owners.forEach((o) => {
+          if (o.type === "person") {
+            relPersonCounter += 1;
+            writeJSON(
+              path.join(dataDir, `relationship_sales_person_${relPersonCounter}.json`),
+              {
+                from: { "/": `./sales_${mostRecentSaleIdx}.json` },
+                to: { "/": `./person_${relPersonCounter}.json` },
+              }
+            );
+          }
+          if (o.type === "company") {
+            relCompanyCounter += 1;
+            writeJSON(
+              path.join(dataDir, `relationship_sales_company_${relCompanyCounter}.json`),
+              {
+                from: { "/": `./sales_${mostRecentSaleIdx}.json` },
+                to: { "/": `./company_${relCompanyCounter}.json` },
+              }
+            );
+          }
+        });
+      }
     }
   }
 
@@ -1026,6 +1351,12 @@ function main() {
     view: null,
   };
   writeJSON(path.join(dataDir, "lot.json"), lot);
+
+  // property_has_lot relationship
+  writeJSON(path.join(dataDir, "relationship_property_has_lot.json"), {
+    from: { "/": "./property.json" },
+    to: { "/": "./lot.json" },
+  });
 
   // // structure.json (minimal)
   // const struct = {
