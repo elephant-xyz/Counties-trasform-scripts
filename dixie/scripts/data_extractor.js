@@ -2108,6 +2108,12 @@ function writeUtilities(parcelId, buildings) {
     else if (record && typeof record === "object") entries = [record];
   }
   const buildingCount = buildings ? buildings.length : 0;
+
+  // If there are no buildings and no actual utility data, don't create utility files
+  if (buildingCount === 0 && entries.length === 0) {
+    return [];
+  }
+
   if (entries.length === 1 && buildingCount > 1) {
     const template = entries[0];
     entries = Array.from({ length: buildingCount }, () => ({ ...template }));
@@ -2116,6 +2122,21 @@ function writeUtilities(parcelId, buildings) {
     buildUtilityFromBuilding(building, parcelId, idx),
   );
   const sourceEntries = entries.length ? entries : derivedUtilities;
+
+  // If no buildings and only one entry with no real data, skip creating utility
+  if (buildingCount === 0 && sourceEntries.length > 0) {
+    const hasRealData = sourceEntries.some((entry) => {
+      return Object.keys(entry).some((key) => {
+        if (key === 'source_http_request' || key === 'request_identifier') return false;
+        const val = entry[key];
+        return val !== null && val !== undefined && val !== false && val !== '';
+      });
+    });
+    if (!hasRealData) {
+      return [];
+    }
+  }
+
   const mergedEntries = sourceEntries.map((raw, idx) => {
     const derived = derivedUtilities[idx] || {};
     const utility = mergeDefined(derived, raw);
