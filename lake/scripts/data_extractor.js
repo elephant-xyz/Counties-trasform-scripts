@@ -492,7 +492,8 @@ function main() {
       // Otherwise, omit it and let the process populate it
       if (docUrl && /^https?:\/\//i.test(docUrl)) {
         // Check for invalid characters that would make the URL invalid
-        if (!/[`]/.test(docUrl)) {
+        // URLs cannot contain: `, *, <, >, {, }, |, \, ^, [, ], and unencoded spaces
+        if (!/[`*<>{}|\\^\[\]\s]/.test(docUrl)) {
           fileObj.original_url = docUrl;
         }
       }
