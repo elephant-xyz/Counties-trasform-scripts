@@ -1994,6 +1994,12 @@ function main() {
       cleanedImprovement.improvement_status = null;
     }
 
+    // Ensure permit_required is always a boolean (required by schema, not nullable)
+    if (typeof cleanedImprovement.permit_required !== "boolean") {
+      // Default to false if not a boolean (e.g., if it's null, undefined, or any other type)
+      cleanedImprovement.permit_required = cleanedImprovement.permit_number ? true : false;
+    }
+
     const filename = `property_improvement_${propertyImprovementOutputs.length + 1}.json`;
     writeJSON(path.join(dataDir, filename), cleanedImprovement);
     propertyImprovementOutputs.push({ filename, path: `./${filename}` });
