@@ -1256,10 +1256,7 @@ function main() {
     if (normalizedDeedType) {
       deedObj.deed_type = normalizedDeedType;
     }
-    // Add source_http_request and request_identifier from propSeed
-    if (propSeed && propSeed.source_http_request) {
-      deedObj.source_http_request = propSeed.source_http_request;
-    }
+    // Add request_identifier from propSeed (but NOT source_http_request as it's not in deed schema)
     if (propSeed && propSeed.request_identifier) {
       deedObj.request_identifier = propSeed.request_identifier;
     }
@@ -1269,6 +1266,10 @@ function main() {
   bx.files.forEach((f, i) => {
     const fName = `file_${i + 1}.json`;
     const obj = { ...f };
+    // Add request_identifier from propSeed (file schema allows it)
+    if (propSeed && propSeed.request_identifier) {
+      obj.request_identifier = propSeed.request_identifier;
+    }
     writeJSON(path.join(dataDir, fName), obj);
     fileFiles.push(fName);
   });
