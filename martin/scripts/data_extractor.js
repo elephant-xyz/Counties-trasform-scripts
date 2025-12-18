@@ -927,11 +927,36 @@ function cleanMiddleName(s) {
     }
   }
 
-  result = result.trim();
+  // Final cleanup: trim and ensure no consecutive spaces or trailing separators
+  result = result.trim().replace(/\s+/g, ' ');
+
+  // Remove trailing separators
+  result = result.replace(/[\s\-',.]+$/g, '');
+
+  // Remove leading separators
+  result = result.replace(/^[\s\-',.]+/g, '');
+
+  if (!result) return null;
 
   // Ensure result matches the middle name pattern: ^[A-Z][a-zA-Z\s\-',.]*$
   // This pattern is more lenient than first/last name pattern
-  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+
+  // Additional validation: ensure the string only contains valid characters
+  // and doesn't have any edge cases that might pass regex but fail validation
+  for (let i = 0; i < result.length; i++) {
+    const char = result[i];
+    const code = char.charCodeAt(0);
+    // Check if it's a letter (A-Z, a-z)
+    const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    // Check if it's an allowed separator
+    const isSeparator = char === ' ' || char === '-' || char === "'" || char === ',' || char === '.';
+    if (!isLetter && !isSeparator) {
+      // Invalid character found
+      return null;
+    }
+  }
+
   return result;
 }
 
