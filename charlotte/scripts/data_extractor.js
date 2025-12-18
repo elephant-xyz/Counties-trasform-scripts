@@ -2258,7 +2258,6 @@ function createGeometryInstances(csvContent) {
 function createGeometryClass(geometryInstances) {
 
   let geomIndex = 1;
-  console.log("geometryInstances", geometryInstances)
   for(let geom of geometryInstances) {
     let polygon = [];
     if (!geom || !geom.polygon) {
