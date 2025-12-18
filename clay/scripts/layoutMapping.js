@@ -13,6 +13,7 @@ function readHtml(filepath) {
 const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
 const BUILDING_SECTION_TITLE = "Buildings";
 
+
 function textTrim(s) {
   return (s || "").replace(/\s+/g, " ").trim();
 }
@@ -63,8 +64,8 @@ function toInt(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function defaultLayout(space_type, idx, parcelId) {
-  return {
+function defaultLayout(space_type, meta, parcelId) {
+  const layout = {
     source_http_request: {
       method: "GET",
       url: "https://qpublic.schneidercorp.com/application.aspx",
@@ -79,7 +80,9 @@ function defaultLayout(space_type, idx, parcelId) {
     },
     request_identifier: parcelId,
     space_type,
-    space_index: idx,
+    space_type_index: meta.space_type_index,
+    building_number: meta.building_number,
+    built_year: meta.built_year || null,
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: null,
@@ -111,43 +114,74 @@ function defaultLayout(space_type, idx, parcelId) {
     pool_surface_type: null,
     pool_water_quality: null
   };
+  
+  // Only add area fields for Building space_type
+  if (space_type === "Building") {
+    layout.total_area_sq_ft = meta.total_area_sq_ft || null;
+    layout.livable_area_sq_ft = meta.livable_area_sq_ft || null;
+  }
+  
+  return layout;
 }
 
+// Build layouts per building with building-level numbering (e.g., 1 for building, 1.1 for first room).
 function buildLayoutsFromBuildings(buildings, parcelId) {
-  // Sum across all buildings
-  let totalBeds = 0;
-  let totalFullBaths = 0;
-  let totalHalfBaths = 0;
-  
-  buildings.forEach((b) => {
-    totalBeds += toInt(b["Bedrooms"]);
-    totalFullBaths += toInt(b["Full Bathrooms"]);
-    totalHalfBaths += toInt(b["Half Bathrooms"]);
+  const layouts = [];
+  let globalSpaceIndex = 1;
+
+  buildings.forEach((building, buildingIdx) => {
+    const buildingNumber = buildingIdx + 1;
+    const fullBaths = toInt(building["Full Bathrooms"]);
+    const halfBaths = toInt(building["Half Bathrooms"]);
+    const bedrooms = toInt(building["Bedrooms"]);
+    const builtYear = toInt(building["Year Built"]) || null;
+    const totalAreaSqFt = toInt(building["Gross Sq Ft"]) || null;
+    const livableAreaSqFt = toInt(building["Finished Sq Ft"]) || null;
+
+    const pushLayout = (space_type, space_type_index) => {
+      const layout = defaultLayout(
+        space_type,
+        {
+          building_number: buildingNumber,
+          space_type_index: String(space_type_index),
+          built_year: builtYear,
+          total_area_sq_ft: totalAreaSqFt,
+          livable_area_sq_ft: livableAreaSqFt,
+        },
+        parcelId,
+      );
+      layouts.push(layout);
+    };
+
+    // Building container
+    pushLayout("Building", buildingNumber);
+
+    // Full bathrooms for this building
+    for (let i = 0; i < fullBaths; i++) {
+      pushLayout("Full Bathroom", `${buildingNumber}.${i + 1}`);
+    }
+
+    // Bedrooms for this building
+    for (let i = 0; i < bedrooms; i++) {
+      pushLayout("Bedroom", `${buildingNumber}.${i + 1}`);
+    }
+
+    // Half bathrooms for this building
+    for (let i = 0; i < halfBaths; i++) {
+      pushLayout("Half Bathroom / Powder Room", `${buildingNumber}.${i + 1}`);
+    }
   });
 
-  const layouts = [];
-  let idx = 1;
-  
-  // Add bedrooms
-  for (let i = 0; i < totalBeds; i++) {
-    const layout = defaultLayout("Bedroom", idx++, parcelId);
-    layouts.push(layout);
-  }
-  
-  // Add full bathrooms
-  for (let i = 0; i < totalFullBaths; i++) {
-    const layout = defaultLayout("Full Bathroom", idx++, parcelId);
-    layouts.push(layout);
-  }
-  
-  // Add half bathrooms
-  for (let i = 0; i < totalHalfBaths; i++) {
-    const layout = defaultLayout("Half Bathroom / Powder Room", idx++, parcelId);
-    layouts.push(layout);
-  }
-  
   return layouts;
 }
+function readJSON(p) {
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) {
+    return null;
+  }
+}
+
 
 function main() {
   const inputPath = path.resolve("input.html");
@@ -156,6 +190,8 @@ function main() {
   if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings, parcelId);
+  
+  const propertySeed = readJSON("property_seed.json");
   if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
     throw {
       type: "error",

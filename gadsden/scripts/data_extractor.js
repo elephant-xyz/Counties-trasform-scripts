@@ -28,6 +28,52 @@ function slugify(value) {
   return sanitized || "unknown";
 }
 
+// Valid suffix values according to Elephant schema
+const VALID_SUFFIXES = new Set([
+  "Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM",
+  "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."
+]);
+
+// Mapping for common suffix variations to valid schema values
+const SUFFIX_NORMALIZATION_MAP = {
+  'jr': 'Jr.', 'jr.': 'Jr.', 'junior': 'Jr.',
+  'sr': 'Sr.', 'sr.': 'Sr.', 'senior': 'Sr.',
+  'ii': 'II', 'iii': 'III', 'iv': 'IV',
+  'md': 'MD', 'md.': 'MD', 'm.d.': 'MD',
+  'phd': 'PhD', 'phd.': 'PhD', 'ph.d.': 'PhD',
+  'esq': 'Esq.', 'esq.': 'Esq.', 'esquire': 'Esq.',
+  'jd': 'JD', 'jd.': 'JD', 'j.d.': 'JD',
+  'llm': 'LLM', 'llm.': 'LLM', 'll.m.': 'LLM',
+  'mba': 'MBA', 'mba.': 'MBA', 'm.b.a.': 'MBA',
+  'rn': 'RN', 'rn.': 'RN', 'r.n.': 'RN',
+  'dds': 'DDS', 'dds.': 'DDS', 'd.d.s.': 'DDS',
+  'dvm': 'DVM', 'dvm.': 'DVM', 'd.v.m.': 'DVM',
+  'cfa': 'CFA', 'cfa.': 'CFA', 'c.f.a.': 'CFA',
+  'cpa': 'CPA', 'cpa.': 'CPA', 'c.p.a.': 'CPA',
+  'pe': 'PE', 'pe.': 'PE', 'p.e.': 'PE',
+  'pmp': 'PMP', 'pmp.': 'PMP', 'p.m.p.': 'PMP',
+  'emeritus': 'Emeritus',
+  'ret': 'Ret.', 'ret.': 'Ret.', 'retired': 'Ret.'
+};
+
+// Validates and normalizes suffix_name to schema-compliant values
+function validateAndNormalizeSuffix(suffix) {
+  if (suffix == null) return null;
+
+  const suffixStr = String(suffix).trim();
+  if (!suffixStr) return null;
+
+  // Check if already a valid suffix
+  if (VALID_SUFFIXES.has(suffixStr)) return suffixStr;
+
+  // Try to map from common variations
+  const normalized = SUFFIX_NORMALIZATION_MAP[suffixStr.toLowerCase()];
+  if (normalized) return normalized;
+
+  // If no valid mapping found, return null
+  return null;
+}
+
 function parseJsonLike(raw) {
   if (raw == null) return null;
   const text = String(raw).trim();
@@ -421,7 +467,17 @@ function cleanText(text) {
 }
 
 function titleCase(str) {
-  return (str || "").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  if (!str) return "";
+
+  // Handle abbreviations with periods (e.g., "D.O.T." -> "Dot")
+  // Pattern: Single letters separated by periods
+  if (/^([A-Z]\.)+[A-Z]?\.?$/i.test(str.trim())) {
+    // Remove all periods and title case the result
+    const withoutPeriods = str.replace(/\./g, '');
+    return withoutPeriods.charAt(0).toUpperCase() + withoutPeriods.slice(1).toLowerCase();
+  }
+
+  return str.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 }
 
 function normalizeLayoutSpaceType(rawValue, fallbackValue) {
@@ -441,7 +497,17 @@ const SUFFIXES_IGNORE =
 
 function isCompanyName(txt) {
   if (!txt) return false;
-  return COMPANY_KEYWORDS.test(txt);
+
+  // Check for standard company keywords
+  if (COMPANY_KEYWORDS.test(txt)) return true;
+
+  // Check for telecom/wireless company patterns (AT&T, T-Mobile, etc.)
+  if (/\b(AT&T|T-Mobile|NCWPCS|wireless|cellular|telecom)\b/i.test(txt)) return true;
+
+  // If text contains & followed by single letter or T- pattern, likely a company
+  if (/\b[A-Z]&[A-Z]\b|\b[A-Z]-\s|&\s*[A-Z]-/i.test(txt)) return true;
+
+  return false;
 }
 
 function tokenizeNamePart(part) {
@@ -458,32 +524,123 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   if (!tokens || !tokens.length) return null;
   if (tokens.length === 1) return null;
 
-  let last = tokens[0];
-  let first = tokens[1] || null;
-  let middle = tokens.length > 2 ? tokens.slice(2).join(" ") : null;
+  // Strip trailing periods and hyphens before processing
+  const stripTrailingPunctuation = (str) => {
+    if (!str) return str;
+    const stripped = str.replace(/[\.\-]+$/, '');
+    // If the result is empty or contains no letters, return null
+    if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
+    return stripped;
+  };
+
+  // Extract suffix from tokens - check last token(s)
+  const suffixMap = {
+    'jr': 'Jr.',
+    'sr': 'Sr.',
+    'ii': 'II',
+    'iii': 'III',
+    'iv': 'IV',
+    'md': 'MD',
+    'phd': 'PhD',
+    'esq': 'Esq.',
+    'esquire': 'Esq.',
+    'jd': 'JD',
+    'llm': 'LLM',
+    'mba': 'MBA',
+    'rn': 'RN',
+    'dds': 'DDS',
+    'dvm': 'DVM',
+    'cfa': 'CFA',
+    'cpa': 'CPA',
+    'pe': 'PE',
+    'pmp': 'PMP',
+    'emeritus': 'Emeritus',
+    'ret': 'Ret.'
+  };
+
+  let suffix = null;
+  let workingTokens = [...tokens];
+
+  // Check last token for suffix
+  if (workingTokens.length > 2) {
+    const lastToken = workingTokens[workingTokens.length - 1];
+    const stripped = stripTrailingPunctuation(lastToken);
+    if (stripped && suffixMap[stripped.toLowerCase()]) {
+      suffix = suffixMap[stripped.toLowerCase()];
+      workingTokens.pop();
+    }
+  }
+
+  if (workingTokens.length < 2) return null;
+
+  // Determine if name is in "FIRST MIDDLE LAST" or "LAST FIRST MIDDLE" format
+  // Heuristic: If last token is longest or first token is short (1-2 chars), likely FIRST MIDDLE LAST
+  // Example: "W C DAWKINS" -> FIRST=W, MIDDLE=C, LAST=DAWKINS (first token short)
+  // Example: "MARY WELLS DAWKINS" -> FIRST=MARY, MIDDLE=WELLS, LAST=DAWKINS (last token longest)
+  // Example: "DAWKINS WILLIAM" -> LAST=DAWKINS, FIRST=WILLIAM (first token longest)
+  const firstTokenLen = workingTokens[0].length;
+  const lastTokenLen = workingTokens[workingTokens.length - 1].length;
+  const firstTokenShort = firstTokenLen <= 2;
+  const lastTokenLongest = lastTokenLen >= firstTokenLen;
+  const useFirstMiddleLast = firstTokenShort || lastTokenLongest;
+
+  let last, first, middle;
+
+  if (useFirstMiddleLast) {
+    // Format: FIRST MIDDLE LAST
+    first = workingTokens[0];
+    if (workingTokens.length === 2) {
+      last = workingTokens[1];
+      middle = null;
+    } else {
+      // Multiple tokens after first
+      last = workingTokens[workingTokens.length - 1];
+      middle = workingTokens.slice(1, -1).join(" ") || null;
+    }
+  } else {
+    // Format: LAST FIRST MIDDLE (default)
+    last = workingTokens[0];
+    first = workingTokens[1] || null;
+    middle = workingTokens.length > 2 ? workingTokens.slice(2).join(" ") : null;
+  }
 
   if (
     fallbackLastName &&
-    tokens.length <= 2 &&
-    tokens[0] &&
-    tokens[0] === tokens[0].toUpperCase() &&
-    tokens[1]
+    workingTokens.length <= 2 &&
+    workingTokens[0] &&
+    workingTokens[0] === workingTokens[0].toUpperCase() &&
+    workingTokens[1]
   ) {
-    first = tokens[0];
-    middle = tokens[1] || null;
+    first = workingTokens[0];
+    middle = workingTokens[1] || null;
     last = fallbackLastName;
   }
 
-  if (middle) {
-    const mids = middle.split(" ").filter((t) => !SUFFIXES_IGNORE.test(t));
-    middle = mids.join(" ") || null;
+  first = stripTrailingPunctuation(first);
+  last = stripTrailingPunctuation(last);
+  middle = middle ? stripTrailingPunctuation(middle) : null;
+
+  const titleCasedFirst = titleCase(first || "");
+  const titleCasedLast = titleCase(last || "");
+  const titleCasedMiddleRaw = middle ? titleCase(middle) : null;
+
+  // Validate names match the Elephant schema pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  const isValidName = (name) => name && /[a-zA-Z]/.test(name) && namePattern.test(name);
+
+  if (!isValidName(titleCasedFirst) || !isValidName(titleCasedLast)) {
+    return null;
   }
+
+  // Validate middle_name if present - set to null if it doesn't match pattern
+  const titleCasedMiddle = titleCasedMiddleRaw && isValidName(titleCasedMiddleRaw) ? titleCasedMiddleRaw : null;
 
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: titleCasedFirst,
+    last_name: titleCasedLast,
+    middle_name: titleCasedMiddle,
+    suffix_name: validateAndNormalizeSuffix(suffix),
   };
 }
 
@@ -536,7 +693,19 @@ function parseOwnersFromText(rawText) {
       const tokens = tokenizeNamePart(part);
       if (!tokens.length) return;
 
-      if (andParts.length === 1 && tokens.length >= 4) {
+      // Check if last token is a suffix before trying to split multiple persons
+      const stripTrailingPeriod = (str) => {
+        if (!str) return str;
+        const stripped = str.replace(/\.$/, '');
+        // If the result is empty or contains no letters, return null
+        if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
+        return stripped;
+      };
+      const lastToken = tokens[tokens.length - 1];
+      const lastTokenStripped = stripTrailingPeriod(lastToken);
+      const isLastTokenSuffix = lastTokenStripped && SUFFIXES_IGNORE.test(lastTokenStripped.toLowerCase());
+
+      if (andParts.length === 1 && tokens.length >= 4 && !isLastTokenSuffix) {
         const multi = splitMultiplePersonsWithSharedLast(tokens);
         if (multi.length >= 2) {
           multi.forEach((p) => owners.push(p));
@@ -587,6 +756,7 @@ function parseOwnersFromText(rawText) {
 
   const seen = new Set();
   const deduped = [];
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   owners.forEach((o) => {
     const key =
       o.type === "company"
@@ -600,8 +770,11 @@ function parseOwnersFromText(rawText) {
             .join("|");
     if (!key || seen.has(key)) return;
     seen.add(key);
-    if (o.type === "person" && (!o.middle_name || !o.middle_name.trim())) {
-      o.middle_name = null;
+    // Nullify empty or invalid middle_name
+    if (o.type === "person") {
+      if (!o.middle_name || !o.middle_name.trim() || !namePattern.test(o.middle_name)) {
+        o.middle_name = null;
+      }
     }
     deduped.push(o);
   });
@@ -1472,7 +1645,6 @@ function parseBuildingInfo($) {
       }
     }
   }
-
   const hvac =
     getValue(rightMap, ["hvac", "cooling type", "cooling", "air conditioning"]) ||
     getValue(leftMap, ["air conditioning"]);
@@ -1727,12 +1899,12 @@ function parseSales($) {
     if (!instrumentNumberText) {
       instrumentNumberText = cleanText(instrumentCell.find("span").text());
     }
-    const book = cleanText(textOf($, tds.eq(3)) || "");
-    const page = cleanText(textOf($, tds.eq(4)) || "");
-    const qualification = textOf($, tds.eq(5));
-    const vacantImproved = textOf($, tds.eq(6));
-    const grantor = textOf($, tds.eq(7));
-    const grantee = textOf($, tds.eq(8));
+    const book = cleanText(textOf($, tds.eq(2)) || "");
+    const page = cleanText(textOf($, tds.eq(3)) || "");
+    const qualification = textOf($, tds.eq(4));
+    const vacantImproved = textOf($, tds.eq(5));
+    const grantor = textOf($, tds.eq(6));
+    const grantee = textOf($, tds.eq(7));
     let clerkUrl = null;
     const linkTd = tds.length > 9 ? tds.eq(9) : null;
     if (linkTd && linkTd.find("input").length) {
@@ -2040,20 +2212,57 @@ function main() {
 
   function createPersonRecord(personData) {
     if (!personData) return null;
-    const firstName =
+
+    // Strip trailing periods before processing (handles abbreviations like "C.")
+    const stripTrailingPeriod = (str) => {
+      if (!str) return str;
+      const stripped = str.replace(/\.$/, '');
+      // If the result is empty or contains no letters, return null
+      if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
+      return stripped;
+    };
+
+    const firstNameRaw =
       personData.first_name != null
         ? String(personData.first_name).trim()
         : "";
-    const lastName =
+    const lastNameRaw =
       personData.last_name != null ? String(personData.last_name).trim() : "";
     const middleRaw =
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    const middleName = middleRaw ? middleRaw : null;
+
+    // Strip trailing periods from all name parts, then apply titleCase
+    const firstNameStripped = stripTrailingPeriod(firstNameRaw);
+    const lastNameStripped = stripTrailingPeriod(lastNameRaw);
+    const middleStripped = middleRaw ? stripTrailingPeriod(middleRaw) : null;
+
+    // Apply titleCase to ensure proper formatting (handles cases like "I.a" -> "Ia")
+    const firstName = firstNameStripped ? titleCase(firstNameStripped) : "";
+    const lastName = lastNameStripped ? titleCase(lastNameStripped) : "";
+    const middleNameRaw = middleStripped ? titleCase(middleStripped) : null;
+
+    // Validate names match the schema patterns from Elephant
+    // Pattern for first_name and last_name: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+    const firstLastNamePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+    // Pattern for middle_name: ^[A-Z][a-zA-Z\s\-',.]*$
+    const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+
+    const isValidFirstLastName = (name) => name && firstLastNamePattern.test(name);
+    const isValidMiddleName = (name) => name && middleNamePattern.test(name);
+
+    // Both first_name and last_name are required and must match pattern
+    if (!isValidFirstLastName(firstName) || !isValidFirstLastName(lastName)) {
+      return null;
+    }
+
+    // Validate middle_name if present - set to null if it doesn't match pattern
+    const middleName = middleNameRaw && isValidMiddleName(middleNameRaw) ? middleNameRaw : null;
+
     const key =
       firstName || lastName
-        ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
+        ? `${firstName.toLowerCase()}|${(middleRaw || "").toLowerCase()}|${lastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {
@@ -2064,17 +2273,18 @@ function main() {
     const filename = `person_${personIndex}.json`;
     const personObj = {
       birth_date: personData.birth_date || null,
-      first_name: firstName || "",
-      last_name: lastName || "",
+      first_name: firstName,
+      last_name: lastName,
       middle_name: middleName,
       prefix_name:
         personData && personData.prefix_name != null
           ? personData.prefix_name
           : null,
-      suffix_name:
+      suffix_name: validateAndNormalizeSuffix(
         personData && personData.suffix_name != null
           ? personData.suffix_name
-          : null,
+          : null
+      ),
       us_citizenship_status:
         personData && personData.us_citizenship_status != null
           ? personData.us_citizenship_status

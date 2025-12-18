@@ -1,41 +1,164 @@
-// structureMapping.js
-// Parses input.html with cheerio and outputs structure data per schema.
+// Structure mapping script
+// Reads input.html, extracts parcel and building info, and writes owners/structure_data.json
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function readInputHtml() {
-  const inputPath = path.resolve("input.html");
-  return fs.readFileSync(inputPath, "utf8");
+
+
+/**
+ * Extracts the `model` object literal from the onClickTaxCalculator function in palmbeach.html
+ * and returns it as a plain JavaScript object.
+ *
+ * @param {string} $ - The HTML content of palmbeach.html parsed using cheerio.
+ * @returns {object|null} Parsed model object if found, otherwise null.
+ */
+function parsePalmBeachModel($) {
+  let targetScript = null;
+
+  $('script').each((_, element) => {
+    const scriptBody = $(element).html();
+    if (scriptBody && scriptBody.includes('function onClickTaxCalculator')) {
+      targetScript = scriptBody;
+      return false; // Break out early once we find the function definition
+    }
+    return undefined;
+  });
+
+  if (!targetScript) {
+    return null;
+  }
+
+  const modelIndex = targetScript.indexOf('var model');
+  if (modelIndex === -1) {
+    return null;
+  }
+
+  const objectStart = targetScript.indexOf('{', modelIndex);
+  if (objectStart === -1) {
+    return null;
+  }
+
+  const objectLiteral = extractObjectLiteral(targetScript, objectStart);
+  if (!objectLiteral) {
+    return null;
+  }
+
+  try {
+    const parsedModel = JSON.parse(objectLiteral);
+    parsedModel.structuralDetails = enhanceStructuralDetails(parsedModel.structuralDetails);
+    return parsedModel;
+  } catch (error) {
+    throw new Error(`Failed to parse Palm Beach model JSON: ${error.message}`);
+  }
 }
 
-function digitsOnly(str) {
-  return (str || "").replace(/\D+/g, "");
-}
+/**
+ * Walks the script content starting at the first opening brace and returns the
+ * full object literal including nested objects.
+ *
+ * @param {string} script - JavaScript source that contains the object literal.
+ * @param {number} startIndex - Index of the first `{` character.
+ * @returns {string|null} Raw object literal text or null if it cannot be isolated.
+ */
+function extractObjectLiteral(script, startIndex) {
+  let depth = 0;
+  let inString = false;
+  let stringChar = '';
+  let isEscaped = false;
 
-function getText($, selector) {
-  const el = $(selector).first();
-  return el.length ? el.text().trim() : "";
-}
+  for (let i = startIndex; i < script.length; i += 1) {
+    const char = script[i];
 
-function findValueByLabel($, scope, labelText) {
-  let value = "";
-  $(scope)
-    .find("tr")
-    .each((_, tr) => {
-      const $tr = $(tr);
-      const labelTd = $tr.find("td.label").first();
-      const valTd = $tr.find("td.value").first();
-      if (labelTd.length && valTd.length) {
-        const lbl = labelTd.text().replace(/\s+/g, " ").trim().toLowerCase();
-        if (lbl.includes(labelText.toLowerCase())) {
-          value = valTd.text().replace(/\s+/g, " ").trim();
-          return false; // break loop
-        }
+    if (inString) {
+      if (isEscaped) {
+        isEscaped = false;
+        continue;
       }
-    });
-  return value;
+      if (char === '\\') {
+        isEscaped = true;
+        continue;
+      }
+      if (char === stringChar) {
+        inString = false;
+        stringChar = '';
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      inString = true;
+      stringChar = char;
+      continue;
+    }
+
+    if (char === '{') {
+      if (depth === 0) {
+        startIndex = i;
+      }
+      depth += 1;
+      continue;
+    }
+
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return script.slice(startIndex, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function enhanceStructuralDetails(structuralDetails) {
+  if (!structuralDetails || typeof structuralDetails !== 'object') {
+    return structuralDetails || null;
+  }
+
+  const combinedBuildings = combineStructuralElements(structuralDetails.StructuralElements);
+  return {
+    ...structuralDetails,
+    combinedBuildings,
+  };
+}
+
+function combineStructuralElements(elements) {
+  if (!Array.isArray(elements)) {
+    return [];
+  }
+
+  const grouped = elements.reduce((acc, element) => {
+    const buildingNumber = element?.BuildingNumber || 'Unknown';
+    if (!acc[buildingNumber]) {
+      acc[buildingNumber] = {
+        buildingNumber,
+        sections: {},
+      };
+    }
+
+    const section = element?.DetailsSection || 'General';
+    const name = element?.ElementName || `element${element?.ElementNumber || ''}`;
+    const value = element?.ElementValue ?? null;
+
+    if (!acc[buildingNumber].sections[section]) {
+      acc[buildingNumber].sections[section] = {};
+    }
+
+    const sectionEntries = acc[buildingNumber].sections[section];
+    if (!(name in sectionEntries)) {
+      sectionEntries[name] = value;
+    } else if (Array.isArray(sectionEntries[name])) {
+      sectionEntries[name].push(value);
+    } else {
+      sectionEntries[name] = [sectionEntries[name], value];
+    }
+
+    return acc;
+  }, {});
+
+  return Object.values(grouped);
 }
 
 function mapExteriorWallPrimary(raw) {
@@ -171,201 +294,122 @@ function mapWallAndFrameGuideline(raw) {
   return MAP[key] || null;
 }
 
-function run() {
-  const html = readInputHtml();
+function buildStructureRecord(buildings) {
+  let structures = {};
+  buildings.forEach((building, bIdx) => {
+    const exteriorWall1 = building?.sections?.Top?.["Exterior Wall 1"];
+    const exteriorWall2 = building?.sections?.Top?.["Exterior Wall 2"];
+    const roofStructure = building?.sections?.Top?.["Roof Structure "];
+    const roofCover = building?.sections?.Top?.["Roof Cover "];
+    const interiorWall1 = building?.sections?.Top?.["Interior Wall 1"];
+    const interiorWall2 = building?.sections?.Top?.["Interior Wall 2"];
+    const floorType1 = building?.sections?.Top?.["Floor Type 1"];
+    const floorType2 = building?.sections?.Top?.["Floor Type 2"];
+    const storiesRaw = building?.sections?.Top?.["Stories"];
+    const structure = {
+      architectural_style_type: null,
+      attachment_type: null,
+      ceiling_condition: null,
+      ceiling_height_average: null,
+      ceiling_insulation_type: null,
+      ceiling_structure_material: null,
+      ceiling_surface_material: null,
+      exterior_door_installation_date: null,
+      exterior_door_material: null,
+      exterior_wall_condition: null,
+      exterior_wall_condition_primary: null,
+      exterior_wall_condition_secondary: null,
+      exterior_wall_insulation_type: null,
+      exterior_wall_insulation_type_primary: null,
+      exterior_wall_insulation_type_secondary: null,
+      exterior_wall_material_primary: (function () {
+        const m1 = mapWallAndFrameGuideline(exteriorWall1);
+        const m2 = mapWallAndFrameGuideline(exteriorWall2);
+        if (m1 && m1.exterior !== undefined) return m1.exterior;
+        if (m2 && m2.exterior !== undefined) return m2.exterior;
+        return mapExteriorWallPrimary(exteriorWall1);
+      })(),
+      exterior_wall_material_secondary: null,
+      finished_base_area: null,
+      finished_basement_area: null,
+      finished_upper_story_area: null,
+      flooring_condition: null,
+      flooring_material_primary: mapFlooring(floorType1),
+      flooring_material_secondary: null,
+      foundation_condition: null,
+      foundation_material: null,
+      foundation_repair_date: null,
+      foundation_type: null,
+      foundation_waterproofing: null,
+      gutters_condition: null,
+      gutters_material: null,
+      interior_door_material: null,
+      interior_wall_condition: null,
+      interior_wall_finish_primary: null,
+      interior_wall_finish_secondary: null,
+      interior_wall_structure_material: (function () {
+        const m1 = mapWallAndFrameGuideline(exteriorWall1);
+        if (m1 && m1.framing) return m1.framing;
+      })(),
+      interior_wall_structure_material_primary: (function () {
+        const m1 = mapWallAndFrameGuideline(exteriorWall1);
+        if (m1 && m1.framing) return m1.framing;
+      })(),
+      interior_wall_structure_material_secondary: null,
+      interior_wall_surface_material_primary: null,
+      interior_wall_surface_material_secondary: null,
+      number_of_stories: Number.parseInt(storiesRaw, 10) || null,
+      primary_framing_material: (function () {
+        const m1 = mapWallAndFrameGuideline(exteriorWall1);
+        const m2 = mapWallAndFrameGuideline(exteriorWall2);
+        if (m1 && m1.framing !== undefined) return m1.framing;
+        if (m2 && m2.framing !== undefined) return m2.framing;
+        return mapPrimaryFraming(exteriorWall1);
+      })(),
+      roof_age_years: null,
+      roof_condition: null,
+      roof_covering_material: mapRoofCover(roofCover),
+      roof_date: null,
+      roof_design_type: null,
+      roof_material_type: null,
+      roof_structure_material: mapRoofStruct(roofStructure),
+      roof_underlayment_type: null,
+      secondary_framing_material: null,
+      siding_installation_date: null,
+      structural_damage_indicators: null,
+      subfloor_material: null,
+      unfinished_base_area: null,
+      unfinished_basement_area: null,
+      unfinished_upper_story_area: null,
+      window_frame_material: null,
+      window_glazing_type: null,
+      window_installation_date: null,
+      window_operation_type: null,
+      window_screen_material: null,
+    };
+    structures[(bIdx + 1).toString()] = structure;
+  });
+
+  return structures;
+}
+
+
+(function main() {
+  const inputPath = path.join(process.cwd(), "input.html");
+  const html = fs.readFileSync(inputPath, "utf8");
   const $ = cheerio.load(html);
+  const parsed = parsePalmBeachModel($);
 
-  // Extract PCN (parcel control number) digits
-  let pcnText = getText($, "#MainContent_lblPCN");
-  if (!pcnText) {
-    pcnText = $("td.label:contains('Parcel Control Number')")
-      .next(".value")
-      .text()
-      .trim();
-  }
-  const propertyId =
-    digitsOnly(pcnText) ||
-    digitsOnly(
-      getText($, "span:contains('Parcel Control Number')")
-        .parent()
-        .next()
-        .text(),
-    );
-  const propKey = `property_${propertyId || "unknown"}`;
+  const parcelId = parsed.propertyDetail.PCN;
+  const propertyKey = parcelId ? `property_${parcelId}` : "property_unknown";
 
-  // Structural Elements block
-  const structHeader = $("h3:contains('Structural Element')").first();
-  const structScope = structHeader.length
-    ? structHeader.next(".building_col")
-    : null;
+  const outDir = path.join(process.cwd(), "owners");
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, "structure_data.json");
 
-  const exteriorWall1 = structScope
-    ? findValueByLabel($, structScope, "Exterior Wall 1")
-    : "";
-  const exteriorWall2 = structScope
-    ? findValueByLabel($, structScope, "Exterior Wall 2")
-    : "";
-  const roofStructure = structScope
-    ? findValueByLabel($, structScope, "Roof Structure")
-    : "";
-  const roofCover = structScope
-    ? findValueByLabel($, structScope, "Roof Cover")
-    : "";
-  const interiorWall1 = structScope
-    ? findValueByLabel($, structScope, "Interior Wall 1")
-    : "";
-  const interiorWall2 = structScope
-    ? findValueByLabel($, structScope, "Interior Wall 2")
-    : "";
-  const floorType1 = structScope
-    ? findValueByLabel($, structScope, "Floor Type 1")
-    : "";
-  const floorType2 = structScope
-    ? findValueByLabel($, structScope, "Floor Type 2")
-    : "";
-  const storiesRaw = structScope
-    ? findValueByLabel($, structScope, "Stories")
-    : "";
+  const output = {};
+  output[propertyKey] = buildStructureRecord((parsed.structuralDetails && parsed.structuralDetails.combinedBuildings) ? parsed.structuralDetails.combinedBuildings : []);
 
-  // SUBAREA block
-  const subareaHeader = $("h3:contains('SUBAREA AND SQUARE FOOTAGE')").first();
-  const subareaScope = subareaHeader.length
-    ? subareaHeader.next(".building_col")
-    : null;
-
-  let finishedBaseArea = null;
-  if (subareaScope) {
-    $(subareaScope)
-      .find("tr")
-      .each((_, tr) => {
-        const tds = $(tr).find("td");
-        if (tds.length >= 2) {
-          const label = $(tds[0]).text().replace(/\s+/g, " ").trim();
-          const val = parseInt(
-            $(tds[1])
-              .text()
-              .replace(/[^0-9]/g, ""),
-            10,
-          );
-          if (/BAS\s+Base Area/i.test(label) && Number.isInteger(val))
-            finishedBaseArea = val;
-        }
-      });
-  }
-
-  // Property Use Code within same block for attachment inference
-  const useCodeText = subareaScope
-    ? findValueByLabel($, subareaScope, "Property Use Code")
-    : "";
-  let attachment_type = null;
-  if ((useCodeText || "").toUpperCase().includes("TOWNHOUSE"))
-    attachment_type = "Attached";
-
-  const data = {
-    architectural_style_type: null,
-    attachment_type: attachment_type,
-    ceiling_condition: null,
-    ceiling_height_average: null,
-    ceiling_insulation_type: null,
-    ceiling_structure_material: null,
-    ceiling_surface_material: null,
-    exterior_door_material: null,
-    exterior_wall_condition: null,
-    exterior_wall_condition_primary: null,
-    exterior_wall_condition_secondary: null,
-    exterior_wall_insulation_type: null,
-    exterior_wall_insulation_type_primary: null,
-    exterior_wall_insulation_type_secondary: null,
-    // Apply guideline mapping first; fallback to generic mappers
-    exterior_wall_material_primary: (function () {
-      const m1 = mapWallAndFrameGuideline(exteriorWall1);
-      const m2 = mapWallAndFrameGuideline(exteriorWall2);
-      if (m1 && m1.exterior !== undefined) return m1.exterior;
-      if (m2 && m2.exterior !== undefined) return m2.exterior;
-      return mapExteriorWallPrimary(exteriorWall1);
-    })(),
-    exterior_wall_material_secondary: mapExteriorWallPrimary(exteriorWall2),
-    finished_base_area: finishedBaseArea || null,
-    finished_basement_area: null,
-    finished_upper_story_area: null,
-    flooring_condition: null,
-    flooring_material_primary: mapFlooring(floorType1),
-    flooring_material_secondary: mapFlooring(floorType2),
-    foundation_condition: "Unknown",
-    foundation_material: null,
-    foundation_type: null,
-    foundation_waterproofing: "Unknown",
-    gutters_condition: null,
-    gutters_material: null,
-    interior_door_material: null,
-    interior_wall_condition: null,
-    interior_wall_finish_primary: null,
-    interior_wall_finish_secondary: null,
-    interior_wall_structure_material: (function () {
-      const m1 = mapWallAndFrameGuideline(exteriorWall1);
-      if (m1 && m1.framing) return m1.framing === "Concrete Block" ? "Concrete Block" : m1.framing;
-      return "Wood Frame";
-    })(),
-    interior_wall_structure_material_primary: (function () {
-      const m1 = mapWallAndFrameGuideline(exteriorWall1);
-      if (m1 && m1.framing) return m1.framing;
-      return "Wood Frame";
-    })(),
-    interior_wall_structure_material_secondary: null,
-    interior_wall_surface_material_primary: (interiorWall1 || "")
-      .toLowerCase()
-      .includes("drywall")
-      ? "Drywall"
-      : null,
-    interior_wall_surface_material_secondary: null,
-    number_of_stories: Number.parseInt(storiesRaw, 10) || null,
-    primary_framing_material: (function () {
-      const m1 = mapWallAndFrameGuideline(exteriorWall1);
-      const m2 = mapWallAndFrameGuideline(exteriorWall2);
-      if (m1 && m1.framing !== undefined) return m1.framing;
-      if (m2 && m2.framing !== undefined) return m2.framing;
-      return mapPrimaryFraming(exteriorWall1);
-    })(),
-    secondary_framing_material: null,
-    roof_age_years: null,
-    roof_condition: null,
-    roof_covering_material: mapRoofCover(roofCover),
-    roof_design_type: null,
-    roof_material_type: null,
-    roof_structure_material: mapRoofStruct(roofStructure),
-    roof_underlayment_type: null,
-    structural_damage_indicators: null,
-    subfloor_material: null,
-    unfinished_base_area: null,
-    unfinished_basement_area: null,
-    unfinished_upper_story_area: null,
-    window_frame_material: null,
-    window_glazing_type: null,
-    window_operation_type: null,
-    window_screen_material: null,
-  };
-
-  const outObj = {};
-  outObj[propKey] = data;
-
-  const ownersDir = path.resolve("owners");
-  const dataDir = path.resolve("data");
-  fs.mkdirSync(ownersDir, { recursive: true });
-  fs.mkdirSync(dataDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(ownersDir, "structure_data.json"),
-    JSON.stringify(outObj, null, 2),
-    "utf8",
-  );
-  fs.writeFileSync(
-    path.join(dataDir, "structure_data.json"),
-    JSON.stringify(outObj, null, 2),
-    "utf8",
-  );
-
-  console.log("structure_data.json written for", propKey);
-}
-
-if (require.main === module) {
-  run();
-}
+  fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf8");
+  console.log(`Wrote structure data to ${outPath}`);
+})();

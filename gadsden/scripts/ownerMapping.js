@@ -12,11 +12,22 @@ const cleanText = (t) =>
     .replace(/\s+/g, " ")
     .replace(/[\u00A0\s]+/g, " ")
     .trim();
-const titleCase = (s) =>
-  s.replace(
+const titleCase = (s) => {
+  if (!s) return "";
+
+  // Handle abbreviations with periods (e.g., "D.O.T." -> "Dot")
+  // Pattern: Single letters separated by periods
+  if (/^([A-Z]\.)+[A-Z]?\.?$/i.test(s.trim())) {
+    // Remove all periods and title case the result
+    const withoutPeriods = s.replace(/\./g, '');
+    return withoutPeriods.charAt(0).toUpperCase() + withoutPeriods.slice(1).toLowerCase();
+  }
+
+  return s.replace(
     /\w\S*/g,
     (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
   );
+};
 
 // Extract property ID with preference: Prop ID -> Property ID -> Parcel ID -> unknown
 function extractPropertyId($) {
@@ -71,7 +82,16 @@ function normalizeOwnerKey(owner) {
 }
 
 function isCompanyName(txt) {
-  return COMPANY_KEYWORDS.test(txt);
+  // Check for standard company keywords
+  if (COMPANY_KEYWORDS.test(txt)) return true;
+
+  // Check for telecom/wireless company patterns (AT&T, T-Mobile, etc.)
+  if (/\b(AT&T|T-Mobile|NCWPCS|wireless|cellular|telecom)\b/i.test(txt)) return true;
+
+  // If text contains & followed by single letter or T- pattern, likely a company
+  if (/\b[A-Z]&[A-Z]\b|\b[A-Z]-\s|&\s*[A-Z]-/i.test(txt)) return true;
+
+  return false;
 }
 
 function tokenizeNamePart(part) {
@@ -115,11 +135,39 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
+  // Strip trailing periods and hyphens before title casing to handle abbreviations like "Fl." or "T-"
+  const stripTrailingPunctuation = (str) => {
+    if (!str) return str;
+    return str.replace(/[\.\-]+$/, '');
+  };
+
+  first = stripTrailingPunctuation(first);
+  last = stripTrailingPunctuation(last);
+  middle = middle ? stripTrailingPunctuation(middle) : null;
+
+  const titleCasedFirst = titleCase(first || "");
+  const titleCasedLast = titleCase(last || "");
+  const titleCasedMiddleRaw = middle ? titleCase(middle) : null;
+
+  // Validate names match the Elephant schema pattern for first_name and last_name:
+  // ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // This requires: uppercase start, lowercase letters, then optional (separator + letter + lowercase)*
+  const firstLastNamePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  const isValidFirstLastName = (name) => name && /[a-zA-Z]/.test(name) && firstLastNamePattern.test(name);
+
+  // Both first_name and last_name are required and must match pattern
+  if (!isValidFirstLastName(titleCasedFirst) || !isValidFirstLastName(titleCasedLast)) {
+    return null;
+  }
+
+  // Validate middle_name if present - set to null if it doesn't match pattern
+  const titleCasedMiddle = titleCasedMiddleRaw && isValidFirstLastName(titleCasedMiddleRaw) ? titleCasedMiddleRaw : null;
+
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: titleCasedFirst,
+    last_name: titleCasedLast,
+    middle_name: titleCasedMiddle,
   };
 }
 
@@ -232,13 +280,16 @@ function parseOwnersFromText(rawText) {
   // Deduplicate by normalized key
   const seen = new Set();
   const deduped = [];
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   owners.forEach((o) => {
     const key = normalizeOwnerKey(o);
     if (!key || seen.has(key)) return;
     seen.add(key);
-    // Nullify empty middle_name
-    if (o.type === "person" && (!o.middle_name || !o.middle_name.trim())) {
-      o.middle_name = null;
+    // Nullify empty or invalid middle_name
+    if (o.type === "person") {
+      if (!o.middle_name || !o.middle_name.trim() || !namePattern.test(o.middle_name)) {
+        o.middle_name = null;
+      }
     }
     deduped.push(o);
   });
@@ -275,8 +326,15 @@ function extractCurrentOwners($) {
         .find("a, span")
         .each((i, el) => {
           const id = (el.attribs && el.attribs.id) || "";
+          const className = (el.attribs && el.attribs.class) || "";
+          const role = (el.attribs && el.attribs.role) || "";
           const t = cleanText($(el).text());
           if (!t) return;
+
+          // Skip section titles, headings, and labels
+          if (className.includes("title") || role === "heading") return;
+          if (t.toLowerCase() === "owner information") return;
+
           const lowered = id.toLowerCase();
           if (lowered.includes("address")) return;
           if (/\d{3,}/.test(t)) return;

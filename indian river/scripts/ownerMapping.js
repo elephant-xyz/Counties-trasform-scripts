@@ -173,6 +173,12 @@ const NOISE_TOKEN_SET = new Set([
   "ETUXOR",
   "AKA",
   "A/K/A",
+  "FKA",
+  "F/K/A",
+  "NKA",
+  "N/K/A",
+  "DBA",
+  "D/B/A",
   "FBO",
   "C/O",
   "UA",
@@ -212,6 +218,12 @@ function sanitizeRawOwner(raw) {
   s = s.replace(/\bET\s+UXOR\b/gi, " ");
   s = s.replace(/\bA\/K\/A\b/gi, " ");
   s = s.replace(/\bAKA\b/gi, " ");
+  s = s.replace(/\bF\/K\/A\b/gi, " ");
+  s = s.replace(/\bFKA\b/gi, " ");
+  s = s.replace(/\bN\/K\/A\b/gi, " ");
+  s = s.replace(/\bNKA\b/gi, " ");
+  s = s.replace(/\bD\/B\/A\b/gi, " ");
+  s = s.replace(/\bDBA\b/gi, " ");
   s = s.replace(/\bU\/A\b/gi, " ");
   s = s.replace(/\bU\/D\/T\b/gi, " ");
   s = s.replace(/\bFBO\b/gi, " ");
@@ -234,7 +246,11 @@ function tokenizeOwner(raw) {
 }
 
 function isRomanNumeral(str) {
-  return /^[IVXLCDM]+$/i.test(str || "");
+  if (!str) return false;
+  const upper = str.trim().toUpperCase();
+  // Only treat common generational suffixes as Roman numerals, not all combinations
+  const validGenerationalSuffixes = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+  return validGenerationalSuffixes.includes(upper);
 }
 
 function toNameCase(str) {
@@ -253,13 +269,74 @@ function formatPrefix(value) {
 function formatSuffix(value) {
   if (!value) return null;
   const cleaned = value.replace(/[^A-Za-z0-9]/g, "");
-  if (isRomanNumeral(cleaned)) return cleaned.toUpperCase();
-  const upper = cleaned.toUpperCase();
-  if (PERSON_SUFFIXES.has(upper)) {
-    if (upper.length <= 3) return upper.charAt(0) + upper.slice(1).toLowerCase();
-    return upper;
+  if (!cleaned) return null;
+
+  // Valid suffixes according to Elephant schema
+  const validSuffixes = [
+    "Jr.",
+    "Sr.",
+    "II",
+    "III",
+    "IV",
+    "PhD",
+    "MD",
+    "Esq.",
+    "JD",
+    "LLM",
+    "MBA",
+    "RN",
+    "DDS",
+    "DVM",
+    "CFA",
+    "CPA",
+    "PE",
+    "PMP",
+    "Emeritus",
+    "Ret.",
+  ];
+
+  // Check if it's a Roman numeral
+  if (isRomanNumeral(cleaned)) {
+    const upperRoman = cleaned.toUpperCase();
+    if (validSuffixes.includes(upperRoman)) {
+      return upperRoman;
+    }
+    return null;
   }
-  return toNameCase(cleaned);
+
+  // Normalize and check against valid suffixes
+  const normalized = cleaned.replace(/\./g, "").toUpperCase();
+  const suffixMap = {
+    "JR": "Jr.",
+    "SR": "Sr.",
+    "II": "II",
+    "III": "III",
+    "IV": "IV",
+    "PHD": "PhD",
+    "MD": "MD",
+    "ESQ": "Esq.",
+    "ESQUIRE": "Esq.",
+    "JD": "JD",
+    "LLM": "LLM",
+    "MBA": "MBA",
+    "RN": "RN",
+    "DDS": "DDS",
+    "DMD": "DDS",
+    "DVM": "DVM",
+    "CFA": "CFA",
+    "CPA": "CPA",
+    "PE": "PE",
+    "PMP": "PMP",
+    "EMERITUS": "Emeritus",
+    "RET": "Ret.",
+  };
+
+  if (suffixMap[normalized]) {
+    return suffixMap[normalized];
+  }
+
+  // Invalid suffix - return null
+  return null;
 }
 
 function hasCompanyIndicators(tokens, rawString) {
@@ -270,6 +347,7 @@ function hasCompanyIndicators(tokens, rawString) {
   const lastToken = tokens[tokens.length - 1].toUpperCase();
   if (COMPANY_SUFFIXES.includes(lastToken)) return true;
   if (rawString && /[,]/.test(rawString)) return true;
+  if (rawString && /[\/]/.test(rawString)) return true;
   return false;
 }
 
@@ -280,6 +358,25 @@ function formatCompanyName(raw) {
 function splitCompositeNames(raw) {
   const sanitized = sanitizeRawOwner(raw);
   if (!sanitized) return [];
+
+  // First split by semicolons
+  const semicolonParts = sanitized.split(/;/).map((p) => normalizeWhitespace(p)).filter(Boolean);
+  if (semicolonParts.length > 1) {
+    // Further split each semicolon part by & or AND
+    const allParts = [];
+    semicolonParts.forEach((part) => {
+      const connectors = /\s+(?:&|AND)\s+/i;
+      if (connectors.test(part)) {
+        const subParts = part.split(connectors).map((p) => normalizeWhitespace(p)).filter(Boolean);
+        allParts.push(...subParts);
+      } else {
+        allParts.push(part);
+      }
+    });
+    return allParts;
+  }
+
+  // If no semicolons, try splitting by & or AND
   const connectors = /\s+(?:&|AND)\s+/i;
   if (!connectors.test(sanitized)) return [sanitized];
   const parts = sanitized
@@ -403,8 +500,11 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
       invalidCollector.push({ raw, reason: "unparseable_or_empty" });
       return;
     }
+    // Detect surname-first format: asterisk OR all uppercase (common in legal documents)
+    const rawTrimmed = (raw || "").trim();
+    const isAllUpperCase = rawTrimmed === rawTrimmed.toUpperCase() && /[A-Z]/.test(rawTrimmed);
     const surnameFirstHint =
-      /^\*/.test((raw || "").trim()) || /\*\s*$/.test((raw || "").trim());
+      /^\*/.test(rawTrimmed) || /\*\s*$/.test(rawTrimmed) || isAllUpperCase;
     const parsedOwners = [];
     const partInvalids = [];
     parts.forEach((part) => {
@@ -446,15 +546,18 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
 
 function parseOwnersFromEntries(entries, invalidCollector) {
   const ownerMap = new Map();
-  entries.forEach(({ rawName, rawAddress }) => {
+  entries.forEach(({ rawName, rawAddress, isPrimaryOwner }) => {
     if (!rawName) return;
     const parts = splitCompositeNames(rawName);
     if (parts.length === 0) {
       invalidCollector.push({ raw: rawName, reason: "unparseable_or_empty" });
       return;
     }
+    // Detect surname-first format: asterisk OR all uppercase (common in legal documents) OR primary owner field
+    const rawNameTrimmed = (rawName || "").trim();
+    const isAllUpperCase = rawNameTrimmed === rawNameTrimmed.toUpperCase() && /[A-Z]/.test(rawNameTrimmed);
     const surnameFirstHint =
-      /^\*/.test((rawName || "").trim()) || /\*\s*$/.test((rawName || "").trim());
+      /^\*/.test(rawNameTrimmed) || /\*\s*$/.test(rawNameTrimmed) || isAllUpperCase || isPrimaryOwner;
     const parsedOwners = [];
     const partInvalids = [];
     parts.forEach((part) => {
@@ -617,6 +720,7 @@ function extractCurrentOwnerEntries($doc) {
     entries.push({
       rawName,
       rawAddress,
+      isPrimaryOwner: true, // Mark as primary owner (surname-first format)
     });
   });
   return entries;

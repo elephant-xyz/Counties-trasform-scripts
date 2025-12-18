@@ -133,7 +133,7 @@ function mapInteriorMaterial(token) {
   const upper = token.toUpperCase();
   if (upper.includes("DRYWALL")) return "Drywall";
   if (upper.includes("PLASTER")) return "Plaster";
-  if (upper.includes("MASON")) return "Masonry";
+  if (upper.includes("MASON")) return "Exposed Block";
   if (upper.includes("N/A") || upper.includes("NONE")) return null;
   return null;
 }

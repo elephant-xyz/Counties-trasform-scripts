@@ -104,23 +104,75 @@ const PREFIX_TOKEN_MAP = new Map([
 ]);
 
 const SUFFIX_TOKEN_MAP = new Map([
-  ["JR", "Jr"],
-  ["JR.", "Jr"],
-  ["SR", "Sr"],
-  ["SR.", "Sr"],
+  ["JR", "Jr."],
+  ["JR.", "Jr."],
+  ["SR", "Sr."],
+  ["SR.", "Sr."],
   ["II", "II"],
   ["III", "III"],
   ["IV", "IV"],
-  ["V", "V"],
-  ["ESQ", "Esq"],
-  ["ESQ.", "Esq"],
-  ["ESQUIRE", "Esq"],
+  ["V", null],
+  ["ESQ", "Esq."],
+  ["ESQ.", "Esq."],
+  ["ESQUIRE", "Esq."],
   ["MD", "MD"],
   ["M.D", "MD"],
+  ["M.D.", "MD"],
   ["DDS", "DDS"],
   ["CPA", "CPA"],
   ["PH.D", "PhD"],
+  ["PH.D.", "PhD"],
   ["PHD", "PhD"],
+  ["JD", "JD"],
+  ["J.D", "JD"],
+  ["J.D.", "JD"],
+  ["LLM", "LLM"],
+  ["MBA", "MBA"],
+  ["M.B.A", "MBA"],
+  ["M.B.A.", "MBA"],
+  ["RN", "RN"],
+  ["R.N", "RN"],
+  ["R.N.", "RN"],
+  ["DVM", "DVM"],
+  ["D.V.M", "DVM"],
+  ["D.V.M.", "DVM"],
+  ["CFA", "CFA"],
+  ["PE", "PE"],
+  ["P.E", "PE"],
+  ["P.E.", "PE"],
+  ["PMP", "PMP"],
+  ["EMERITUS", "Emeritus"],
+  ["RET", "Ret."],
+  ["RET.", "Ret."],
+  ["RETIRED", "Ret."],
+]);
+
+const LAST_NAME_PREFIXES = new Set([
+  "MC",
+  "MAC",
+  "O",
+  "ST",
+  "ST.",
+  "SAN",
+  "SANTA",
+  "DE",
+  "DEL",
+  "DELA",
+  "DE LAS",
+  "DELOS",
+  "DE LOS",
+  "DE LA",
+  "DI",
+  "DA",
+  "DOS",
+  "DU",
+  "VAN",
+  "VON",
+  "LA",
+  "LE",
+  "EL",
+  "LOS",
+  "LAS",
 ]);
 
 function normalizeTokenForLookup(token) {
@@ -278,14 +330,23 @@ function classifyOwner(raw) {
   const parseFirstLast = (tokensArr) => {
     if (tokensArr.length < 2) return null;
     const tokensCopy = [...tokensArr];
-    const lastToken = tokensCopy.pop();
+    const lastTokens = [];
+    lastTokens.unshift(tokensCopy.pop());
+    while (tokensCopy.length > 0) {
+      const prevKey = normalizeTokenForLookup(tokensCopy[tokensCopy.length - 1]);
+      if (LAST_NAME_PREFIXES.has(prevKey)) {
+        lastTokens.unshift(tokensCopy.pop());
+      } else {
+        break;
+      }
+    }
     const firstToken = tokensCopy.shift();
     const middleTokens = tokensCopy;
-    if (!firstToken || !lastToken) return null;
+    if (!firstToken || !lastTokens.length) return null;
     return {
       firstName: titleCaseName(firstToken),
       middleName: middleTokens.length ? titleCaseName(middleTokens.join(" ")) : null,
-      lastName: titleCaseName(lastToken),
+      lastName: titleCaseName(lastTokens.join(" ")),
     };
   };
 
@@ -304,7 +365,7 @@ function classifyOwner(raw) {
     last_name: parsed.lastName,
     middle_name: parsed.middleName,
     prefix_name: prefixName ? titleCaseName(prefixName) : null,
-    suffix_name: suffixName || null,
+    suffix_name: suffixName ? titleCaseName(suffixName) : null,
   };
   return { valid: true, owner: person };
 }

@@ -375,7 +375,10 @@ function moneyToNumber(str) {
   const n = String(str).replace(/[^0-9.\-]/g, "");
   if (n === "" || n === ".") return null;
   const v = Number(n);
-  return isNaN(v) ? null : v;
+  if (isNaN(v)) return null;
+  // Validate that the value is reasonable for currency (less than 1 billion)
+  if (!Number.isFinite(v) || v > 1e9 || v < -1e9) return null;
+  return v;
 }
 
 function parseIntSafe(str) {
@@ -421,7 +424,55 @@ function cleanText(text) {
 }
 
 function titleCase(str) {
-  return (str || "").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  if (!str) return "";
+  const text = String(str).trim();
+  if (!text) return "";
+
+  // Split on word boundaries while preserving delimiters
+  // Handle space, hyphen, apostrophe, comma, period as separators
+  // After each separator, the next letter should be capitalized
+  const parts = [];
+  let current = "";
+  let shouldCapitalize = true;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (/[ \-',.]/.test(char)) {
+      // This is a separator
+      if (current) {
+        parts.push(current);
+        current = "";
+      }
+      parts.push(char);
+      shouldCapitalize = true;
+    } else if (shouldCapitalize) {
+      current = char.toUpperCase();
+      shouldCapitalize = false;
+    } else {
+      current += char.toLowerCase();
+    }
+  }
+  if (current) {
+    parts.push(current);
+  }
+
+  return parts.join("");
+}
+
+function isValidFirstOrLastName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  return /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(trimmed);
+}
+
+function isValidMiddleName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  return /^[A-Z][a-zA-Z\s\-',.]*$/.test(trimmed);
 }
 
 const COMPANY_KEYWORDS =
@@ -442,6 +493,44 @@ function tokenizeNamePart(part) {
     .trim()
     .split(" ")
     .filter(Boolean);
+}
+
+function isInitials(token) {
+  // Detect if a token looks like initials (e.g., "M.A.", "J.R.", "MA", "J")
+  if (!token) return false;
+  const cleaned = token.replace(/\./g, "").trim();
+  // Initials are typically 1-3 uppercase letters
+  return /^[A-Z]{1,3}$/.test(cleaned) && cleaned.length <= 3;
+}
+
+function normalizeNameForPattern(name) {
+  // Ensure name matches pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // If name contains initials with periods, try to format properly
+  if (!name) return null;
+
+  // Clean the name: trim and remove leading/trailing punctuation
+  let cleaned = String(name).trim();
+  // Remove leading/trailing punctuation (but not internal)
+  cleaned = cleaned.replace(/^[^A-Za-z]+/, "").replace(/[^A-Za-z]+$/, "");
+  if (!cleaned) return null;
+
+  // If it's pure initials (like "M.A."), we can't use it as first_name
+  if (isInitials(cleaned)) {
+    return null;
+  }
+
+  // Apply title case
+  const normalized = titleCase(cleaned);
+  if (!normalized) return null;
+
+  // Validate that the normalized name matches the required pattern
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!namePattern.test(normalized)) {
+    return null;
+  }
+
+  // Otherwise, return title-cased version
+  return normalized;
 }
 
 function buildPersonFromTokens(tokens, fallbackLastName) {
@@ -469,11 +558,45 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
+  // If first name is initials, try to handle it
+  if (first && isInitials(first)) {
+    // If we have middle name, try shifting
+    if (middle) {
+      const middleParts = middle.split(" ").filter(Boolean);
+      if (middleParts.length > 0 && !isInitials(middleParts[0])) {
+        // Move middle to first, move first to middle
+        const newFirst = middleParts[0];
+        const newMiddle = [first, ...middleParts.slice(1)].join(" ").trim() || null;
+        first = newFirst;
+        middle = newMiddle;
+      } else {
+        // All names are initials or problematic, skip this person
+        return null;
+      }
+    } else {
+      // Only have last and first (initials), cannot create valid person
+      return null;
+    }
+  }
+
+  // Normalize names to match pattern
+  const normalizedFirst = normalizeNameForPattern(first);
+  const normalizedLast = normalizeNameForPattern(last);
+
+  if (!normalizedFirst || !normalizedLast) {
+    // Cannot create person without valid first and last name
+    return null;
+  }
+
+  // Validate middle name if present
+  const middleNormalized = middle ? titleCase(middle) : null;
+  const validatedMiddle = middleNormalized && isValidMiddleName(middleNormalized) ? middleNormalized : null;
+
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: normalizedFirst,
+    last_name: normalizedLast,
+    middle_name: validatedMiddle,
   };
 }
 
@@ -1225,6 +1348,563 @@ function stripKeys(obj, keys) {
   keys.forEach((key) => {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       delete obj[key];
+}
+
+const PROPERTY_CLASS_OVERRIDES = {
+  "AFFORDABLE MULTI-FAMILY 10 OR MORE UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamily5Plus",
+  },
+  "AIRPORT, MARINAS, BUS TERM": {
+    property_usage_type: "TransportationTerminal",
+  },
+  "AIRPORT/STRIP": {
+    property_usage_type: "TransportationTerminal",
+    property_type: "LandParcel",
+  },
+  "APIARY/BEES": {
+    property_usage_type: "Agricultural",
+    property_type: "LandParcel",
+  },
+  "AUTO SALES": {
+    property_usage_type: "AutoSalesRepair",
+  },
+  "BLDG & LAND SEPARATE OWNERS": {
+    ownership_estate_type: "Leasehold",
+  },
+  "BOAT SLIPS/RACKS": {
+    property_usage_type: "TransportationTerminal",
+  },
+  "CAMPS": {
+    property_usage_type: "Recreational",
+    property_type: "LandParcel",
+  },
+  "CHURCHES": {
+    property_usage_type: "Church",
+  },
+  "CLUB": {
+    property_usage_type: "ClubsLodges",
+  },
+  "COLLEGES": {
+    property_usage_type: "PrivateSchool",
+  },
+  "COMMERCIAL": {
+    property_usage_type: "Commercial",
+  },
+  "COMPOUNDS": {
+    property_usage_type: "Residential",
+  },
+  "CONDO HEADER": {
+    build_status: "VacantLand",
+    property_usage_type: "ResidentialCommonElementsAreas",
+    property_type: "LandParcel",
+  },
+  "CONDOMINIUM": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "Residential",
+    property_type: "Unit",
+    structure_form: "ApartmentUnit",
+  },
+  "CONVEL/REST HOMES": {
+    property_usage_type: "SanitariumConvalescentHome",
+    structure_form: "MultiFamily5Plus",
+  },
+  "COOPERATIVES": {
+    property_usage_type: "Residential",
+    property_type: "Unit",
+    structure_form: "ApartmentUnit",
+  },
+  "COUNTY": {
+    property_usage_type: "GovernmentProperty",
+  },
+  "DEPT STORE": {
+    property_usage_type: "DepartmentStore",
+  },
+  "DRIVE-IN": {
+    property_usage_type: "Entertainment",
+  },
+  "FEDERAL": {
+    property_usage_type: "GovernmentProperty",
+  },
+  "FINANCIAL": {
+    property_usage_type: "FinancialInstitution",
+  },
+  "FLORIST/GREENHOUSE": {
+    property_usage_type: "Ornamentals",
+    property_type: "LandParcel",
+  },
+  "FOOD PROC": {
+    property_usage_type: "Cannery",
+  },
+  "FOREST/PARK/REC AREA": {
+    build_status: "VacantLand",
+    property_usage_type: "ForestParkRecreation",
+    property_type: "LandParcel",
+  },
+  "GOLF COURSE": {
+    property_usage_type: "GolfCourse",
+    property_type: "LandParcel",
+  },
+  "HEAVY MANUFACTURING": {
+    property_usage_type: "HeavyManufacturing",
+  },
+  "HOMES FOR THE AGED": {
+    property_usage_type: "HomesForAged",
+    structure_form: "MultiFamily5Plus",
+  },
+  "HOSPITAL": {
+    property_usage_type: "PublicHospital",
+  },
+  "HOTEL - B&B (11+ ROOMS)": {
+    property_usage_type: "Hotel",
+  },
+  "HOTEL - FLAG": {
+    property_usage_type: "Hotel",
+  },
+  "HOTEL - GUEST HOUSE (10 ROOMS OR LESS)": {
+    property_usage_type: "Hotel",
+  },
+  "HOTEL - LUXURY": {
+    property_usage_type: "Hotel",
+  },
+  "HOTEL - MOTEL": {
+    property_usage_type: "Hotel",
+  },
+  "HOTEL - PRIVATE": {
+    property_usage_type: "Hotel",
+  },
+  "HOTEL CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "Hotel",
+    property_type: "Unit",
+  },
+  "LEASEHOLD INTEREST": {
+    ownership_estate_type: "Leasehold",
+    property_usage_type: "Unknown",
+    property_type: "LandParcel",
+  },
+  "LIGHT MANUFACTURING": {
+    property_usage_type: "LightManufacturing",
+  },
+  "LUMBER YARD": {
+    property_usage_type: "LumberYard",
+  },
+  "MILITARY": {
+    property_usage_type: "GovernmentProperty",
+  },
+  "MINERAL PR": {
+    property_usage_type: "MineralProcessing",
+    property_type: "LandParcel",
+  },
+  "MINING": {
+    property_usage_type: "MineralProcessing",
+    property_type: "LandParcel",
+  },
+  "MIXED USE CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "Residential",
+    property_type: "Unit",
+  },
+  "MIXED USE RETAIL/AFFORDABLE": {
+    property_usage_type: "ShoppingCenterCommunity",
+  },
+  "MOBILE HOME SUB": {
+    property_usage_type: "Residential",
+    property_type: "LandParcel",
+  },
+  "MOBILE HOME/TRAILER": {
+    property_usage_type: "Residential",
+    property_type: "ManufacturedHome",
+    structure_form: "ManufacturedHousing",
+  },
+  "MORTUARY": {
+    property_usage_type: "MortuaryCemetery",
+    property_type: "LandParcel",
+  },
+  "MULTI FAMILY 10 OR MORE UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamily5Plus",
+  },
+  "MULTI FAMILY LESS THAN 10 UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY 5 UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY 6 UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY 7 UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY 8 UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY 9 UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY DUPLEX": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY FOURPLEX": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY TRIPLEX": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTISTORY": {
+    property_usage_type: "OfficeBuilding",
+  },
+  "MUNICIPAL": {
+    property_usage_type: "GovernmentProperty",
+  },
+  "NIGHTCLUB": {
+    property_usage_type: "Entertainment",
+  },
+  "NON AGRICULTURE": {
+    build_status: "VacantLand",
+    property_usage_type: "TransitionalProperty",
+    property_type: "LandParcel",
+  },
+  "NOTE": {
+    build_status: "VacantLand",
+    property_usage_type: "ReferenceParcel",
+    property_type: "LandParcel",
+  },
+  "OFFICE CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "OfficeBuilding",
+    property_type: "Unit",
+  },
+  "ONE STORY OFFICE": {
+    property_usage_type: "OfficeBuilding",
+  },
+  "OPEN STORAGE": {
+    property_usage_type: "OpenStorage",
+    property_type: "LandParcel",
+  },
+  "PACKING": {
+    property_usage_type: "PackingPlant",
+  },
+  "PARKING LOT": {
+    property_usage_type: "Commercial",
+    property_type: "LandParcel",
+  },
+  "PRIVATE HOSPITAL": {
+    property_usage_type: "PrivateHospital",
+  },
+  "PRIVATE SCHOOL": {
+    property_usage_type: "PrivateSchool",
+  },
+  "PROF. BLDG": {
+    property_usage_type: "OfficeBuilding",
+  },
+  "PROFESSIONAL BLDG CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "OfficeBuilding",
+    property_type: "Unit",
+  },
+  "PUBLIC SCHOOLS": {
+    property_usage_type: "PublicSchool",
+  },
+  "RACE TRACK": {
+    property_usage_type: "RaceTrack",
+  },
+  "RES WATERFRONT": {
+    property_usage_type: "Residential",
+    structure_form: "SingleFamilyDetached",
+  },
+  "RESIDENTIAL COMMON ELEMENTS": {
+    build_status: "VacantLand",
+    property_usage_type: "ResidentialCommonElementsAreas",
+    property_type: "LandParcel",
+  },
+  "RESTAURANT": {
+    property_usage_type: "Restaurant",
+  },
+  "RESTAURANT CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "Restaurant",
+    property_type: "Unit",
+  },
+  "RETAIL-BIG BOX LARGE->20K SF": {
+    property_usage_type: "RetailStore",
+  },
+  "RETAIL-BIG BOX-10K SF TO 20K SF": {
+    property_usage_type: "RetailStore",
+  },
+  "RETAIL-BIG BOX-SMALL-<10K SF": {
+    property_usage_type: "RetailStore",
+  },
+  "RETAIL-CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "RetailStore",
+    property_type: "Unit",
+  },
+  "RETAIL-CONVENIENCE STORE": {
+    property_usage_type: "RetailStore",
+  },
+  "RETAIL-DRUG STORE": {
+    property_usage_type: "RetailStore",
+  },
+  "RETAIL-MULTI TENANT": {
+    property_usage_type: "ShoppingCenterCommunity",
+  },
+  "RETAIL-SINGLE TENANT": {
+    property_usage_type: "RetailStore",
+  },
+  "RIGHT OF WAY": {
+    ownership_estate_type: "RightOfWay",
+    build_status: "VacantLand",
+    property_usage_type: "ReferenceParcel",
+    property_type: "LandParcel",
+  },
+  "RV PARK": {
+    property_usage_type: "Recreational",
+    property_type: "LandParcel",
+  },
+  "SERVICE SHOPS": {
+    property_usage_type: "Commercial",
+  },
+  "SERVICE STATION": {
+    property_usage_type: "ServiceStation",
+  },
+  "SHOPPING CENTER": {
+    property_usage_type: "ShoppingCenterCommunity",
+  },
+  "SINGLE FAMILY RESID": {
+    property_usage_type: "Residential",
+    structure_form: "SingleFamilyDetached",
+  },
+  "STATE": {
+    property_usage_type: "GovernmentProperty",
+  },
+  "STORE COMBO": {
+    property_usage_type: "RetailStore",
+  },
+  "SUBMERGED": {
+    build_status: "VacantLand",
+    property_usage_type: "RiversLakes",
+    property_type: "LandParcel",
+  },
+  "SUBSURFACE RIGHTS": {
+    ownership_estate_type: "SubsurfaceRights",
+    build_status: "VacantLand",
+    property_usage_type: "ReferenceParcel",
+    property_type: "LandParcel",
+  },
+  "SUPER MARKET": {
+    property_usage_type: "Supermarket",
+  },
+  "THEATRE": {
+    property_usage_type: "Theater",
+  },
+  "TIMESHARE": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "Residential",
+    property_type: "Unit",
+    structure_form: "ApartmentUnit",
+  },
+  "TOURIST ATTRACTION": {
+    property_usage_type: "Entertainment",
+  },
+  "UTILITY": {
+    property_usage_type: "Utility",
+  },
+  "VACANT EXEMPT": {
+    build_status: "VacantLand",
+    property_usage_type: "GovernmentProperty",
+    property_type: "LandParcel",
+  },
+  "VACANT INDUSTRIAL": {
+    build_status: "VacantLand",
+    property_usage_type: "Industrial",
+    property_type: "LandParcel",
+  },
+  "VACANT INSTITUTIONAL": {
+    build_status: "VacantLand",
+    property_usage_type: "GovernmentProperty",
+    property_type: "LandParcel",
+  },
+  "VACANT RES": {
+    build_status: "VacantLand",
+    property_usage_type: "Residential",
+    property_type: "LandParcel",
+  },
+  "WAREHOUSE": {
+    property_usage_type: "Warehouse",
+  },
+  "WAREHOUSE CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "Warehouse",
+    property_type: "Unit",
+  },
+  "WASTELAND": {
+    build_status: "VacantLand",
+    property_usage_type: "Conservation",
+    property_type: "LandParcel",
+  },
+};
+
+const PROPERTY_CLASS_NAMES = [
+  "AFFORDABLE MULTI-FAMILY 10 OR MORE UNITS",
+  "AIRPORT, MARINAS, BUS TERM",
+  "AIRPORT/STRIP",
+  "APIARY/BEES",
+  "AUTO SALES",
+  "BLDG & LAND SEPARATE OWNERS",
+  "BOAT SLIPS/RACKS",
+  "CAMPS",
+  "CHURCHES",
+  "CLUB",
+  "COLLEGES",
+  "COMMERCIAL",
+  "COMPOUNDS",
+  "CONDO HEADER",
+  "CONDOMINIUM",
+  "CONVEL/REST HOMES",
+  "COOPERATIVES",
+  "COUNTY",
+  "DEPT STORE",
+  "DRIVE-IN",
+  "FEDERAL",
+  "FINANCIAL",
+  "FLORIST/GREENHOUSE",
+  "FOOD PROC",
+  "FOREST/PARK/REC AREA",
+  "GOLF COURSE",
+  "HEAVY MANUFACTURING",
+  "HOMES FOR THE AGED",
+  "HOSPITAL",
+  "HOTEL - B&B (11+ ROOMS)",
+  "HOTEL - FLAG",
+  "HOTEL - GUEST HOUSE (10 ROOMS OR LESS)",
+  "HOTEL - LUXURY",
+  "HOTEL - MOTEL",
+  "HOTEL - PRIVATE",
+  "HOTEL CONDO",
+  "LEASEHOLD INTEREST",
+  "LIGHT MANUFACTURING",
+  "LUMBER YARD",
+  "MILITARY",
+  "MINERAL PR",
+  "MINING",
+  "MIXED USE CONDO",
+  "MIXED USE RETAIL/AFFORDABLE",
+  "MOBILE HOME SUB",
+  "MOBILE HOME/TRAILER",
+  "MORTUARY",
+  "MULTI FAMILY 10 OR MORE UNITS",
+  "MULTI FAMILY LESS THAN 10 UNITS",
+  "MULTI-FAMILY 5 UNITS",
+  "MULTI-FAMILY 6 UNITS",
+  "MULTI-FAMILY 7 UNITS",
+  "MULTI-FAMILY 8 UNITS",
+  "MULTI-FAMILY 9 UNITS",
+  "MULTI-FAMILY DUPLEX",
+  "MULTI-FAMILY FOURPLEX",
+  "MULTI-FAMILY TRIPLEX",
+  "MULTISTORY",
+  "MUNICIPAL",
+  "NIGHTCLUB",
+  "NON AGRICULTURE",
+  "NOTE",
+  "OFFICE CONDO",
+  "ONE STORY OFFICE",
+  "OPEN STORAGE",
+  "PACKING",
+  "PARKING LOT",
+  "PRIVATE HOSPITAL",
+  "PRIVATE SCHOOL",
+  "PROF. BLDG",
+  "PROFESSIONAL BLDG CONDO",
+  "PUBLIC SCHOOLS",
+  "RACE TRACK",
+  "RES WATERFRONT",
+  "RESIDENTIAL COMMON ELEMENTS",
+  "RESTAURANT",
+  "RESTAURANT CONDO",
+  "RETAIL-BIG BOX LARGE->20K SF",
+  "RETAIL-BIG BOX-10K SF TO 20K SF",
+  "RETAIL-BIG BOX-SMALL-<10K SF",
+  "RETAIL-CONDO",
+  "RETAIL-CONVENIENCE STORE",
+  "RETAIL-DRUG STORE",
+  "RETAIL-MULTI TENANT",
+  "RETAIL-SINGLE TENANT",
+  "RIGHT OF WAY",
+  "RV PARK",
+  "SERVICE SHOPS",
+  "SERVICE STATION",
+  "SHOPPING CENTER",
+  "SINGLE FAMILY RESID",
+  "STATE",
+  "STORE COMBO",
+  "SUBMERGED",
+  "SUBSURFACE RIGHTS",
+  "SUPER MARKET",
+  "THEATRE",
+  "TIMESHARE",
+  "TOURIST ATTRACTION",
+  "UTILITY",
+  "VACANT EXEMPT",
+  "VACANT INDUSTRIAL",
+  "VACANT INSTITUTIONAL",
+  "VACANT RES",
+  "WAREHOUSE",
+  "WAREHOUSE CONDO",
+  "WASTELAND",
+];
+
+const PROPERTY_CLASS_MAP = Object.create(null);
+for (const [name, overrides] of Object.entries(PROPERTY_CLASS_OVERRIDES)) {
+  const key = normalizePropertyClassName(name);
+  PROPERTY_CLASS_MAP[key] = {
+    ...PROPERTY_CLASS_DEFAULTS,
+    ...overrides,
+  };
+}
+
+(function validatePropertyClassMappings() {
+  const missing = PROPERTY_CLASS_NAMES.filter((name) => {
+    const key = normalizePropertyClassName(name);
+    return !Object.prototype.hasOwnProperty.call(PROPERTY_CLASS_MAP, key);
+  });
+  if (missing.length) {
+    throw new Error(
+      `Missing property class mappings for: ${missing.join(", ")}`,
+    );
+  }
+})();
+
+function textOf($, el) {
+  return $(el).text().trim();
+}
+
+const SUMMARY_SELECTOR = "#ctlBodyPane_ctl02_ctl01_dynamicSummary_divSummary";
+const LAND_TABLE_SELECTOR = "#ctlBodyPane_ctl06_ctl01_gvwList";
+const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl04_ctl01_grdValuation";
+
+function findRowValueByTh($, moduleSelector, thTextStartsWith) {
+  const rows = $(`${moduleSelector} table.tabular-data-two-column tbody tr`);
+  for (let i = 0; i < rows.length; i++) {
+    const th = $(rows[i]).find("th strong").first();
+    const thTxt = textOf($, th);
+    if (
+      thTxt &&
+      thTxt.toLowerCase().startsWith(thTextStartsWith.toLowerCase())
+    ) {
+      const valSpan = $(rows[i]).find("td div span").first();
+      return textOf($, valSpan) || null;
     }
   });
   return obj;
@@ -1738,11 +2418,11 @@ function parsePermitTable($) {
     if (!hasContent) return;
     rows.push({
       permitNumber: permitNumber || null,
-      type: cells[0] || null,
-      primary: cells[1] || null,
-      active: cells[2] || null,
-      issueDate: cells[3] || null,
-      value: cells[4] || null,
+      issueDate: cells[0] || null,
+      active: cells[1] || null,
+      value: cells[2] || null,
+      type: cells[3] || null,
+      primary: cells[4] || null,
     });
   });
   return rows;
@@ -2084,20 +2764,43 @@ function main() {
 
   function createPersonRecord(personData) {
     if (!personData) return null;
-    const firstName =
+
+    // Extract and normalize names
+    const firstNameRaw =
       personData.first_name != null
         ? String(personData.first_name).trim()
         : "";
-    const lastName =
+    const lastNameRaw =
       personData.last_name != null ? String(personData.last_name).trim() : "";
+
+    // Clean names: remove leading/trailing non-alphabetic characters
+    const firstCleaned = firstNameRaw.replace(/^[^A-Za-z]+/, "").replace(/[^A-Za-z]+$/, "");
+    const lastCleaned = lastNameRaw.replace(/^[^A-Za-z]+/, "").replace(/[^A-Za-z]+$/, "");
+
+    // Normalize using titleCase to ensure proper format
+    const firstName = firstCleaned ? titleCase(firstCleaned) : "";
+    const lastName = lastCleaned ? titleCase(lastCleaned) : "";
+
+    // Validate that names match the required pattern
+    if (!firstName || !lastName || !isValidFirstOrLastName(firstName) || !isValidFirstOrLastName(lastName)) {
+      // Cannot create person without valid first and last name
+      return null;
+    }
+
     const middleRaw =
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    const middleName = middleRaw ? middleRaw : null;
+    // Clean middle name
+    const middleCleaned = middleRaw ? middleRaw.replace(/^[^A-Za-z]+/, "").replace(/[^A-Za-z]+$/, "") : "";
+    const middleNormalized = middleCleaned ? titleCase(middleCleaned) : null;
+
+    // Validate middle name if present
+    const middleName = middleNormalized && isValidMiddleName(middleNormalized) ? middleNormalized : null;
+
     const key =
       firstName || lastName
-        ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
+        ? `${firstName.toLowerCase()}|${(middleName || "").toLowerCase()}|${lastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {
@@ -2108,8 +2811,8 @@ function main() {
     const filename = `person_${personIndex}.json`;
     const personObj = {
       birth_date: personData.birth_date || null,
-      first_name: firstName || "",
-      last_name: lastName || "",
+      first_name: firstName,
+      last_name: lastName,
       middle_name: middleName,
       prefix_name:
         personData && personData.prefix_name != null
@@ -2361,6 +3064,9 @@ const structureItems = (() => {
     writeJSON(path.join(dataDir, filename), data);
   });
 
+  // Initialize buildingLayoutsInfo early for use in utilityItems
+  const buildingLayoutsInfo = [];
+
   const utilityItems = (() => {
     const wrap = (entry, buildingIndex = null) => {
       const cleanedEntry =
@@ -2466,7 +3172,7 @@ const structureItems = (() => {
   const permitEntries = parsePermitTable($);
   permitEntries.forEach((permit, idx) => {
     const improvementType =
-      mapPermitImprovementType(permit.type) || "Other";
+      mapPermitImprovementType(permit.type) || "GeneralBuilding";
     const improvementStatus =
       mapPermitImprovementStatus(permit.active) || "Unknown";
     const permitIssueDate = toISOFromMDY(permit.issueDate);
@@ -2668,7 +3374,7 @@ const structureItems = (() => {
       })
     : [];
 
-  const buildingLayoutsInfo = [];
+  // buildingLayoutsInfo already initialized earlier
   const buildingInfoByIndex = new Map();
   const buildingMetaByIndex = new Map();
   normalizedBuildings.forEach((meta) => {
@@ -2859,8 +3565,13 @@ const structureItems = (() => {
       return "Carport";
     if (typeCode === "EUF" || (desc.includes("ELEV") && desc.includes("UNFIN")))
       return "Storage Room";
+    if (desc.includes("UTIL") && desc.includes("UNFIN")) return "Storage Room";
     if (typeCode === "FLA" || desc.includes("FLOOR LIV") || typeCode === "BAS")
       return "Living Area";
+    if (typeCode === "LLF" || (desc.includes("LOW") && desc.includes("LEV") && desc.includes("FIN")))
+      return "Basement";
+    if (typeCode.includes("GAR") && typeCode.includes("FIN")) return "Attached Garage";
+    if (typeCode === "GBF" || (desc.includes("GAR") && desc.includes("FIN") && desc.includes("BLOCK"))) return "Attached Garage";
     if (desc.includes("BED")) return "Bedroom";
     if (desc.includes("BATH")) return "Full Bathroom";
     if (desc.includes("KITCH")) return "Kitchen";
@@ -2871,7 +3582,7 @@ const structureItems = (() => {
     if (desc.includes("BALCONY")) return "Balcony";
     if (desc.includes("DECK")) return "Deck";
     if (desc.includes("PATIO")) return "Patio";
-    if (desc.includes("GARAGE")) return "Garage";
+    if (desc.includes("GARAGE") || typeCode.includes("GAR") || desc.startsWith("GAR ")) return desc.includes("DET") ? "Detached Garage" : "Attached Garage";
     if (desc.includes("CARPORT")) return "Carport";
     if (desc.includes("STORAGE")) return "Storage Room";
     return null;
@@ -2908,8 +3619,7 @@ const structureItems = (() => {
         );
         (meta.subAreas || []).forEach((subArea, idx) => {
           const label =
-            mapSubAreaLayoutType(subArea) ||
-            titleCase(subArea.description || subArea.type || "Sub Area");
+            mapSubAreaLayoutType(subArea) || "Living Area";
           const targetFloorNumber = pickFloorNumber(idx);
           const alreadyExists = info.directChildLayouts.some(
             (layout) =>
@@ -3282,21 +3992,7 @@ const structureItems = (() => {
     });
   }
 
-  const ownerMailingInfo = parseOwnerMailingAddresses($);
-  const mailingAddressFiles = [];
-  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-    if (!addr) return;
-    const fileName = `mailing_address_${idx + 1}.json`;
-    const mailingObj = {
-      unnormalized_address: addr,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    mailingAddressFiles.push({ path: `./${fileName}` });
-  });
+  // Mailing addresses are not part of the Elephant schema, so we don't generate them
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -3318,63 +4014,6 @@ const structureItems = (() => {
       }
     }
   }
-
-  const currentOwnerEntities = [];
-  currentOwners.forEach((owner, idx) => {
-    if (!owner || !owner.type) return;
-    let mailingIdx = null;
-    if (
-      ownerMailingInfo.rawAddresses[idx] != null &&
-      mailingAddressFiles.length
-    ) {
-      const rawAddr = ownerMailingInfo.rawAddresses[idx];
-      const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-      if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
-    }
-    if (mailingIdx == null && mailingAddressFiles.length) {
-      mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
-    }
-    const mailingRecord =
-      mailingIdx != null && mailingIdx >= 0
-        ? mailingAddressFiles[mailingIdx]
-        : null;
-
-    if (owner.type === "person") {
-      const normalizedPerson = normalizeOwner(owner, ownersByDate);
-      const personPath = createPersonRecord(normalizedPerson);
-      if (personPath) {
-        currentOwnerEntities.push({
-          type: "person",
-          path: personPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
-        });
-      }
-    } else if (owner.type === "company") {
-      const companyPath = createCompanyRecord(owner.name || "");
-      if (companyPath) {
-        currentOwnerEntities.push({
-          type: "company",
-          path: companyPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
-        });
-      }
-    }
-  });
-
-  const mailingRelationshipKeys = new Set();
-  currentOwnerEntities.forEach((entity) => {
-    if (!entity.path || !entity.mailingPath) return;
-    const relKey = `${entity.path}|${entity.mailingPath}`;
-    if (mailingRelationshipKeys.has(relKey)) return;
-    mailingRelationshipKeys.add(relKey);
-    const relFilename = makeRelationshipFilename(entity.path, entity.mailingPath);
-    if (!relFilename) return;
-    const relObj = {
-      from: { "/": entity.path },
-      to: { "/": entity.mailingPath },
-    };
-    writeJSON(path.join(dataDir, relFilename), relObj);
-  });
 
   const work = parseValuationsWorking($);
   if (work) {
@@ -3558,6 +4197,34 @@ const structureItems = (() => {
   }
 
   const latestSaleRef = saleFileRefs.length ? saleFileRefs[0] : null;
+
+  // Only create person/company records for current owners if there are sales to link them to
+  const currentOwnerEntities = [];
+  if (latestSaleRef && !saleBuyerStatus.get(latestSaleRef.salesPath)) {
+    currentOwners.forEach((owner, idx) => {
+      if (!owner || !owner.type) return;
+
+      if (owner.type === "person") {
+        const normalizedPerson = normalizeOwner(owner, ownersByDate);
+        const personPath = createPersonRecord(normalizedPerson);
+        if (personPath) {
+          currentOwnerEntities.push({
+            type: "person",
+            path: personPath,
+          });
+        }
+      } else if (owner.type === "company") {
+        const companyPath = createCompanyRecord(owner.name || "");
+        if (companyPath) {
+          currentOwnerEntities.push({
+            type: "company",
+            path: companyPath,
+          });
+        }
+      }
+    });
+  }
+
   if (
     latestSaleRef &&
     latestSaleRef.salesPath &&
