@@ -1924,7 +1924,7 @@ function main() {
       permit_issue_date: permitIssueDate,
       completion_date: completionDate,
       contractor_type: contractorType || "Unknown",
-      permit_required: permitNumber ? true : false,
+      permit_required: Boolean(permitNumber),
       request_identifier: improvementRequestId,
     };
 
@@ -1997,8 +1997,10 @@ function main() {
     // Ensure permit_required is always a boolean (required by schema, not nullable)
     if (typeof cleanedImprovement.permit_required !== "boolean") {
       // Default to false if not a boolean (e.g., if it's null, undefined, or any other type)
-      cleanedImprovement.permit_required = cleanedImprovement.permit_number ? true : false;
+      cleanedImprovement.permit_required = Boolean(cleanedImprovement.permit_number);
     }
+    // Double-check: force conversion to boolean if somehow it's still not
+    cleanedImprovement.permit_required = Boolean(cleanedImprovement.permit_required);
 
     const filename = `property_improvement_${propertyImprovementOutputs.length + 1}.json`;
     writeJSON(path.join(dataDir, filename), cleanedImprovement);
