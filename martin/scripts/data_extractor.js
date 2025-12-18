@@ -2100,7 +2100,6 @@ function main() {
         file_format: null,
         ipfs_url: null,
         name: name,
-        original_url: row.link,
       };
       filesOut.push({ file: `file_${fileIndex}.json`, data: fileObj });
       relDeedFile.push({
