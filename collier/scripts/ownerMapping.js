@@ -200,7 +200,6 @@ const knownSuffixes = new Set([
   "II",
   "III",
   "IV",
-  "V",
   "ESQ",
   "ESQ.",
   "CFA",
@@ -213,6 +212,7 @@ const knownSuffixes = new Set([
   "PHD",
   "PMP",
   "RN",
+  "JD",
   "LLM",
   "EMERITUS",
   "RET",
@@ -230,11 +230,23 @@ function normalizeSuffix(suffix) {
     II: "II",
     III: "III",
     IV: "IV",
-    V: "V",
     ESQ: "Esq.",
+    PHD: "PhD",
+    MD: "MD",
+    JD: "JD",
+    LLM: "LLM",
+    MBA: "MBA",
+    RN: "RN",
+    DDS: "DDS",
+    DVM: "DVM",
+    CFA: "CFA",
+    CPA: "CPA",
+    PE: "PE",
+    PMP: "PMP",
+    EMERITUS: "Emeritus",
     RET: "Ret.",
   };
-  return map[upper] || suffix;
+  return map[upper] || null;
 }
 
 // Classify a raw owner name string into schema owner or invalid
