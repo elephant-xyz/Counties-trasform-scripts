@@ -159,12 +159,146 @@ function parsePersonName(raw) {
     }
   }
   if (!first || !last) return null;
+
+  // Apply title casing and validation
+  const firstTitled = titleCaseName(first);
+  const lastTitled = titleCaseName(last);
+  let middleTitled = middle ? cleanMiddleName(middle) : null;
+
+  // Ensure first and last names are valid after title casing
+  if (!firstTitled || !lastTitled) return null;
+  // Middle name is already validated by cleanMiddleName (returns null if invalid)
+
   return {
     type: "person",
-    first_name: first,
-    last_name: last,
-    middle_name: middle || null,
+    first_name: firstTitled,
+    last_name: lastTitled,
+    middle_name: middleTitled,
   };
+}
+
+// Title case a name to match Elephant schema pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+function titleCaseName(s) {
+  if (s == null) return null;
+  s = String(s).trim();
+  if (!s) return null;
+
+  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
+  s = s.replace(/[^a-zA-Z\s\-',.]/g, '');
+  if (!s) return null;
+
+  // Remove leading/trailing separators and collapse multiple spaces
+  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '').replace(/\s+/g, ' ');
+  if (!s) return null;
+
+  // Convert to lowercase for processing
+  s = s.toLowerCase();
+
+  // Split by separators while preserving them
+  const parts = [];
+  let currentWord = '';
+  let lastWasSeparator = false;
+
+  for (let i = 0; i < s.length; i++) {
+    const char = s[i];
+    if (/[\s\-',.]/.test(char)) {
+      if (currentWord) {
+        parts.push({ type: 'word', value: currentWord });
+        currentWord = '';
+      }
+      if (!lastWasSeparator) {
+        parts.push({ type: 'sep', value: char });
+        lastWasSeparator = true;
+      }
+    } else {
+      currentWord += char;
+      lastWasSeparator = false;
+    }
+  }
+  if (currentWord) {
+    parts.push({ type: 'word', value: currentWord });
+  }
+
+  // Build result with proper capitalization
+  let result = '';
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.type === 'word') {
+      // Capitalize first letter, rest lowercase
+      result += part.value.charAt(0).toUpperCase() + part.value.slice(1);
+    } else {
+      result += part.value;
+    }
+  }
+
+  result = result.trim();
+
+  // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  if (!result || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) return null;
+  return result;
+}
+
+// Clean and validate middle name using the more lenient pattern
+function cleanMiddleName(s) {
+  if (s == null) return null;
+  s = String(s).trim();
+  if (!s) return null;
+
+  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
+  s = s.replace(/[^a-zA-Z\s\-',.]/g, '');
+  if (!s) return null;
+
+  // Remove leading/trailing separators and collapse multiple spaces
+  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '').replace(/\s+/g, ' ');
+  if (!s) return null;
+
+  // For middle names, we use title case but preserve the more lenient pattern
+  // Convert to lowercase for processing
+  const lower = s.toLowerCase();
+
+  // Split by separators while preserving them
+  const parts = [];
+  let currentWord = '';
+  let lastWasSeparator = false;
+
+  for (let i = 0; i < lower.length; i++) {
+    const char = lower[i];
+    if (/[\s\-',.]/.test(char)) {
+      if (currentWord) {
+        parts.push({ type: 'word', value: currentWord });
+        currentWord = '';
+      }
+      if (!lastWasSeparator) {
+        parts.push({ type: 'sep', value: char });
+        lastWasSeparator = true;
+      }
+    } else {
+      currentWord += char;
+      lastWasSeparator = false;
+    }
+  }
+  if (currentWord) {
+    parts.push({ type: 'word', value: currentWord });
+  }
+
+  // Build result with proper capitalization
+  let result = '';
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.type === 'word') {
+      // Capitalize first letter, rest lowercase
+      result += part.value.charAt(0).toUpperCase() + part.value.slice(1);
+    } else {
+      result += part.value;
+    }
+  }
+
+  result = result.trim();
+
+  // For middle names: use a more lenient pattern that allows multiple words/initials
+  // Pattern: ^[A-Z]([a-z]*)?([ \-',.][A-Z]([a-z]*)?)*$
+  if (!result || !/^[A-Z]([a-z]*)?([ \-',.][A-Z]([a-z]*)?)*$/.test(result)) return null;
+  return result;
 }
 
 const PERSON_FRAGMENT_BLOCKLIST = new Set([
@@ -199,10 +333,20 @@ function inferPersonWithFallback(raw, fallbackLast) {
   if (!cleanedTokens.length) return null;
   const first = cleanedTokens[0];
   const middle = cleanedTokens.length > 1 ? cleanedTokens.slice(1).join(" ") : null;
+
+  // Apply title casing and validation
+  const firstTitled = titleCaseName(first);
+  let middleTitled = middle ? cleanMiddleName(middle) : null;
+
+  // Ensure first name is valid after title casing
+  if (!firstTitled) return null;
+  // Middle name is already validated by cleanMiddleName (returns null if invalid)
+  // Note: fallbackLast should already be title-cased from the previous person
+
   return {
     type: "person",
-    first_name: first,
-    middle_name: middle || null,
+    first_name: firstTitled,
+    middle_name: middleTitled,
     last_name: fallbackLast,
   };
 }
