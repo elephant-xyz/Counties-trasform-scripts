@@ -29458,9 +29458,29 @@ async function main() {
         `${JSON.stringify(normalizedOut, null, 2)}\n`,
       );
     } else if (finalRawCandidate) {
-      const rawOut = {
-        unnormalized_address: finalRawCandidate,
-      };
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (field === "unnormalized_address" || field === "source_http_request") {
+          return;
+        }
+        const value = finalSnapshot ? finalSnapshot[field] : undefined;
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+        } else {
+          rawOut[field] = safeNullIfEmpty(value);
+        }
+      });
+
+      const snapshotSourceHttp = prepareSourceHttpRequest(
+        finalSnapshot && finalSnapshot.source_http_request,
+      );
+      if (snapshotSourceHttp) {
+        rawOut.source_http_request = snapshotSourceHttp;
+      }
+
+      rawOut.unnormalized_address = finalRawCandidate;
 
       if (finalRequestId !== undefined) {
         rawOut.request_identifier = finalRequestId ?? null;
@@ -29500,20 +29520,33 @@ async function main() {
         rawOut.country_code = resolvedCountry;
       }
 
-      const resolvedPostal = safeNullIfEmpty(finalSnapshot.postal_code);
+      const resolvedPostal =
+        safeNullIfEmpty(finalSnapshot.postal_code) || rawOut.postal_code;
       if (resolvedPostal) {
         rawOut.postal_code = resolvedPostal;
-        const resolvedPlusFour = safeNullIfEmpty(finalSnapshot.plus_four_postal_code);
+        const resolvedPlusFour =
+          safeNullIfEmpty(finalSnapshot.plus_four_postal_code) ||
+          rawOut.plus_four_postal_code;
         if (resolvedPlusFour) {
           rawOut.plus_four_postal_code = resolvedPlusFour;
         }
+      } else {
+        rawOut.postal_code = null;
+        rawOut.plus_four_postal_code = null;
       }
 
-      const lat = parseCoordinate(finalSnapshot.latitude);
-      const lon = parseCoordinate(finalSnapshot.longitude);
+      const lat = parseCoordinate(finalSnapshot.latitude ?? rawOut.latitude);
+      const lon = parseCoordinate(finalSnapshot.longitude ?? rawOut.longitude);
       if (Number.isFinite(lat) && Number.isFinite(lon)) {
         rawOut.latitude = lat;
         rawOut.longitude = lon;
+      } else {
+        rawOut.latitude = null;
+        rawOut.longitude = null;
+      }
+
+      if (!hasMeaningfulAddressValue(rawOut.postal_code)) {
+        rawOut.plus_four_postal_code = null;
       }
 
       originalWriteFileSync(
