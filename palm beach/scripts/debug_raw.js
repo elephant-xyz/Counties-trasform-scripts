@@ -9712,7 +9712,10 @@ function sanitizeRawOneOfPayload(payload = {}, overrides = {}) {
   );
   if (!rawValue) return null;
 
-  const cleaned = { unnormalized_address: rawValue };
+  // Start from the full raw template so every address field is present (nullable)
+  // to satisfy the oneOf branch even when the source only provides an
+  // unnormalized string.
+  const cleaned = { ...RAW_ONE_OF_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
   RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
     if (field === "unnormalized_address") return;
     let value =
@@ -9727,8 +9730,25 @@ function sanitizeRawOneOfPayload(payload = {}, overrides = {}) {
       cleaned[field] = prepared ? deepClone(prepared) : null;
       return;
     }
+    if (value === undefined) {
+      cleaned[field] = null;
+      return;
+    }
     cleaned[field] = safeNullIfEmpty(value);
   });
+  if (!cleaned.postal_code) {
+    cleaned.plus_four_postal_code = null;
+  }
+  if ((cleaned.latitude == null) !== (cleaned.longitude == null)) {
+    cleaned.latitude = null;
+    cleaned.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(cleaned.state_code) &&
+    !hasMeaningfulAddressValue(cleaned.country_code)
+  ) {
+    cleaned.country_code = "US";
+  }
   return cleaned;
 }
 
