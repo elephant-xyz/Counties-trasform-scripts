@@ -553,29 +553,9 @@ function enforceMinimalRawOneOf(addressPath, options = {}) {
     return;
   }
 
-  const rawFieldOrder = [
-    "unnormalized_address",
-    "latitude",
-    "longitude",
-    "section",
-    "township",
-    "range",
-    "block",
-    "lot",
-    "city_name",
-    "postal_code",
-    "plus_four_postal_code",
-    "state_code",
-    "county_name",
-    "country_code",
-    "request_identifier",
-    "source_http_request",
-  ];
-
-  const rawOut = {};
-  rawFieldOrder.forEach((field) => {
-    rawOut[field] = null;
-  });
+  // Keep the full address schema surface (nullable) so the raw oneOf branch
+  // still carries every required property rather than a trimmed subset.
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
   rawOut.unnormalized_address = rawValue;
 
   const numericLat = parseCoordinate(snapshot.latitude);
@@ -589,10 +569,10 @@ function enforceMinimalRawOneOf(addressPath, options = {}) {
   rawOut.block = snapshot.block ?? null;
   rawOut.lot = snapshot.lot ?? null;
 
-  rawOut.city_name = safeNullIfEmpty(snapshot.city_name);
-  rawOut.postal_code = safeNullIfEmpty(snapshot.postal_code);
+  rawOut.city_name = safeNullIfEmpty(snapshot.city_name) ?? null;
+  rawOut.postal_code = safeNullIfEmpty(snapshot.postal_code) ?? null;
   rawOut.plus_four_postal_code = rawOut.postal_code
-    ? safeNullIfEmpty(snapshot.plus_four_postal_code)
+    ? safeNullIfEmpty(snapshot.plus_four_postal_code) ?? null
     : null;
 
   const stateFallback =
@@ -620,11 +600,26 @@ function enforceMinimalRawOneOf(addressPath, options = {}) {
     prepareSourceHttpRequest(options.sourceHttpRequest) ||
     null;
 
-  Object.keys(rawOut).forEach((key) => {
-    if (rawOut[key] === undefined) {
-      delete rawOut[key];
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(rawOut, field)) {
+      rawOut[field] = null;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(rawOut[field]);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+    } else if (typeof rawOut[field] === "string") {
+      const trimmed = rawOut[field].trim();
+      rawOut[field] = trimmed.length ? trimmed : null;
     }
   });
+
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
 
   const serialized = `${JSON.stringify(rawOut, null, 2)}\n`;
   originalWriteFileSync.call(fs, addressPath, serialized);
@@ -28826,8 +28821,8 @@ async function main() {
   }
 
   // Hard clamp to a single oneOf branch: if we only have an unnormalized string,
-  // emit the lean raw payload and strip normalized scaffolding so validation
-  // does not expect latitude/street fields. Otherwise keep a normalized surface.
+  // emit the full raw schema surface (nullable) so oneOf required fields are present.
+  // Otherwise keep a normalized surface.
   if (fs.existsSync(addressOutputPath)) {
     const terminalSnapshot = readJSONIfExists(addressOutputPath) || {};
     const terminalNormalizedSurface =
@@ -28846,44 +28841,68 @@ async function main() {
     );
 
     if (terminalRawAddress && !terminalNormalizedReady) {
-      const enforcedRaw = {
-        unnormalized_address: terminalRawAddress,
-        request_identifier:
-          finalOneOfRequestId === undefined ? null : finalOneOfRequestId,
-        source_http_request:
-          prepareSourceHttpRequest(finalOneOfSourceHttp) || null,
-      };
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      rawOut.unnormalized_address = terminalRawAddress;
+      rawOut.request_identifier =
+        finalOneOfRequestId === undefined ? null : finalOneOfRequestId;
+      rawOut.source_http_request =
+        prepareSourceHttpRequest(finalOneOfSourceHttp) || null;
+
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (
+          field === "unnormalized_address" ||
+          field === "request_identifier" ||
+          field === "source_http_request"
+        ) {
+          return;
+        }
+        let value = terminalSnapshot[field];
+        if (value === undefined && terminalNormalizedSurface) {
+          value = terminalNormalizedSurface[field];
+        }
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+          return;
+        }
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          rawOut[field] = trimmed.length ? trimmed : null;
+          return;
+        }
+        if (value !== undefined) {
+          rawOut[field] = value;
+        }
+      });
+
       const enforcedState =
+        safeNullIfEmpty(rawOut.state_code) ||
         safeNullIfEmpty(terminalSnapshot.state_code) ||
         safeNullIfEmpty(inferredStateCode) ||
         "FL";
-      if (enforcedState) enforcedRaw.state_code = enforcedState;
+      if (enforcedState) rawOut.state_code = enforcedState;
       const enforcedCounty =
+        safeNullIfEmpty(rawOut.county_name) ||
         safeNullIfEmpty(terminalSnapshot.county_name) ||
         safeNullIfEmpty(formattedCountyName) ||
         safeNullIfEmpty(countyName) ||
         null;
-      if (enforcedCounty) enforcedRaw.county_name = enforcedCounty;
+      if (enforcedCounty) rawOut.county_name = enforcedCounty;
 
-      const latNum = parseCoordinate(terminalSnapshot.latitude);
-      const lonNum = parseCoordinate(terminalSnapshot.longitude);
-      if (Number.isFinite(latNum) && Number.isFinite(lonNum)) {
-        enforcedRaw.latitude = latNum;
-        enforcedRaw.longitude = lonNum;
+      if (!rawOut.postal_code) {
+        rawOut.plus_four_postal_code = null;
       }
-      const postal = safeNullIfEmpty(terminalSnapshot.postal_code);
-      if (postal) {
-        enforcedRaw.postal_code = postal;
-        const plus4 = safeNullIfEmpty(terminalSnapshot.plus_four_postal_code);
-        if (plus4) enforcedRaw.plus_four_postal_code = plus4;
+      if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+        rawOut.latitude = null;
+        rawOut.longitude = null;
       }
       if (
-        hasMeaningfulAddressValue(enforcedRaw.state_code) &&
-        !hasMeaningfulAddressValue(enforcedRaw.country_code)
+        hasMeaningfulAddressValue(rawOut.state_code) &&
+        !hasMeaningfulAddressValue(rawOut.country_code)
       ) {
-        enforcedRaw.country_code = "US";
+        rawOut.country_code = "US";
       }
-      writeJSON(addressOutputPath, enforcedRaw);
+      writeJSON(addressOutputPath, rawOut);
     } else if (terminalNormalizedReady) {
       const normalizedOut = { ...terminalNormalizedSurface };
       if (
