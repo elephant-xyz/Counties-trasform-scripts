@@ -137,25 +137,18 @@ function buildUtilityData($, requestIdentifier) {
       hvac_unit_issues: null,
     };
 
-    const utilityData = {
-      ...baseUtility,
-      heating_system_type: heatingType,
-      cooling_system_type: coolingType,
-      source_http_request: {
-        method: "GET",
-        url: "https://qpublic.schneidercorp.com/Application.aspx",
-      },
-      request_identifier: requestIdentifier || null,
-    };
-
-    // Remove cooling_system_type if it's null (field is not required, only valid enum values allowed)
-    if (utilityData.cooling_system_type === null) {
-      delete utilityData.cooling_system_type;
-    }
-
     results.push({
       building_index: idx + 1,
-      utility: utilityData,
+      utility: {
+        ...baseUtility,
+        heating_system_type: heatingType,
+        cooling_system_type: coolingType,
+        source_http_request: {
+          method: "GET",
+          url: "https://qpublic.schneidercorp.com/Application.aspx",
+        },
+        request_identifier: requestIdentifier || null,
+      },
     });
   });
 
