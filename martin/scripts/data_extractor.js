@@ -513,7 +513,10 @@ function parseCurrencyToNumber(text) {
   if (cleaned === "") return null;
   const num = parseFloat(cleaned);
   if (isNaN(num)) return null;
-  return Math.round(num * 100) / 100;
+  // Currency must be positive (>= 0)
+  if (num < 0) return null;
+  // Round to exactly 2 decimal places to avoid floating point precision issues
+  return parseFloat(num.toFixed(2));
 }
 
 const COMPANY_HINTS = [
