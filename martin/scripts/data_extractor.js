@@ -519,6 +519,9 @@ function parseCurrencyToNumber(text) {
 const COMPANY_HINTS = [
   " LLC",
   " L.L.C",
+  " L.C.",
+  " L.C",
+  " LC",
   " INC",
   " CORPORATION",
   " CORP",
