@@ -52,6 +52,28 @@ function titleCase(str) {
   return capitalized.join("");
 }
 
+// Helper function to safely construct middle name from tokens
+// Filters out empty strings and ensures the result matches the required pattern
+function constructMiddleName(tokens) {
+  if (!tokens || tokens.length === 0) return null;
+
+  // Map through titleCase and filter out empty/whitespace strings
+  const processed = tokens
+    .map(titleCase)
+    .filter(t => t && t.trim().length > 0);
+
+  if (processed.length === 0) return null;
+
+  const joined = processed.join(" ").trim();
+
+  // Only return if it's non-empty and matches the required pattern
+  if (joined && /^[A-Z][a-zA-Z\s\-',.]*$/.test(joined)) {
+    return joined;
+  }
+
+  return null;
+}
+
 // Determine if text looks like an address or non-name noise
 function isLikelyAddress(text) {
   const t = norm(text).toUpperCase();
@@ -320,8 +342,7 @@ function classifyOwner(raw) {
         if (tokens.length === 0) continue;
 
         const firstName = titleCase(tokens[0]);
-        const middleName =
-          tokens.length > 1 ? tokens.slice(1).map(titleCase).join(" ") : null;
+        const middleName = tokens.length > 1 ? constructMiddleName(tokens.slice(1)) : null;
 
         persons.push({
           type: "person",
@@ -346,8 +367,7 @@ function classifyOwner(raw) {
         if (tokens.length === 0) continue;
 
         const firstName = titleCase(tokens[0]);
-        const middleName =
-          tokens.length > 1 ? tokens.slice(1).map(titleCase).join(" ") : null;
+        const middleName = tokens.length > 1 ? constructMiddleName(tokens.slice(1)) : null;
 
         persons.push({
           type: "person",
@@ -369,10 +389,9 @@ function classifyOwner(raw) {
     }
 
     const firstName = titleCase(firstMiddleTokens[0]);
-    const middleName =
-      firstMiddleTokens.length > 1
-        ? firstMiddleTokens.slice(1).map(titleCase).join(" ")
-        : null;
+    const middleName = firstMiddleTokens.length > 1
+      ? constructMiddleName(firstMiddleTokens.slice(1))
+      : null;
 
     const person = {
       type: "person",
@@ -478,10 +497,9 @@ function classifyOwner(raw) {
       // Parse first person (before &)
       if (beforeAmp.length > 0) {
         const firstName1 = titleCase(beforeAmp[0]);
-        const middleName1 =
-          beforeAmp.length > 1
-            ? beforeAmp.slice(1).map(titleCase).join(" ")
-            : null;
+        const middleName1 = beforeAmp.length > 1
+          ? constructMiddleName(beforeAmp.slice(1))
+          : null;
         persons.push({
           type: "person",
           first_name: firstName1,
@@ -494,10 +512,9 @@ function classifyOwner(raw) {
       // Parse second person (after &)
       if (afterAmp.length > 0) {
         const firstName2 = titleCase(afterAmp[0]);
-        const middleName2 =
-          afterAmp.length > 1
-            ? afterAmp.slice(1).map(titleCase).join(" ")
-            : null;
+        const middleName2 = afterAmp.length > 1
+          ? constructMiddleName(afterAmp.slice(1))
+          : null;
         persons.push({
           type: "person",
           first_name: firstName2,
@@ -529,8 +546,9 @@ function classifyOwner(raw) {
     const lastName = titleCase(tokens[tokens.length - 1]).replace(/'\s+/g, "'");
 
     // Everything in between is middle name
-    const middleName =
-      tokens.length > 2 ? tokens.slice(1, -1).map(titleCase).join(" ") : null;
+    const middleName = tokens.length > 2
+      ? constructMiddleName(tokens.slice(1, -1))
+      : null;
 
     const person = {
       type: "person",
