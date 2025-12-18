@@ -1819,8 +1819,8 @@ function main() {
       return rest;
     };
 
-    const wrap = (entry, buildingIndex = null) => ({
-      data: {
+    const wrap = (entry, buildingIndex = null) => {
+      const data = {
         ...baseUtility,
         ...cleanUtilityEntry(entry),
         source_http_request:
@@ -1831,12 +1831,21 @@ function main() {
           entry && entry.request_identifier != null
             ? entry.request_identifier
             : requestIdentifier,
-      },
-      buildingIndex:
-        Number.isFinite(parseIntSafe(buildingIndex)) ?
-          parseIntSafe(buildingIndex) :
-          null,
-    });
+      };
+
+      // Remove cooling_system_type if it's null (field is not required, only valid enum values allowed)
+      if (data.cooling_system_type === null) {
+        delete data.cooling_system_type;
+      }
+
+      return {
+        data,
+        buildingIndex:
+          Number.isFinite(parseIntSafe(buildingIndex)) ?
+            parseIntSafe(buildingIndex) :
+            null,
+      };
+    };
 
     if (
       utilitiesEntry &&
