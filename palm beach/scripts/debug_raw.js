@@ -28901,6 +28901,181 @@ async function main() {
     }
   }
 
+  // Final cleanup: drop any locally generated address relationship files and
+  // keep property relationship placeholders null so downstream can populate URIs.
+  purgeAddressRelationshipArtifacts(dataDir);
+  purgeAddressRelationshipArtifacts(relationshipsDir);
+  removeAddressRelationshipFiles(dataDir);
+  removeAddressRelationshipFiles(relationshipsDir);
+  enforcePropertyRelationshipNulls(path.join(dataDir, "property.json"));
+
+  // Deterministically lock the terminal address payload to a single oneOf branch.
+  // Prefer the raw branch whenever we have an unnormalized source string; otherwise
+  // emit the normalized payload with the raw field removed.
+  if (fs.existsSync(addressOutputPath)) {
+    const terminalSnapshot = readJSONIfExists(addressOutputPath) || {};
+    const resolvedRawAddress = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalSnapshot.unnormalized_address,
+        ...rawCandidates,
+        unnormalizedSource.unnormalized_address,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+    const normalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...terminalSnapshot });
+    const normalizedReady =
+      normalizedSurface &&
+      hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+    const resolvedRequestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalSnapshot.request_identifier,
+        resolvedRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unnormalizedSource.request_identifier,
+      ]),
+    );
+    const resolvedSourceHttpRequest = resolveSourceHttpRequest(
+      terminalSnapshot.source_http_request,
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      unnormalizedSource.source_http_request,
+      seedSource.source_http_request,
+    );
+    const fallbackCounty = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalSnapshot.county_name,
+        inferredCounty,
+        formattedCountyName,
+        countyName,
+        "Palm Beach",
+      ]),
+    );
+    const fallbackState =
+      safeNullIfEmpty(terminalSnapshot.state_code) ||
+      safeNullIfEmpty(inferredStateCode) ||
+      "FL";
+
+    let rebuilt = null;
+
+    if (resolvedRawAddress) {
+      rebuilt = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (field === "unnormalized_address") {
+          rebuilt[field] = resolvedRawAddress;
+          return;
+        }
+        if (field === "request_identifier") {
+          rebuilt[field] = resolvedRequestId === undefined ? null : resolvedRequestId;
+          return;
+        }
+        if (field === "source_http_request") {
+          const prepared = prepareSourceHttpRequest(resolvedSourceHttpRequest);
+          rebuilt[field] = prepared ? prepared : null;
+          return;
+        }
+        if (field === "county_name") {
+          rebuilt[field] = fallbackCounty || null;
+          return;
+        }
+        if (field === "state_code") {
+          rebuilt[field] = fallbackState || null;
+          return;
+        }
+
+        let value =
+          terminalSnapshot[field] !== undefined
+            ? terminalSnapshot[field]
+            : normalizedSurface && normalizedSurface[field];
+
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          rebuilt[field] = Number.isFinite(numeric) ? numeric : null;
+          return;
+        }
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          const sanitized =
+            trimmed.length && sanitizeAddressFieldValue
+              ? sanitizeAddressFieldValue(field, trimmed)
+              : trimmed.length
+                ? trimmed
+                : null;
+          rebuilt[field] = sanitized;
+          return;
+        }
+        rebuilt[field] = value === undefined ? null : value;
+      });
+
+      if (!rebuilt.postal_code) {
+        rebuilt.plus_four_postal_code = null;
+      }
+      if ((rebuilt.latitude == null) !== (rebuilt.longitude == null)) {
+        rebuilt.latitude = null;
+        rebuilt.longitude = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rebuilt.state_code) &&
+        !hasMeaningfulAddressValue(rebuilt.country_code)
+      ) {
+        rebuilt.country_code = "US";
+      }
+    } else if (normalizedReady) {
+      rebuilt = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        if (field === "request_identifier") {
+          rebuilt[field] = resolvedRequestId === undefined ? null : resolvedRequestId;
+          return;
+        }
+        if (field === "source_http_request") {
+          const prepared = prepareSourceHttpRequest(resolvedSourceHttpRequest);
+          rebuilt[field] = prepared ? prepared : null;
+          return;
+        }
+        let value = normalizedSurface[field];
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          value = Number.isFinite(numeric) ? numeric : null;
+        } else if (typeof value === "string") {
+          const trimmed = value.trim();
+          value = trimmed.length ? trimmed : null;
+        } else if (value === undefined) {
+          value = null;
+        }
+        rebuilt[field] = value;
+      });
+      if (!rebuilt.postal_code) {
+        rebuilt.plus_four_postal_code = null;
+      }
+      if ((rebuilt.latitude == null) !== (rebuilt.longitude == null)) {
+        rebuilt.latitude = null;
+        rebuilt.longitude = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rebuilt.state_code) &&
+        !hasMeaningfulAddressValue(rebuilt.country_code)
+      ) {
+        rebuilt.country_code = "US";
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(rebuilt, "unnormalized_address")
+      ) {
+        delete rebuilt.unnormalized_address;
+      }
+    }
+
+    if (rebuilt) {
+      writeJSON(addressOutputPath, rebuilt);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  }
+
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
   console.log("All mapping scripts completed successfully");
