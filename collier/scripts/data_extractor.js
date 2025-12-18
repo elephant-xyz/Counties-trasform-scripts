@@ -871,6 +871,8 @@ function main() {
             us_citizenship_status: owner.us_citizenship_status || null,
             veteran_status:
               owner.veteran_status != null ? owner.veteran_status : null,
+            source_http_request: sourceHttpRequest,
+            request_identifier: requestIdentifier,
           };
           const filename = `person_${personIdx}.json`;
           fs.writeFileSync(
