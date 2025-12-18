@@ -295,9 +295,9 @@ function cleanMiddleName(s) {
 
   result = result.trim();
 
-  // For middle names: use a more lenient pattern that allows multiple words/initials
-  // Pattern: ^[A-Z]([a-z]*)?([ \-',.][A-Z]([a-z]*)?)*$
-  if (!result || !/^[A-Z]([a-z]*)?([ \-',.][A-Z]([a-z]*)?)*$/.test(result)) return null;
+  // Ensure result matches the middle name pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  // This pattern is more lenient than first/last name pattern
+  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
   return result;
 }
 
