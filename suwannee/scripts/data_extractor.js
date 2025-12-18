@@ -2,6 +2,9 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const SCRIPT_DIR = __dirname;
+const WORKING_DIR = process.cwd();
+
 const propertyTypeMapping = [
   {
     "property_usecode": "CENTRALLY ASSESSED (9800)",
@@ -1246,7 +1249,7 @@ function extractTaxes($) {
 }
 
 function mapDeedCode(code) {
-  if (!code) return {};
+  if (!code) return "Miscellaneous";
   const u = code.trim().toUpperCase();
   if (u === "CT") return "Contract for Deed";
   if (u === "WD") return "Warranty Deed";
@@ -1540,47 +1543,82 @@ function createGeometryInstances(csvContent) {
   return records.flatMap((record) => splitGeometry(record));
 }
 
-function createGeometryClass(geometryInstances) {
-  let geomIndex = 1;
-  for(let geom of geometryInstances) {
-    let polygon = [];
-    let geometry = {
-      "latitude": geom.latitude,
-      "longitude": geom.longitude,
-    }
-    if (geom && geom.polygon) {
-      for (const coordinate of geom.polygon.coordinates[0]) {
-        polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
+function loadGeometryCsvContent() {
+  const parentDir = path.dirname(SCRIPT_DIR);
+  const candidates = [
+    path.join(WORKING_DIR, "input.csv"),
+    path.join(SCRIPT_DIR, "input.csv"),
+    path.join(parentDir, "input.csv"),
+    path.join(WORKING_DIR, "seed.csv"),
+    path.join(SCRIPT_DIR, "seed.csv"),
+    path.join(parentDir, "seed.csv"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        return fs.readFileSync(candidate, "utf8");
+      } catch (err) {
+        console.warn(`Unable to read geometry CSV at ${candidate}: ${err.message}`);
       }
-      geometry.polygon = polygon;
     }
-    writeJson(path.join("data", `geometry_${geomIndex}.json`), geometry);
-    writeJson(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
-        from: { "/": `./parcel.json` },
-        to: { "/": `./geometry_${geomIndex}.json` },
-    });
-    geomIndex++;
   }
+
+  return null;
+}
+
+function geometry_parcel(geometryInstances) {
+  let geomIndex = 1;
+  for (const geom of geometryInstances || []) {
+    if (!geom) {
+      continue;
+    }
+
+    const geometry = {
+      latitude: geom.latitude ?? null,
+      longitude: geom.longitude ?? null,
+    };
+
+    if (geom.polygon && Array.isArray(geom.polygon.coordinates)) {
+      const exteriorRing = geom.polygon.coordinates[0] || [];
+      const polygon = exteriorRing.map((coordinate) => ({
+        longitude: coordinate[0],
+        latitude: coordinate[1],
+      }));
+      if (polygon.length) {
+        geometry.polygon = polygon;
+      }
+    }
+
+    const geometryFile = `geometry_parcel_${geomIndex}.json`;
+    const relationshipFile = `relationship_parcel_has_geometry_parcel_${geomIndex}.json`;
+    writeJson(path.join("data", geometryFile), geometry);
+    writeJson(path.join("data", relationshipFile), {
+      from: { "/": "./parcel.json" },
+      to: { "/": `./${geometryFile}` },
+    });
+    geomIndex += 1;
+  }
+}
+
+function createGeometryClass(geometryInstances) {
+  geometry_parcel(geometryInstances);
 }
 
 function main() {
   try {
-    // Create data directory at workspace root, not relative to script location
-    const workspaceRoot = path.join(__dirname, "..", "..", "..");
-    const dataDir = path.join(workspaceRoot, "data");
+    const dataDir = path.join(".", "data");
     ensureDir(dataDir);
 
-    // Look for HTML file in input directory
-    const inputDir = path.join(__dirname, "..", "..", "..", "input");
-    const htmlFiles = fs.readdirSync(inputDir).filter(f => f.endsWith('.html'));
-    if (htmlFiles.length === 0) {
-      throw new Error("No HTML file found in input directory");
+    const htmlPath = path.join(".", "input.html");
+    if (!fs.existsSync(htmlPath)) {
+      throw new Error("input.html not found in working directory");
     }
-    const html = fs.readFileSync(path.join(inputDir, htmlFiles[0]), "utf-8");
+    const html = fs.readFileSync(htmlPath, "utf-8");
     const $ = cheerio.load(html);
 
-    const unAddr = readJson(path.join(inputDir, "unnormalized_address.json"));
-    const propSeed = readJson(path.join(inputDir, "property_seed.json"));
+    const unAddr = readJson("unnormalized_address.json");
+    const propSeed = readJson("property_seed.json");
 
     // Owners/utilities/layout must be built from their JSONs - handle if they don't exist
     let ownerData = {};
@@ -1589,7 +1627,7 @@ function main() {
     let layoutData = {};
 
     try {
-      const ownersDir = path.join(inputDir, "owners");
+      const ownersDir = path.join(".", "owners");
       if (fs.existsSync(ownersDir)) {
         ownerData = readJson(path.join(ownersDir, "owner_data.json"));
       }
@@ -1598,7 +1636,7 @@ function main() {
     }
 
     try {
-      const ownersDir = path.join(inputDir, "owners");
+      const ownersDir = path.join(".", "owners");
       if (fs.existsSync(ownersDir)) {
         utilitiesData = readJson(path.join(ownersDir, "utilities_data.json"));
       }
@@ -1607,7 +1645,7 @@ function main() {
     }
 
     try {
-      const ownersDir = path.join(inputDir, "owners");
+      const ownersDir = path.join(".", "owners");
       if (fs.existsSync(ownersDir)) {
         structuresData = readJson(path.join(ownersDir, "structure_data.json"));
       }
@@ -1616,7 +1654,7 @@ function main() {
     }
 
     try {
-      const ownersDir = path.join(inputDir, "owners");
+      const ownersDir = path.join(".", "owners");
       if (fs.existsSync(ownersDir)) {
         layoutData = readJson(path.join(ownersDir, "layout_data.json"));
       }
@@ -1624,19 +1662,35 @@ function main() {
       // layout data not available
     }
 
-    try {
-      const seedCsvPath = path.join(".", "input.csv");
-      const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
-      createGeometryClass(createGeometryInstances(seedCsv));
-    } catch (e) {
-      const latitude = unAddr && unAddr.latitude ? unAddr.latitude : null;
-      const longitude = unAddr && unAddr.longitude ? unAddr.longitude : null;
+    const geometryCsv = loadGeometryCsvContent();
+    let geometryCreated = false;
+    if (geometryCsv) {
+      try {
+        const geometryInstances = createGeometryInstances(geometryCsv);
+        if (geometryInstances.length) {
+          createGeometryClass(geometryInstances);
+          geometryCreated = true;
+        }
+      } catch (err) {
+        console.warn(`Unable to build geometry from CSV: ${err.message}`);
+      }
+    }
+    if (!geometryCreated) {
+      const latitude =
+        (unAddr && unAddr.latitude) ||
+        (propSeed && propSeed.latitude) ||
+        null;
+      const longitude =
+        (unAddr && unAddr.longitude) ||
+        (propSeed && propSeed.longitude) ||
+        null;
       if (latitude && longitude) {
         const coordinate = new Geometry({
-          latitude: latitude,
-          longitude: longitude
+          latitude,
+          longitude,
         });
         createGeometryClass([coordinate]);
+        geometryCreated = true;
       }
     }
 
@@ -1724,24 +1778,29 @@ function main() {
     // Relationship sales -> owner (company or person) using first sale
     if (sales.length > 0) {
       if (ownerFiles.companyFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_history_1_buyer_company_1.json"), {
-          from: { "/": "./sales_history_1.json" },
-          to: { "/": `./${ownerFiles.companyFiles[0]}` },
+        // Create relationships for ALL company files, not just the first one
+        ownerFiles.companyFiles.forEach((companyFile, index) => {
+          const companyCounter = index + 1;
+          writeJson(path.join(dataDir, `relationship_sales_history_1_buyer_company_${companyCounter}.json`), {
+            from: { "/": "./sales_history_1.json" },
+            to: { "/": `./${companyFile}` },
+          });
+          if (mailingAddressObj && index === 0) {
+            // Only create mailing address relationship for the first company
+            // Write the mailing_address.json file here
+            writeJson(path.join(dataDir, "mailing_address.json"), mailingAddressObj);
+            writeJson(
+              path.join(
+                dataDir,
+                `relationship_company_has_mailing_address.json`,
+              ),
+              {
+                from: { "/": `./${companyFile}` },
+                to: { "/": `./mailing_address.json` },
+              },
+            );
+          }
         });
-        if (mailingAddressObj) {
-          // Write the mailing_address.json file here
-          writeJson(path.join(dataDir, "mailing_address.json"), mailingAddressObj);
-          writeJson(
-            path.join(
-              dataDir,
-              `relationship_company_has_mailing_address.json`,
-            ),
-            {
-              from: { "/": `./${ownerFiles.companyFiles[0]}` },
-              to: { "/": `./mailing_address.json` },
-            },
-          );
-        }
       } else if (ownerFiles.personFiles.length > 0) {
         // Create relationships for ALL person files, not just the first one
         ownerFiles.personFiles.forEach((personFile, index) => {
