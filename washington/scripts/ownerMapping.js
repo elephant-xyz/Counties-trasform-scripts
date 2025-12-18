@@ -202,6 +202,30 @@ function extractCurrentOwners($) {
   return owners;
 }
 
+function extractMailingAddress($) {
+  const addresses = [];
+  $(CURRENT_OWNER_SELECTOR)
+    .find("span[id$='lblOwnerAddress']")
+    .each((_, el) => {
+      const htmlContent = $(el).html() || "";
+      const parts = htmlContent
+        .split(/<br\s*\/?>/i)
+        .map((fragment) => {
+          const wrapped = cheerio.load(`<div>${fragment}</div>`);
+          return txt(wrapped.text());
+        })
+        .map((segment) => segment.replace(/\s+/g, " ").trim())
+        .filter(Boolean);
+      const joined = parts.join(", ");
+      if (joined) addresses.push(joined);
+    });
+  if (!addresses.length) return null;
+  const unique = Array.from(
+    new Set(addresses.map((addr) => addr.replace(/\s+/g, " ").trim())),
+  );
+  return unique[0] || null;
+}
+
 function extractSalesOwnersByDate($) {
   const map = {};
   const priorOwners = [];
@@ -344,6 +368,11 @@ if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
 const propKey = `property_${parcelId || "unknown_id"}`;
 const output = {};
 output[propKey] = { owners_by_date: orderedOwnersByDate };
+
+const mailingAddress = extractMailingAddress($);
+if (mailingAddress) {
+  output[propKey].mailing_address = mailingAddress;
+}
 
 function dedupeInvalidOwners(list) {
   const seen = new Set();
