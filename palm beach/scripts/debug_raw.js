@@ -1944,61 +1944,41 @@ function sanitizeAddressPayloadForWrite(payload) {
       rawOut.latitude = null;
       rawOut.longitude = null;
     }
-    const RAW_MINIMAL_FIELDS = [
-      "unnormalized_address",
-      "latitude",
-      "longitude",
-      "section",
-      "township",
-      "range",
-      "block",
-      "lot",
-      "county_name",
-      "state_code",
-      "country_code",
-      "postal_code",
-      "plus_four_postal_code",
-      "request_identifier",
-      "source_http_request",
-    ];
-    const minimalRaw = RAW_MINIMAL_FIELDS.reduce((acc, field) => {
+    const fullRaw = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
       if (field === "unnormalized_address") {
-        acc[field] = rawOut.unnormalized_address || trimmedUnnormalized;
-        return acc;
+        fullRaw[field] = rawOut.unnormalized_address || trimmedUnnormalized;
+        return;
       }
       if (field === "request_identifier") {
-        acc[field] = rawOut.request_identifier ?? null;
-        return acc;
+        fullRaw[field] = rawOut.request_identifier ?? null;
+        return;
       }
       if (field === "source_http_request") {
-        acc[field] = rawOut.source_http_request ?? null;
-        return acc;
+        fullRaw[field] = rawOut.source_http_request ?? null;
+        return;
       }
       const value = rawOut[field];
       if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
         const numeric = parseCoordinate(value);
-        acc[field] = Number.isFinite(numeric) ? numeric : null;
-        return acc;
+        fullRaw[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
       }
       if (typeof value === "string") {
         const trimmed = value.trim();
-        acc[field] = trimmed.length ? trimmed : null;
-        return acc;
+        fullRaw[field] = trimmed.length ? trimmed : null;
+        return;
       }
-      acc[field] = value === undefined ? null : value;
-      return acc;
-    }, {});
-    if (!minimalRaw.postal_code) {
-      minimalRaw.plus_four_postal_code = null;
+      fullRaw[field] = value === undefined ? null : value;
+    });
+    if (!fullRaw.postal_code) {
+      fullRaw.plus_four_postal_code = null;
     }
-    if (
-      (minimalRaw.latitude == null) !==
-      (minimalRaw.longitude == null)
-    ) {
-      minimalRaw.latitude = null;
-      minimalRaw.longitude = null;
+    if ((fullRaw.latitude == null) !== (fullRaw.longitude == null)) {
+      fullRaw.latitude = null;
+      fullRaw.longitude = null;
     }
-    return applyNullAddressRelationships(minimalRaw);
+    return applyNullAddressRelationships(fullRaw);
   }
 
   // If we have a complete normalized address, prefer it (per schema guidance).
@@ -33220,25 +33200,11 @@ async function main() {
 
     let finalAddressOut = null;
     if (finalRawCandidate) {
-      const RAW_FINAL_FIELDS = [
-        "unnormalized_address",
-        "latitude",
-        "longitude",
-        "section",
-        "township",
-        "range",
-        "block",
-        "lot",
-        "county_name",
-        "state_code",
-        "country_code",
-        "postal_code",
-        "plus_four_postal_code",
-        "request_identifier",
-        "source_http_request",
-      ];
-      finalAddressOut = {};
-      RAW_FINAL_FIELDS.forEach((field) => {
+      // Preserve the full raw oneOf surface (all normalized fields nullable) so
+      // validation never complains about missing required address keys when we
+      // only have an unnormalized string from the source.
+      finalAddressOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
         if (field === "unnormalized_address") {
           finalAddressOut[field] = finalRawCandidate;
           return;
