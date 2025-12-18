@@ -95,8 +95,12 @@ function capitalizeProperName(name) {
   const parts = cleaned.split(/(\s+|\-|'|,|\.)/);
 
   const capitalized = parts.map((part, index) => {
-    // If it's a delimiter, keep it as is
-    if (/^(\s+|\-|'|,|\.)$/.test(part)) return part;
+    // If it's a delimiter, normalize multiple spaces to single space
+    if (/^(\s+|\-|'|,|\.)$/.test(part)) {
+      // Normalize multiple spaces to a single space
+      if (/^\s+$/.test(part)) return " ";
+      return part;
+    }
 
     // Skip empty parts
     if (!part) return part;
@@ -109,8 +113,8 @@ function capitalizeProperName(name) {
 
     // Check if previous part was an apostrophe or hyphen
     const prevPart = index > 0 ? parts[index - 1] : null;
-    if (prevPart === "'" || prevPart === "-") {
-      // Capitalize after apostrophe or hyphen
+    if (prevPart === "'" || prevPart === "-" || (prevPart && /^\s+$/.test(prevPart))) {
+      // Capitalize after apostrophe, hyphen, or space
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     }
 
@@ -118,7 +122,8 @@ function capitalizeProperName(name) {
     return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
   });
 
-  return capitalized.join("");
+  // Join and normalize any remaining multiple spaces (safety check)
+  return capitalized.join("").replace(/\s+/g, " ").trim();
 }
 
 function isValidFirstOrLastName(name) {
