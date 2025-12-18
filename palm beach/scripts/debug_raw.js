@@ -9851,12 +9851,16 @@ function enforceAddressTemplateCoverage(addressPath, options = {}) {
       : { ...payload };
   const hasNormalized = hasCompleteNormalizedAddress({ ...normalizedSurface });
 
-  // Emit a lean raw branch when we only have an unnormalized address. Keeping
-  // the surface minimal avoids tripping the normalized branch of the oneOf.
+  // Emit a raw branch with the full schema surface populated (nullable) when
+  // the source only provides an unnormalized address. Keeping every field
+  // present avoids \"missing required property\" errors on the oneOf while still
+  // favoring the raw option.
   if (rawValue && !hasNormalized) {
     const latNum = parseCoordinate(payload.latitude);
     const lonNum = parseCoordinate(payload.longitude);
-    const rawOut = {
+    const rawSeed = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...payload,
       unnormalized_address: rawValue,
       request_identifier: requestIdentifier,
       source_http_request: preparedSource ? deepClone(preparedSource) : null,
@@ -9878,16 +9882,23 @@ function enforceAddressTemplateCoverage(addressPath, options = {}) {
         : null,
       route_number: payload.route_number ?? null,
     };
-    if (!rawOut.postal_code) {
-      rawOut.plus_four_postal_code = null;
+    const hydratedRaw =
+      buildStrictRawOneOfPayload(rawSeed) ||
+      ensureAddressOutputCoverage(rawSeed);
+    if (hydratedRaw) {
+      if (!hydratedRaw.postal_code) {
+        hydratedRaw.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(hydratedRaw.state_code) &&
+        !hasMeaningfulAddressValue(hydratedRaw.country_code)
+      ) {
+        hydratedRaw.country_code = defaultCountry;
+      }
+      writeJSON(addressPath, hydratedRaw);
+    } else {
+      removeFileIfExists(addressPath);
     }
-    if (
-      hasMeaningfulAddressValue(rawOut.state_code) &&
-      !hasMeaningfulAddressValue(rawOut.country_code)
-    ) {
-      rawOut.country_code = defaultCountry;
-    }
-    writeJSON(addressPath, rawOut);
     return;
   }
 
