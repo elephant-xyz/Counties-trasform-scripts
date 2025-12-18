@@ -1344,7 +1344,7 @@ function writeSalesHistoryArtifacts($, parcelId) {
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
     const deed = {
-      deed_type: mapDeedType(s.deedType),
+      deed_type: String(mapDeedType(s.deedType)),
       request_identifier: deedRequestId,
       source_http_request: buildSourceHttpRequest(parcelId),
     };
