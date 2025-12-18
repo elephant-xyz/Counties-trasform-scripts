@@ -213,6 +213,12 @@ const companyKeywords = [
   "P.A",
   "P.A.",
   "PA",
+  "MGMT",
+  "MANAGEMENT",
+  "DIST",
+  "DISTRICT",
+  "DEPT",
+  "DEPARTMENT",
 ];
 
 function looksLikeCompany(name) {
