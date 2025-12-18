@@ -1980,8 +1980,12 @@ function main() {
     const validImprovementStatuses = [
       "Completed", "InProgress", "Planned", "Permitted", "OnHold", "Cancelled", null
     ];
-    if (cleanedImprovement.improvement_status !== undefined &&
-        !validImprovementStatuses.includes(cleanedImprovement.improvement_status)) {
+    // Convert empty strings to null first
+    if (cleanedImprovement.improvement_status === "") {
+      cleanedImprovement.improvement_status = null;
+    }
+    // Then validate against allowed values
+    if (!validImprovementStatuses.includes(cleanedImprovement.improvement_status)) {
       cleanedImprovement.improvement_status = null;
     }
 
