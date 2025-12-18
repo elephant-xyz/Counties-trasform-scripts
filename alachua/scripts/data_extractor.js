@@ -1976,6 +1976,15 @@ function main() {
       cleanedImprovement.improvement_type = "GeneralBuilding";
     }
 
+    // Ensure improvement_status is always a valid enum value or null
+    const validImprovementStatuses = [
+      "Completed", "InProgress", "Planned", "Permitted", "OnHold", "Cancelled", null
+    ];
+    if (cleanedImprovement.improvement_status !== undefined &&
+        !validImprovementStatuses.includes(cleanedImprovement.improvement_status)) {
+      cleanedImprovement.improvement_status = null;
+    }
+
     const filename = `property_improvement_${propertyImprovementOutputs.length + 1}.json`;
     writeJSON(path.join(dataDir, filename), cleanedImprovement);
     propertyImprovementOutputs.push({ filename, path: `./${filename}` });
