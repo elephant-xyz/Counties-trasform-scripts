@@ -1284,7 +1284,13 @@ function main() {
   });
   bx.files.forEach((f, i) => {
     const fName = `file_${i + 1}.json`;
-    const obj = { ...f };
+    // Only include properties that are part of the file schema
+    const obj = {};
+    if (f.document_type !== undefined) obj.document_type = f.document_type;
+    if (f.file_format !== undefined) obj.file_format = f.file_format;
+    if (f.ipfs_url !== undefined) obj.ipfs_url = f.ipfs_url;
+    if (f.name !== undefined) obj.name = f.name;
+    if (f.original_url !== undefined) obj.original_url = f.original_url;
     // Add request_identifier from propSeed (file schema allows it)
     if (propSeed && propSeed.request_identifier) {
       obj.request_identifier = propSeed.request_identifier;
