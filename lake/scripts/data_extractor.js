@@ -1226,11 +1226,19 @@ function main() {
   const fileFiles = [];
   bx.sales.forEach((s, i) => {
     const sName = `sales_history_${i + 1}.json`;
-    writeJSON(path.join(dataDir, sName), {
+    const salesObj = {
       ownership_transfer_date: s.ownership_transfer_date || null,
       purchase_price_amount:
         s.purchase_price_amount != null ? s.purchase_price_amount : null,
-    });
+    };
+    // Add source_http_request and request_identifier from propSeed
+    if (propSeed && propSeed.source_http_request) {
+      salesObj.source_http_request = propSeed.source_http_request;
+    }
+    if (propSeed && propSeed.request_identifier) {
+      salesObj.request_identifier = propSeed.request_identifier;
+    }
+    writeJSON(path.join(dataDir, sName), salesObj);
     salesFiles.push(sName);
   });
   bx.deeds.forEach((d, i) => {
@@ -1239,6 +1247,13 @@ function main() {
     const deedObj = {};
     if (normalizedDeedType) {
       deedObj.deed_type = normalizedDeedType;
+    }
+    // Add source_http_request and request_identifier from propSeed
+    if (propSeed && propSeed.source_http_request) {
+      deedObj.source_http_request = propSeed.source_http_request;
+    }
+    if (propSeed && propSeed.request_identifier) {
+      deedObj.request_identifier = propSeed.request_identifier;
     }
     writeJSON(path.join(dataDir, dName), deedObj);
     deedFiles.push(dName);
