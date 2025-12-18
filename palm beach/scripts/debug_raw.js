@@ -16805,6 +16805,107 @@ function ensureAddressFileCoverage(addressPath) {
   );
 }
 
+// Final guardrail: when an unnormalized address is available, rebuild the
+// payload on the raw oneOf surface so every schema field is present (nullable)
+// and we avoid emitting a partial normalized branch that triggers oneOf
+// validation errors.
+function enforceRawOnlyAddressPayload(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const snapshot = readJSONIfExists(addressPath) || {};
+
+  const rawCandidates = [];
+  const enqueueRaw = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length) rawCandidates.push(trimmed);
+  };
+
+  enqueueRaw(snapshot.unnormalized_address);
+  if (Array.isArray(options.rawCandidates)) {
+    options.rawCandidates.forEach(enqueueRaw);
+  }
+  enqueueRaw(options.rawFallback);
+
+  const rawValue = safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates));
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+  RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      rawOut[field] = rawValue;
+      return;
+    }
+    if (field === "request_identifier") {
+      const req =
+        options.requestIdentifier !== undefined
+          ? options.requestIdentifier
+          : snapshot.request_identifier;
+      rawOut.request_identifier =
+        req === undefined ? null : safeNullIfEmpty(req);
+      return;
+    }
+    if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(
+        options.sourceHttpRequest !== undefined
+          ? options.sourceHttpRequest
+          : snapshot.source_http_request,
+      );
+      rawOut.source_http_request = prepared ? prepared : null;
+      return;
+    }
+
+    let value = snapshot[field];
+    if (field === "county_name") {
+      value =
+        safeNullIfEmpty(value) ||
+        safeNullIfEmpty(options.countyFallback) ||
+        null;
+    } else if (field === "state_code") {
+      value =
+        safeNullIfEmpty(value) ||
+        safeNullIfEmpty(options.stateFallback) ||
+        null;
+    } else if (field === "country_code") {
+      value =
+        safeNullIfEmpty(value) ||
+        safeNullIfEmpty(options.countryFallback) ||
+        null;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rawOut[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    rawOut[field] = value === undefined ? null : value;
+  });
+
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = options.countryFallback || "US";
+  }
+
+  writeJSON(addressPath, applyNullAddressRelationships(rawOut));
+}
+
 function enforceRawPreferenceWhenAvailable(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
 
@@ -33002,6 +33103,20 @@ async function main() {
   clampRawAddressToMinimalBranch(addressOutputPath);
   enforceAddressRelationshipNulls(addressOutputPath);
   ensureAddressFileCoverage(addressOutputPath);
+  enforceRawOnlyAddressPayload(addressOutputPath, {
+    rawCandidates,
+    rawFallback:
+      unnormalizedAddressCandidate ||
+      fullAddr ||
+      fullAddrInput ||
+      siteLocationLine,
+    requestIdentifier:
+      resolvedRequestIdentifier ?? trimmedRequestIdentifier ?? parcelId ?? null,
+    sourceHttpRequest: resolvedSourceHttp ?? sourceHttpCandidate ?? null,
+    countyFallback: formattedCountyName || countyName || "Palm Beach",
+    stateFallback: inferredStateCode || "FL",
+    countryFallback: "US",
+  });
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
