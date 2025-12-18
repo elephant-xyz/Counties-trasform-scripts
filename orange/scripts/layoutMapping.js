@@ -441,7 +441,7 @@ function buildLayouts(input) {
             ? !(mapped.isExterior === true)
             : mapped.isFinished,
         installationDate,
-        poolType: mapped.spaceType === "Pool" ? "Unknown" : undefined,
+        poolType: mapped.spaceType === "Pool" ? null : undefined,
         poolInstallationDate:
           mapped.spaceType === "Pool" ? installationDate : undefined,
       });

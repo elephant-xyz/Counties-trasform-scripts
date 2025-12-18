@@ -17,44 +17,6 @@ const isAllCapsWord = (w) => !!w && w === w.toUpperCase();
 const hasLetters = (s) => /[A-Za-z]/.test(s || "");
 const stripPunctuation = (s) => (s || "").replace(/[\.,;:]+/g, "").trim();
 
-function normalizeAffixToken(token) {
-  return stripPunctuation(token || "").replace(/[\s']/g, "").toUpperCase();
-}
-
-function consumePrefixes(tokens) {
-  const working = tokens;
-  while (working.length > 0) {
-    const candidate = normalizeAffixToken(working[0]);
-    if (candidate && PREFIX_MAP.has(candidate)) {
-      const mapped = PREFIX_MAP.get(candidate);
-      working.shift();
-      return mapped;
-    }
-    break;
-  }
-  return null;
-}
-
-function consumeSuffixes(tokens) {
-  const working = tokens;
-  let bestValue = null;
-  let bestPriority = -1;
-  while (working.length > 0) {
-    const candidate = normalizeAffixToken(working[working.length - 1]);
-    if (candidate && SUFFIX_CONFIG.has(candidate)) {
-      const config = SUFFIX_CONFIG.get(candidate);
-      working.pop();
-      if (config.priority > bestPriority) {
-        bestPriority = config.priority;
-        bestValue = config.value;
-      }
-      continue;
-    }
-    break;
-  }
-  return bestValue;
-}
-
 // Company detection keywords (case-insensitive)
 const companyKeywords = [
   "inc",
@@ -85,123 +47,8 @@ const companyKeywords = [
   "fbo",
   "ministries",
   "church",
-  "church",
   "c/o",
-  "united states",
-  "state of",
-  "county of",
-  "city of",
-  "department",
-  "dept",
-  "authority",
-  "agency",
-  "commission",
-  "board",
-  "school",
 ];
-
-const PREFIX_MAP = new Map([
-  ["MR", "Mr."],
-  ["MR.", "Mr."],
-  ["MRS", "Mrs."],
-  ["MRS.", "Mrs."],
-  ["MS", "Ms."],
-  ["MS.", "Ms."],
-  ["MISS", "Miss"],
-  ["SRTA", "Miss"],
-  ["MX", "Mx."],
-  ["DR", "Dr."],
-  ["DR.", "Dr."],
-  ["DOCTOR", "Dr."],
-  ["PROF", "Prof."],
-  ["PROF.", "Prof."],
-  ["PROFESSOR", "Prof."],
-  ["REV", "Rev."],
-  ["REV.", "Rev."],
-  ["REVEREND", "Rev."],
-  ["PASTOR", "Rev."],
-  ["FATHER", "Fr."],
-  ["FR", "Fr."],
-  ["FR.", "Fr."],
-  ["BROTHER", "Br."],
-  ["BR", "Br."],
-  ["BR.", "Br."],
-  ["SISTER", "Sr."],
-  ["SR", "Sr."],
-  ["SR.", "Sr."],
-  ["HON", "Hon."],
-  ["HON.", "Hon."],
-  ["HONORABLE", "Hon."],
-  ["JUDGE", "Judge"],
-  ["CAPT", "Capt."],
-  ["CAPT.", "Capt."],
-  ["CAPTAIN", "Capt."],
-  ["COL", "Col."],
-  ["COL.", "Col."],
-  ["COLONEL", "Col."],
-  ["MAJ", "Maj."],
-  ["MAJ.", "Maj."],
-  ["MAJOR", "Maj."],
-  ["LT", "Lt."],
-  ["LT.", "Lt."],
-  ["LIEUTENANT", "Lt."],
-  ["SGT", "Sgt."],
-  ["SGT.", "Sgt."],
-  ["SERGEANT", "Sgt."],
-  ["RABBI", "Rabbi"],
-  ["IMAM", "Imam"],
-  ["SHEIKH", "Sheikh"],
-  ["SIR", "Sir"],
-  ["DAME", "Dame"],
-]);
-
-const SUFFIX_CONFIG = new Map([
-  ["JR", { value: "Jr.", priority: 3 }],
-  ["JR.", { value: "Jr.", priority: 3 }],
-  ["SR", { value: "Sr.", priority: 3 }],
-  ["SR.", { value: "Sr.", priority: 3 }],
-  ["II", { value: "II", priority: 3 }],
-  ["III", { value: "III", priority: 3 }],
-  ["IV", { value: "IV", priority: 3 }],
-  ["PHD", { value: "PhD", priority: 2 }],
-  ["PH.D", { value: "PhD", priority: 2 }],
-  ["PH.D.", { value: "PhD", priority: 2 }],
-  ["MD", { value: "MD", priority: 2 }],
-  ["M.D", { value: "MD", priority: 2 }],
-  ["M.D.", { value: "MD", priority: 2 }],
-  ["ESQ", { value: "Esq.", priority: 1 }],
-  ["ESQ.", { value: "Esq.", priority: 1 }],
-  ["JD", { value: "JD", priority: 2 }],
-  ["J.D", { value: "JD", priority: 2 }],
-  ["J.D.", { value: "JD", priority: 2 }],
-  ["LLM", { value: "LLM", priority: 2 }],
-  ["MBA", { value: "MBA", priority: 2 }],
-  ["RN", { value: "RN", priority: 2 }],
-  ["DDS", { value: "DDS", priority: 2 }],
-  ["DDS.", { value: "DDS", priority: 2 }],
-  ["DMD", { value: "DDS", priority: 2 }],
-  ["D.M.D", { value: "DDS", priority: 2 }],
-  ["D.M.D.", { value: "DDS", priority: 2 }],
-  ["DVM", { value: "DVM", priority: 2 }],
-  ["D.V.M", { value: "DVM", priority: 2 }],
-  ["D.V.M.", { value: "DVM", priority: 2 }],
-  ["CFA", { value: "CFA", priority: 2 }],
-  ["CPA", { value: "CPA", priority: 2 }],
-  ["PE", { value: "PE", priority: 2 }],
-  ["P.E", { value: "PE", priority: 2 }],
-  ["P.E.", { value: "PE", priority: 2 }],
-  ["PMP", { value: "PMP", priority: 2 }],
-  ["EMERITUS", { value: "Emeritus", priority: 1 }],
-  ["RET", { value: "Ret.", priority: 1 }],
-  ["RET.", { value: "Ret.", priority: 1 }],
-]);
-const SUFFIX_PRIORITY = new Map();
-SUFFIX_CONFIG.forEach(({ value, priority }) => {
-  const existing = SUFFIX_PRIORITY.get(value);
-  if (existing == null || priority > existing) {
-    SUFFIX_PRIORITY.set(value, priority);
-  }
-});
 
 function isCompanyName(name) {
   const n = (name || "").toLowerCase();
@@ -223,9 +70,8 @@ function dedupeOwners(owners) {
       const first = (o.first_name || "").toLowerCase().trim();
       const middle = (o.middle_name || "").toLowerCase().trim();
       const last = (o.last_name || "").toLowerCase().trim();
-      const suffix = (o.suffix_name || "").toLowerCase().trim();
       if (!first || !last) continue;
-      key = `person:${first}|${middle}|${last}|${suffix}`;
+      key = `person:${first}|${middle}|${last}`;
     } else {
       continue;
     }
@@ -239,20 +85,15 @@ function dedupeOwners(owners) {
 
 function parsePersonNameTokens(tokens, options = {}) {
   const { preferFirstLast = false, carryLastName = null } = options;
-  const working = tokens.filter(Boolean).map((token) => token.trim());
-  const prefix = consumePrefixes(working);
-  const suffix = consumeSuffixes(working);
-
-  if (working.length < 2) {
-    if (working.length === 1 && carryLastName) {
+  const t = tokens.filter(Boolean);
+  if (t.length < 2) {
+    if (t.length === 1 && carryLastName) {
       // Single given name; attach carried last name
       return {
         type: "person",
-        first_name: stripPunctuation(working[0]),
+        first_name: stripPunctuation(t[0]),
         last_name: stripPunctuation(carryLastName),
         middle_name: null,
-        prefix_name: prefix || null,
-        suffix_name: suffix || null,
       };
     }
     return null;
@@ -260,60 +101,37 @@ function parsePersonNameTokens(tokens, options = {}) {
 
   // If preferFirstLast (e.g., second owner after '&' with shared last name)
   if (preferFirstLast) {
-    const first = stripPunctuation(working[0]);
-    const last = stripPunctuation(carryLastName || working[working.length - 1]);
+    const first = stripPunctuation(t[0]);
+    const last = stripPunctuation(carryLastName || t[t.length - 1]);
     let middle = null;
-    if (working.length >= 2) {
-      const midCandidate = stripPunctuation(working.slice(1).join(" "));
+    if (t.length >= 2) {
+      const midCandidate = stripPunctuation(t.slice(1).join(" "));
       if (midCandidate && hasLetters(midCandidate)) middle = midCandidate;
     }
-    const person = {
-      type: "person",
-      first_name: first,
-      last_name: last,
-    };
+    const person = { type: "person", first_name: first, last_name: last };
     if (middle) person.middle_name = middle;
-    if (prefix) person.prefix_name = prefix;
-    if (suffix) person.suffix_name = suffix;
     return person;
   }
 
   // Heuristic: for ALL-CAPS names without comma, assume LAST FIRST [MIDDLE]
-  const allCaps = working.every(isAllCapsWord);
+  const allCaps = t.every(isAllCapsWord);
   if (allCaps) {
-    if (working.length < 2) return null;
-    const last = stripPunctuation(working[0]);
-    const first = stripPunctuation(working[1]);
-    const middle =
-      working.length > 2
-        ? stripPunctuation(working.slice(2).join(" "))
-        : null;
-    const person = {
-      type: "person",
-      first_name: first,
-      last_name: last,
-    };
+    if (t.length < 2) return null;
+    const last = stripPunctuation(t[0]);
+    const first = stripPunctuation(t[1]);
+    const middle = t.length > 2 ? stripPunctuation(t.slice(2).join(" ")) : null;
+    const person = { type: "person", first_name: first, last_name: last };
     if (middle && hasLetters(middle)) person.middle_name = middle;
-    if (prefix) person.prefix_name = prefix;
-    if (suffix) person.suffix_name = suffix;
     return person;
   }
 
   // Default: FIRST [MIDDLE] LAST
-  const first = stripPunctuation(working[0]);
-  const last = stripPunctuation(working[working.length - 1]);
+  const first = stripPunctuation(t[0]);
+  const last = stripPunctuation(t[t.length - 1]);
   const middle =
-    working.length > 2
-      ? stripPunctuation(working.slice(1, -1).join(" "))
-      : null;
-  const person = {
-    type: "person",
-    first_name: first,
-    last_name: last,
-  };
+    t.length > 2 ? stripPunctuation(t.slice(1, -1).join(" ")) : null;
+  const person = { type: "person", first_name: first, last_name: last };
   if (middle && hasLetters(middle)) person.middle_name = middle;
-  if (prefix) person.prefix_name = prefix;
-  if (suffix) person.suffix_name = suffix;
   return person;
 }
 
@@ -321,27 +139,15 @@ function parsePersonWithComma(name) {
   // Format: LAST, FIRST [MIDDLE]
   const parts = name.split(",");
   if (parts.length < 2) return null;
-  const lastTokens = parts[0].split(/\s+/).filter(Boolean);
-  const lastSuffix = consumeSuffixes(lastTokens);
-  const last = stripPunctuation(lastTokens.join(" "));
+  const last = stripPunctuation(parts[0]);
   const rest = normalizeSpace(parts.slice(1).join(", "));
   const tokens = rest.split(/\s+/).filter(Boolean);
   if (tokens.length < 1) return null;
-  const prefix = consumePrefixes(tokens);
-  const suffixInRest = consumeSuffixes(tokens);
-  const suffixParts = [lastSuffix, suffixInRest].filter(Boolean);
   const first = stripPunctuation(tokens[0]);
   const middle =
     tokens.length > 1 ? stripPunctuation(tokens.slice(1).join(" ")) : null;
   const person = { type: "person", first_name: first, last_name: last };
   if (middle && hasLetters(middle)) person.middle_name = middle;
-  if (prefix) person.prefix_name = prefix;
-  if (suffixParts.length) {
-    suffixParts.sort(
-      (a, b) => (SUFFIX_PRIORITY.get(b) || 0) - (SUFFIX_PRIORITY.get(a) || 0),
-    );
-    person.suffix_name = suffixParts[0];
-  }
   return person;
 }
 

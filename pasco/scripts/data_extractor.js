@@ -1690,7 +1690,10 @@ function main() {
     ? readJSON(structurePath)
     : null;
 
-  const parcelId = textOrNull($("#lblParcelID"));
+  let parcelId = textOrNull($("#lblParcelID"));
+  if (!parcelId && propSeed && propSeed.parcel_id) {
+    parcelId = String(propSeed.parcel_id).trim() || null;
+  }
   if (!parcelId) {
     // throw new Error("Parcel ID not found in input.html");
   }
@@ -1705,6 +1708,14 @@ function main() {
     (addrSeed && addrSeed.request_identifier) ||
       parcelId ||
       null;
+  const sharedSourceHttpRequest =
+    (propSeed && propSeed.source_http_request) ||
+    (addrSeed && addrSeed.source_http_request) ||
+    null;
+  const sharedCountryCode =
+    (propSeed && propSeed.country_code) ||
+    (addrSeed && addrSeed.country_code) ||
+    "US";
 
   // PROPERTY
   const classification =
@@ -1716,11 +1727,11 @@ function main() {
   const property_type =
     (propertyMapping && propertyMapping.property_type) ||
     propSeed.property_type ||
-    null;
+    (parcelId ? "LandParcel" : null);
   const property_usage_type =
     (propertyMapping && propertyMapping.property_usage_type) ||
     propSeed.property_usage_type ||
-    null;
+    "Unknown";
   const ownership_estate_type =
     (propertyMapping && propertyMapping.ownership_estate_type) ||
     propSeed.ownership_estate_type ||
@@ -1732,7 +1743,7 @@ function main() {
   const build_status =
     (propertyMapping && propertyMapping.build_status) ||
     propSeed.build_status ||
-    null;
+    "VacantLand";
 
   const number_of_units_type =
     deriveNumberOfUnitsType(structure_form) ||
@@ -1777,7 +1788,6 @@ function main() {
     build_status,
     property_structure_built_year: yearBuilt || null,
     number_of_units_type,
-    livable_floor_area: livableSqft ? String(livableSqft) : null,
     property_legal_description_text: legalDesc || null,
     subdivision: subdivision || null,
     zoning: zoning || null,
@@ -1786,6 +1796,8 @@ function main() {
     property_effective_built_year: null,
     total_area: null,
     historic_designation: undefined, // omit
+    source_http_request: sharedSourceHttpRequest,
+    request_identifier: sharedRequestIdentifier,
   };
   writeJSON("property.json", property);
 
@@ -2112,16 +2124,10 @@ function main() {
     null;
   const address = {
     unnormalized_address: fallbackUnnormalized,
-    latitude:
-      addrSeed && typeof addrSeed.latitude === "number"
-        ? addrSeed.latitude
-        : null,
-    longitude:
-      addrSeed && typeof addrSeed.longitude === "number"
-        ? addrSeed.longitude
-        : null,
-    county_name: county || null,
+    source_http_request: sharedSourceHttpRequest,
     request_identifier: sharedRequestIdentifier,
+    county_name: county || null,
+    country_code: sharedCountryCode,
   };
   writeJSON("address.json", address);
 
@@ -2145,10 +2151,7 @@ function main() {
         addressParts.length > 0 ? addressParts.join(", ") : null;
       if (unnormalizedMailing) {
         const mailingAddress = {
-          source_http_request:
-            (propSeed && propSeed.source_http_request) ||
-            (addrSeed && addrSeed.source_http_request) ||
-            null,
+          source_http_request: sharedSourceHttpRequest,
           request_identifier: sharedRequestIdentifier,
           unnormalized_address: unnormalizedMailing,
           latitude: null,
@@ -2210,6 +2213,8 @@ function main() {
     driveway_material: driveway_material || null,
     driveway_condition: null,
     lot_condition_issues: null,
+    source_http_request: sharedSourceHttpRequest,
+    request_identifier: sharedRequestIdentifier,
   };
   writeJSON("lot.json", lot);
 
@@ -2366,6 +2371,15 @@ function main() {
   const persons = [];
   const companies = [];
   const relationshipsSalesPersons = [];
+  const usedPersonIndices = new Set();
+  const usedCompanyIndices = new Set();
+
+  // Cleanup old incorrectly-named relationship files
+  purgeDataFiles([
+    /^relationship_sales_history_person_\d+\.json$/,
+    /^relationship_sales_history_company_\d+\.json$/,
+  ]);
+
   if (ownersData && ownersData[ownersKey]) {
     const ownersByDate = ownersData[ownersKey].owners_by_date || {};
     const currentOwners = Array.isArray(ownersByDate.current)
@@ -2457,11 +2471,21 @@ function main() {
         if (owner.type === "person") {
           const fname = personFileByOwner.get(owner);
           if (fname) {
+            // Extract person index from filename
+            const personIdxMatch = fname.match(/person_(\d+)\.json/);
+            if (personIdxMatch) {
+              usedPersonIndices.add(parseInt(personIdxMatch[1], 10));
+            }
             writeRelationshipFile(fname, mailingAddressFileName);
           }
         } else if (owner.type === "company") {
           const fname = companyFileByOwner.get(owner);
           if (fname) {
+            // Extract company index from filename
+            const companyIdxMatch = fname.match(/company_(\d+)\.json/);
+            if (companyIdxMatch) {
+              usedCompanyIndices.add(parseInt(companyIdxMatch[1], 10));
+            }
             writeRelationshipFile(fname, mailingAddressFileName);
           }
         }
@@ -2605,7 +2629,11 @@ function main() {
       // Typically one sale, link both owners to that sale
       const targetSale = latestSales[0];
       if (targetSale) {
-        let relIdx = 1;
+        // Extract sale index from filename like "sales_history_1.json"
+        const saleIdxMatch = targetSale.match(/sales_history_(\d+)\.json/);
+        const saleIdx = saleIdxMatch ? saleIdxMatch[1] : "1";
+        let personCounter = 0;
+        let companyCounter = 0;
         for (const o of currentOwners) {
           if (o.type === "person") {
             const pf = persons.find(
@@ -2614,15 +2642,33 @@ function main() {
                 pp.data.last_name === upperFirst(o.last_name),
             );
             if (pf) {
+              const personIdx = persons.indexOf(pf) + 1;
+              usedPersonIndices.add(personIdx);
+              personCounter++;
               writeJSON(
-                `relationship_sales_history_person_${relationshipsSalesPersons.length + 1}.json`,
+                `relationship_sales_history_${saleIdx}_buyer_person_${personCounter}.json`,
                 {
                   to: { "/": `./${pf.file}` },
                   from: { "/": `./${targetSale}` },
                 },
               );
               relationshipsSalesPersons.push(1);
-              relIdx++;
+            }
+          } else if (o.type === "company") {
+            const cf = companies.find(
+              (cc) => cc.data.name === normalizeSpace(o.name || ""),
+            );
+            if (cf) {
+              const companyIdx = companies.indexOf(cf) + 1;
+              usedCompanyIndices.add(companyIdx);
+              companyCounter++;
+              writeJSON(
+                `relationship_sales_history_${saleIdx}_buyer_company_${companyCounter}.json`,
+                {
+                  to: { "/": `./${cf.file}` },
+                  from: { "/": `./${targetSale}` },
+                },
+              );
             }
           }
         }
@@ -2635,6 +2681,11 @@ function main() {
       const salesInYear = salesForYear(year);
       if (salesInYear.length > 0) {
         const targetSale = salesInYear[0];
+        // Extract sale index from filename like "sales_history_1.json"
+        const saleIdxMatch = targetSale.match(/sales_history_(\d+)\.json/);
+        const saleIdx = saleIdxMatch ? saleIdxMatch[1] : "1";
+        let personCounter = 0;
+        let companyCounter = 0;
         const ownersArr = ownersByDate[d] || [];
         for (const o of ownersArr) {
           if (o.type === "person") {
@@ -2644,8 +2695,11 @@ function main() {
                 pp.data.last_name === upperFirst(o.last_name),
             );
             if (pf) {
+              const personIdx = persons.indexOf(pf) + 1;
+              usedPersonIndices.add(personIdx);
+              personCounter++;
               writeJSON(
-                `relationship_sales_history_person_${relationshipsSalesPersons.length + 1}.json`,
+                `relationship_sales_history_${saleIdx}_buyer_person_${personCounter}.json`,
                 {
                   to: { "/": `./${pf.file}` },
                   from: { "/": `./${targetSale}` },
@@ -2653,7 +2707,43 @@ function main() {
               );
               relationshipsSalesPersons.push(1);
             }
+          } else if (o.type === "company") {
+            const cf = companies.find(
+              (cc) => cc.data.name === normalizeSpace(o.name || ""),
+            );
+            if (cf) {
+              const companyIdx = companies.indexOf(cf) + 1;
+              usedCompanyIndices.add(companyIdx);
+              companyCounter++;
+              writeJSON(
+                `relationship_sales_history_${saleIdx}_buyer_company_${companyCounter}.json`,
+                {
+                  to: { "/": `./${cf.file}` },
+                  from: { "/": `./${targetSale}` },
+                },
+              );
+            }
           }
+        }
+      }
+    }
+
+    // Cleanup: Remove unused person and company files
+    for (let i = 1; i <= persons.length; i++) {
+      if (!usedPersonIndices.has(i)) {
+        const unusedFile = path.join(DATA_DIR, `person_${i}.json`);
+        if (fs.existsSync(unusedFile)) {
+          fs.unlinkSync(unusedFile);
+          console.log(`Removed unused file: person_${i}.json`);
+        }
+      }
+    }
+    for (let i = 1; i <= companies.length; i++) {
+      if (!usedCompanyIndices.has(i)) {
+        const unusedFile = path.join(DATA_DIR, `company_${i}.json`);
+        if (fs.existsSync(unusedFile)) {
+          fs.unlinkSync(unusedFile);
+          console.log(`Removed unused file: company_${i}.json`);
         }
       }
     }
