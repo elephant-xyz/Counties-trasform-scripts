@@ -488,15 +488,7 @@ function main() {
         name: bookPageText ? `Official Records ${bookPageText}` : null,
       };
 
-      // Only add original_url if it's a valid HTTP/HTTPS URL
-      // Otherwise, omit it and let the process populate it
-      if (docUrl && /^https?:\/\//i.test(docUrl)) {
-        // Check for invalid characters that would make the URL invalid
-        // URLs cannot contain: `, *, <, >, {, }, |, \, ^, [, ], and unencoded spaces
-        if (!/[`*<>{}|\\^\[\]\s]/.test(docUrl)) {
-          fileObj.original_url = docUrl;
-        }
-      }
+      // Do not generate original_url - it will be populated by the process
 
       out.files.push(fileObj);
     });
