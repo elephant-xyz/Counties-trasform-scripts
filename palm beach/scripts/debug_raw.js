@@ -10889,10 +10889,10 @@ function buildMinimalRawAddress(rawValue, options = {}) {
       : null;
 
   const source = { ...(normalizedSurface || {}), ...snapshot };
-  const base = RAW_MINIMAL_OUTPUT_FIELDS.reduce((acc, field) => {
-    acc[field] = null;
-    return acc;
-  }, {});
+  // Populate the full raw oneOf surface (all normalized fields nullable) so
+  // validation never flags missing required keys when we only have an
+  // unnormalized string.
+  const base = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
 
   const resolveString = (value) => {
     if (value === undefined || value === null) return null;
