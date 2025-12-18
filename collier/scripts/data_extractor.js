@@ -978,19 +978,85 @@ function main() {
         });
       });
 
-      // Remove unused owner files
-      for (let i = 1; i <= personFiles.length; i++) {
-        if (!usedPersonIndices.has(i)) {
-          try {
-            fs.unlinkSync(path.join(dataDir, `person_${i}.json`));
-          } catch (_) {}
+      // Remove unused owner files - scan actual relationship files to determine which entities are referenced
+      try {
+        const files = fs.readdirSync(dataDir);
+
+        // Build sets of which person/company indices are actually referenced by ANY relationship file
+        const personsReferencedByRelationships = new Set();
+        const companiesReferencedByRelationships = new Set();
+
+        // First pass: scan all relationship files to find what entities they reference
+        for (const f of files) {
+          if (f.startsWith("relationship_") && f.endsWith(".json")) {
+            try {
+              const relContent = JSON.parse(fs.readFileSync(path.join(dataDir, f), "utf8"));
+
+              // Extract person/company references from "from" and "to" fields
+              const fromRef = relContent.from && relContent.from["/"] ? relContent.from["/"] : null;
+              const toRef = relContent.to && relContent.to["/"] ? relContent.to["/"] : null;
+
+              [fromRef, toRef].forEach(ref => {
+                if (ref) {
+                  // Handle both ./person_N.json and person_N.json formats
+                  const personMatch = ref.match(/person_(\d+)\.json/);
+                  const companyMatch = ref.match(/company_(\d+)\.json/);
+
+                  if (personMatch) {
+                    personsReferencedByRelationships.add(parseInt(personMatch[1]));
+                  } else if (companyMatch) {
+                    companiesReferencedByRelationships.add(parseInt(companyMatch[1]));
+                  }
+                }
+              });
+            } catch (parseError) {
+              // Continue with next file even if one fails
+            }
+          }
         }
-      }
-      for (let i = 1; i <= companyFiles.length; i++) {
-        if (!usedCompanyIndices.has(i)) {
+
+        // Second pass: delete person/company files that are NOT referenced by any relationship
+        for (const f of files) {
           try {
-            fs.unlinkSync(path.join(dataDir, `company_${i}.json`));
-          } catch (_) {}
+            const personMatch = f.match(/^person_(\d+)\.json$/);
+            const companyMatch = f.match(/^company_(\d+)\.json$/);
+
+            if (personMatch) {
+              const idx = parseInt(personMatch[1]);
+              if (!personsReferencedByRelationships.has(idx)) {
+                const filePath = path.join(dataDir, f);
+                if (fs.existsSync(filePath)) {
+                  fs.unlinkSync(filePath);
+                }
+              }
+            } else if (companyMatch) {
+              const idx = parseInt(companyMatch[1]);
+              if (!companiesReferencedByRelationships.has(idx)) {
+                const filePath = path.join(dataDir, f);
+                if (fs.existsSync(filePath)) {
+                  fs.unlinkSync(filePath);
+                }
+              }
+            }
+          } catch (fileError) {
+            // Continue with next file even if one fails
+          }
+        }
+      } catch (e) {
+        // If cleanup fails, fall back to the simple logic
+        for (let i = 1; i <= personFiles.length; i++) {
+          if (!usedPersonIndices.has(i)) {
+            try {
+              fs.unlinkSync(path.join(dataDir, `person_${i}.json`));
+            } catch (_) {}
+          }
+        }
+        for (let i = 1; i <= companyFiles.length; i++) {
+          if (!usedCompanyIndices.has(i)) {
+            try {
+              fs.unlinkSync(path.join(dataDir, `company_${i}.json`));
+            } catch (_) {}
+          }
         }
       }
     }
