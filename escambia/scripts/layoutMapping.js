@@ -256,7 +256,7 @@ function main() {
   const html = fs.readFileSync(inputPath, "utf8");
   const $ = cheerio.load(html);
   const parcelId = getParcelId($);
-  if (!parcelId) throw new Error("Parcel ID not found");
+  const parcelIdToUse = parcelId || "UNKNOWN";
 
   const buildings = extractBuildings($);
   const layouts = [];
@@ -307,7 +307,7 @@ function main() {
         pool_condition: null,
         pool_surface_type: null,
         pool_water_quality: null,
-        request_identifier: parcelId, // Use parcelId as a simple identifier
+        request_identifier: parcelIdToUse, // Use parcelId as a simple identifier
         source_http_request: null, // No source HTTP request for the building itself
       });
       layouts.push(buildingLayout);
@@ -353,7 +353,7 @@ function main() {
             pool_condition: null,
             pool_surface_type: null,
             pool_water_quality: null,
-            request_identifier: parcelId,
+            request_identifier: parcelIdToUse,
             source_http_request: null,
           });
           childLayout.space_type_index = getIndexForType(spaceType);
@@ -367,7 +367,7 @@ function main() {
     });
   }
 
-  const propertyKey = `property_${parcelId}`;
+  const propertyKey = `property_${parcelIdToUse}`;
   const output = {};
   output[propertyKey] = {
     layouts,

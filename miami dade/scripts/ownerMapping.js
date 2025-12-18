@@ -6,9 +6,43 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+function loadInput() {
+  // const jsonFilePath = path.join(process.cwd(), 'input.json');
+  const htmlFilePath = path.join(process.cwd(), 'input.html');
+
+  // try {
+  //   // 1. Try to read input.json synchronously
+  //   const jsonData = fs.readFileSync(jsonFilePath, 'utf8');
+  //   return JSON.parse(jsonData);
+  // } catch (jsonError) {
+    // If input.json doesn't exist or is unreadable, try input.html
+    // if (jsonError.code === 'ENOENT' || jsonError instanceof SyntaxError) {
+      // console.warn(`Could not read or parse input.json: ${jsonError.message}. Attempting to read from input.html.`);
+      try {
+        // 2. Read input.html synchronously
+        const htmlData = fs.readFileSync(htmlFilePath, 'utf8');
+        return htmlData;
+        // // Parse the HTML using Cheerio
+        // const $ = cheerio.load(htmlData);
+        // const preTagContent = $('pre').text(); // Get the text content of the <pre> tag
+
+        // if (preTagContent) {
+        //   return JSON.parse(preTagContent);
+        // } else {
+        //   throw new Error('No <pre> tag found or <pre> tag is empty in input.html');
+        // }
+      } catch (htmlError) {
+        throw new Error(`Failed to read or parse JSON from input.html: ${htmlError.message}`);
+      }
+    // } else {
+    //   // Re-throw other errors from input.json
+    //   throw new Error(`An unexpected error occurred while processing input.json: ${jsonError.message}`);
+    // }
+  // }
+}
+
 // Read the input file as raw text (expected HTML, may contain JSON-like content)
-const inputPath = path.join(process.cwd(), "input.json");
-const raw = fs.readFileSync(inputPath, "utf8");
+const raw = loadInput();
 
 // Load with cheerio; for non-HTML text (e.g., JSON), we still get a root text node to work with
 const $ = cheerio.load(raw);
@@ -133,7 +167,7 @@ function toPerson(name) {
   first = first.replace(/[^A-Za-z\-']/g, "").trim();
   last = last.replace(/[^A-Za-z\-']/g, "").trim();
   if (middle) {
-    middle = middle.replace(/[^A-Za-z\-']/g, "").trim();
+    middle = middle.replace(/[^A-Za-z\-' ]/g, "").trim();
   }
   
   // Reject names that are empty, start with numbers, or contain only special characters
@@ -142,8 +176,32 @@ function toPerson(name) {
     return null;
   }
   
+  // Reject names with multiple consecutive special characters (e.g., "NC---")
+  if (/[-']{2,}/.test(first) || /[-']{2,}/.test(last)) {
+    return null;
+  }
+  
+  // Reject names that are too short (less than 2 letters)
+  const firstLetters = first.replace(/[^A-Za-z]/g, "");
+  const lastLetters = last.replace(/[^A-Za-z]/g, "");
+  if (firstLetters.length < 2 || lastLetters.length < 2) {
+    return null;
+  }
+  
   // Reject if middle name is empty or only special characters
   if (middle && (!middle || /^[^A-Za-z]+$/.test(middle))) {
+    middle = null;
+  }
+  
+  // Ensure the name would pass the validation pattern used in data_extractor.js
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // This means: Start with uppercase, followed by lowercase letters, 
+  // then optionally more words separated by space/dash/apostrophe/comma/period
+  const validationPattern = /^[A-Za-z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/i;
+  if (!validationPattern.test(first) || !validationPattern.test(last)) {
+    return null;
+  }
+  if (middle && !validationPattern.test(middle)) {
     middle = null;
   }
   
@@ -164,6 +222,33 @@ function classifyOwner(rawName) {
 
   // Check for specific company patterns
   if (name.includes("JEWISH OUTREACH") || name.includes("CHABAD") || name.includes("PROGRAM")) {
+    return { owner: { type: "company", name: name }, reason: null };
+  }
+
+  // Check for LLC/LC patterns with spaces (e.g., "LAND HOLD L C" or "COMPANY L L C")
+  if (/\b[L]\s+[LC]\b/i.test(name) || /\bL\s+L\s+C\b/i.test(name)) {
+    return { owner: { type: "company", name: name }, reason: null };
+  }
+
+  // Check for government entities and other organizational patterns
+  const upperName = name.toUpperCase();
+  if (
+    /^CITY OF\b/i.test(name) ||
+    /^TOWN OF\b/i.test(name) ||
+    /^COUNTY OF\b/i.test(name) ||
+    /^STATE OF\b/i.test(name) ||
+    /\bMUNICIPALITY\b/i.test(name) ||
+    /\bGOVERNMENT\b/i.test(name) ||
+    /\bDEPARTMENT\b/i.test(name) ||
+    /\bAUTHORITY\b/i.test(name) ||
+    /\bAGENCY\b/i.test(name) ||
+    upperName.includes("PROPERTIES") ||
+    upperName.includes("DEVELOPMENT") ||
+    upperName.includes("ENTERPRISES") ||
+    upperName.includes("INVESTMENTS") ||
+    upperName.includes("LAND HOLD") ||
+    upperName.includes("HOLDINGS")
+  ) {
     return { owner: { type: "company", name: name }, reason: null };
   }
 

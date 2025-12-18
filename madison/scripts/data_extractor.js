@@ -1271,7 +1271,7 @@ function buildPersonRecord(owner, parcelId) {
     last_name: last,
     birth_date: null,
     prefix_name: owner.prefix_name ? titleCaseName(owner.prefix_name) : null,
-    suffix_name: owner.suffix_name || null,
+    suffix_name: owner.suffix_name ? titleCaseName(owner.suffix_name) : null,
     us_citizenship_status: null,
     veteran_status: null,
     request_identifier: parcelId,
@@ -1347,73 +1347,12 @@ function writePersonCompaniesSalesRelationships(parcelId, salesRecords, property
     ? salesRecords
     : [];
 
-  const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "person") {
-        const k = `${
-          (o.prefix_name || "").trim().toUpperCase()
-        }|${
-          (o.first_name || "").trim().toUpperCase()
-        }|${
-          (o.middle_name || "").trim().toUpperCase()
-        }|${(o.last_name || "").trim().toUpperCase()}|${
-          (o.suffix_name || "").trim().toUpperCase()
-        }`;
-        if (!personMap.has(k))
-          personMap.set(k, {
-            first_name: o.first_name,
-            middle_name: o.middle_name,
-            last_name: o.last_name,
-            prefix_name: o.prefix_name || null,
-            suffix_name: o.suffix_name || null,
-          });
-        else {
-          const existing = personMap.get(k);
-          if (!existing.middle_name && o.middle_name)
-            existing.middle_name = o.middle_name;
-          if (!existing.prefix_name && o.prefix_name)
-            existing.prefix_name = o.prefix_name;
-          if (!existing.suffix_name && o.suffix_name)
-            existing.suffix_name = o.suffix_name;
-        }
-      }
-    });
-  });
+  // Initialize empty maps - persons and companies will be created on-demand
+  // Only when they are actually referenced by relationships
   personIndexByKey = new Map();
   people = [];
-  Array.from(personMap.values()).forEach((p) => {
-    const record = buildPersonRecord(p, parcelId);
-    if (!record) return;
-    const idx = people.length + 1;
-    const key = normalizePersonKey(record);
-    if (key && !personIndexByKey.has(key)) {
-      people.push(record);
-      personIndexByKey.set(key, idx);
-      writeJSON(path.join("data", `person_${idx}.json`), record);
-    }
-  });
-  const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim());
-    });
-  });
   companyIndexByKey = new Map();
   companies = [];
-  Array.from(companyNames).forEach((n) => {
-    const idx = companies.length + 1;
-    const key = normalizeCompanyKey(n);
-    if (!key || companyIndexByKey.has(key)) return;
-    const record = {
-      name: n,
-      request_identifier: parcelId,
-    };
-    companies.push(record);
-    companyIndexByKey.set(key, idx);
-    writeJSON(path.join("data", `company_${idx}.json`), record);
-  });
   // Relationships: link sale to owners present on that date (both persons and companies)
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
@@ -2281,13 +2220,14 @@ function main() {
         layoutFiles: [],
         buildingCount: 0,
       };
-    writeUtility(parcelId, propertyInfo, layoutContext);
-    writeStructure(parcelId, propertyInfo, layoutContext);
-    writePersonCompaniesSalesRelationships(
-      parcelId,
-      salesRecords,
-      propertySeed,
-    );
+    // Seed data group does not include utility, structure, person, company, or sales_history classes
+    // writeUtility(parcelId, propertyInfo, layoutContext);
+    // writeStructure(parcelId, propertyInfo, layoutContext);
+    // writePersonCompaniesSalesRelationships(
+    //   parcelId,
+    //   salesRecords,
+    //   propertySeed,
+    // );
   }
 
   // Address last

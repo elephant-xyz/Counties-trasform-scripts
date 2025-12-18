@@ -1283,6 +1283,26 @@ function titleCaseName(s) {
     .join(" ");
 }
 
+function cleanNameField(s) {
+  if (!s) return s;
+  // Remove trailing punctuation that would violate the name pattern
+  // Pattern allows punctuation only when followed by more letters
+  return s.replace(/[,.\-'\s]+$/, '').trim();
+}
+
+function validateNameField(s) {
+  // Validates that name field matches pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  // Returns the string if valid, null otherwise
+  if (!s || typeof s !== 'string') return null;
+  const trimmed = s.trim();
+  if (trimmed.length === 0) return null;
+  // Check if matches the required pattern from Elephant schema
+  // Pattern: Start with uppercase letter, followed by any letters (upper/lower), spaces, hyphens, apostrophes, commas, periods
+  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  if (!namePattern.test(trimmed)) return null;
+  return trimmed;
+}
+
 function writePersonCompaniesSalesRelationships(
   parcelId,
   sales,
@@ -1296,11 +1316,25 @@ function writePersonCompaniesSalesRelationships(
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
+
+  // Build sale dates set to filter historical owners
+  const saleDatesSet = new Set();
+  (saleHistoryMeta || []).forEach((meta) => {
+    if (meta.dateISO) saleDatesSet.add(meta.dateISO);
+  });
+
   const orderedOwnerArrays = [];
   if (Array.isArray(ownersByDate.current))
     orderedOwnerArrays.push(ownersByDate.current);
+
+  // Only include historical owners that have matching sales dates
   Object.keys(ownersByDate)
-    .filter((ownerKey) => ownerKey !== "current")
+    .filter((ownerKey) => {
+      if (ownerKey === "current") return false;
+      if (/^unknown_date_/.test(ownerKey)) return false;
+      // Only include if this date has a corresponding sale
+      return saleDatesSet.has(ownerKey);
+    })
     .sort()
     .forEach((ownerKey) => {
       const ownersForKey = ownersByDate[ownerKey];
@@ -1339,16 +1373,16 @@ function writePersonCompaniesSalesRelationships(
     });
   });
   people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? titleCaseName(p.first_name) : null,
-    middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-    last_name: p.last_name ? titleCaseName(p.last_name) : null,
-    prefix_name: p.prefix_name ? titleCaseName(p.prefix_name) : null,
+    first_name: validateNameField(p.first_name ? cleanNameField(titleCaseName(p.first_name)) : null),
+    middle_name: validateNameField(p.middle_name ? cleanNameField(titleCaseName(p.middle_name)) : null),
+    last_name: validateNameField(p.last_name ? cleanNameField(titleCaseName(p.last_name)) : null),
+    prefix_name: validateNameField(p.prefix_name ? cleanNameField(titleCaseName(p.prefix_name)) : null),
     suffix_name: p.suffix_name || null,
     birth_date: null,
     us_citizenship_status: null,
     veteran_status: null,
     request_identifier: parcelId,
-  }));
+  })).filter((p) => p.first_name !== null && p.last_name !== null);
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
@@ -1536,6 +1570,118 @@ function writePersonCompaniesSalesRelationships(
       }
     });
   }
+
+  // Ensure all persons have at least one relationship (fallback for unused persons)
+  const usedPersonIndices = new Set();
+
+  // Collect all person indices that have relationships
+  if (fs.existsSync("data")) {
+    const dataFiles = fs.readdirSync("data");
+    dataFiles.forEach((file) => {
+      if (file.startsWith("relationship_") && file.endsWith(".json")) {
+        try {
+          const relContent = readJSON(path.join("data", file));
+          if (relContent && relContent.from && relContent.from["/"]){
+            const fromMatch = relContent.from["/"].match(/person_(\d+)\.json/);
+            if (fromMatch) usedPersonIndices.add(parseInt(fromMatch[1], 10));
+          }
+          if (relContent && relContent.to && relContent.to["/"]){
+            const toMatch = relContent.to["/"].match(/person_(\d+)\.json/);
+            if (toMatch) usedPersonIndices.add(parseInt(toMatch[1], 10));
+          }
+        } catch (e) {
+          // Ignore read errors for individual files
+        }
+      }
+    });
+  }
+
+  // Create fallback relationships for unused persons
+  people.forEach((person, idx) => {
+    const personIndex = idx + 1;
+    if (usedPersonIndices.has(personIndex)) {
+      return; // Person already has relationships
+    }
+
+    // Link unused person to the latest sale history (if available)
+    if (latestSaleMeta && latestSaleMeta.saleHistoryFile) {
+      const relFile = relationshipFileName(
+        latestSaleMeta.saleHistoryFile,
+        `person_${personIndex}.json`,
+      );
+      writeJSON(path.join("data", relFile), {
+        from: { "/": `./${latestSaleMeta.saleHistoryFile}` },
+        to: { "/": `./person_${personIndex}.json` },
+      });
+    } else if (saleHistoryMeta && saleHistoryMeta.length > 0) {
+      // If no latest sale, use the first sale
+      const firstSale = saleHistoryMeta[0];
+      const relFile = relationshipFileName(
+        firstSale.saleHistoryFile,
+        `person_${personIndex}.json`,
+      );
+      writeJSON(path.join("data", relFile), {
+        from: { "/": `./${firstSale.saleHistoryFile}` },
+        to: { "/": `./person_${personIndex}.json` },
+      });
+    }
+  });
+
+  // Ensure all companies have at least one relationship (fallback for unused companies)
+  const usedCompanyIndices = new Set();
+
+  // Collect all company indices that have relationships
+  if (fs.existsSync("data")) {
+    const dataFiles = fs.readdirSync("data");
+    dataFiles.forEach((file) => {
+      if (file.startsWith("relationship_") && file.endsWith(".json")) {
+        try {
+          const relContent = readJSON(path.join("data", file));
+          if (relContent && relContent.from && relContent.from["/"]){
+            const fromMatch = relContent.from["/"].match(/company_(\d+)\.json/);
+            if (fromMatch) usedCompanyIndices.add(parseInt(fromMatch[1], 10));
+          }
+          if (relContent && relContent.to && relContent.to["/"]){
+            const toMatch = relContent.to["/"].match(/company_(\d+)\.json/);
+            if (toMatch) usedCompanyIndices.add(parseInt(toMatch[1], 10));
+          }
+        } catch (e) {
+          // Ignore read errors for individual files
+        }
+      }
+    });
+  }
+
+  // Create fallback relationships for unused companies
+  companies.forEach((company, idx) => {
+    const companyIndex = idx + 1;
+    if (usedCompanyIndices.has(companyIndex)) {
+      return; // Company already has relationships
+    }
+
+    // Link unused company to the latest sale history (if available)
+    if (latestSaleMeta && latestSaleMeta.saleHistoryFile) {
+      const relFile = relationshipFileName(
+        latestSaleMeta.saleHistoryFile,
+        `company_${companyIndex}.json`,
+      );
+      writeJSON(path.join("data", relFile), {
+        from: { "/": `./${latestSaleMeta.saleHistoryFile}` },
+        to: { "/": `./company_${companyIndex}.json` },
+      });
+    } else if (saleHistoryMeta && saleHistoryMeta.length > 0) {
+      // If no latest sale, use the first sale
+      const firstSale = saleHistoryMeta[0];
+      const relFile = relationshipFileName(
+        firstSale.saleHistoryFile,
+        `company_${companyIndex}.json`,
+      );
+      writeJSON(path.join("data", relFile), {
+        from: { "/": `./${firstSale.saleHistoryFile}` },
+        to: { "/": `./company_${companyIndex}.json` },
+      });
+    }
+  });
 }
 
 function writeTaxes($) {

@@ -90,11 +90,46 @@ function mapExteriorMaterials(tokens) {
       out.push("Wood Siding"); // Added T-111
     if (t.includes("STUC")) out.push("Stucco");
     if (t.includes("VINYL")) out.push("Vinyl Siding");
-    if (t.includes("BLOCK") || t.includes("CONCRETE"))
+    if (t.includes("BLOCK") || t.includes("CONCRETE") || t === "CB")
       out.push("Concrete Block");
     if (t.includes("METAL")) out.push("Metal Siding");
     if (t.includes("SIDING") && !t.includes("VINYL") && !t.includes("WOOD"))
       out.push("Metal Siding");
+  });
+  return out;
+}
+
+function mapExteriorMaterialSecondary(token) {
+  if (!token) return null;
+  const upper = token.toUpperCase();
+  // Check BRICK first (includes BRK abbreviation)
+  if (upper.includes("BRICK") || upper.includes("BRK")) return "Brick Accent";
+  // Check STONE
+  if (upper.includes("STONE")) return "Stone Accent";
+  // Check WOOD-related materials
+  if (upper.includes("WOOD") || upper.includes("CEDAR") || upper.includes("T-111")) return "Wood Trim";
+  // Check METAL materials
+  if (upper.includes("METAL") || upper.includes("ALUMIN")) return "Metal Trim";
+  // Check STUCCO (includes STUC abbreviation)
+  if (upper.includes("STUCCO") || upper.includes("STUC")) return "Stucco Accent";
+  // Check VINYL
+  if (upper.includes("VINYL")) return "Vinyl Accent";
+  // Check CONCRETE BLOCK before checking BLOCK alone to avoid incorrect mapping
+  if (upper.includes("CONCRETE BLOCK") || upper.startsWith("CB") || upper.includes("BLOCK")) {
+    return "Decorative Block";
+  }
+  // If no match, return null (don't set secondary material)
+  return null;
+}
+
+function mapExteriorSecondaryMaterials(tokens) {
+  const out = [];
+  tokens.forEach((tok) => {
+    const t = tok.trim();
+    if (!t) return;
+    // Map to accent/trim materials only - these are the valid enum values
+    const mapped = mapExteriorMaterialSecondary(t);
+    if (mapped) out.push(mapped);
   });
   return out;
 }
@@ -118,6 +153,41 @@ function mapInteriorSurface(tokens) {
     )
       out.push("Wood Paneling");
     else if (t.includes("STONE")) out.push("Stone Veneer");
+  });
+  return out;
+}
+
+function mapInteriorSecondaryAccent(tokens) {
+  const out = [];
+  const validSecondaryValues = [
+    "Wainscoting",
+    "Chair Rail",
+    "Crown Molding",
+    "Baseboards",
+    "Wood Trim",
+    "Stone Accent",
+    "Tile Accent",
+    "Metal Accent",
+    "Glass Insert",
+    "Decorative Panels",
+    "Feature Wall Material"
+  ];
+
+  tokens.forEach((tok) => {
+    const t = tok.toUpperCase().trim();
+    if (!t) return;
+    // Map to decorative accent materials only
+    if (t.includes("WAINSCOT")) out.push("Wainscoting");
+    else if (t.includes("CHAIR") && t.includes("RAIL")) out.push("Chair Rail");
+    else if (t.includes("CROWN") && t.includes("MOLD")) out.push("Crown Molding");
+    else if (t.includes("BASEBOARD")) out.push("Baseboards");
+    else if (t.includes("WOOD") && t.includes("TRIM")) out.push("Wood Trim");
+    else if (t.includes("STONE") && t.includes("ACCENT")) out.push("Stone Accent");
+    else if (t.includes("TILE") && t.includes("ACCENT")) out.push("Tile Accent");
+    else if (t.includes("METAL") && t.includes("ACCENT")) out.push("Metal Accent");
+    else if (t.includes("GLASS") && t.includes("INSERT")) out.push("Glass Insert");
+    else if (t.includes("DECORATIVE") && t.includes("PANEL")) out.push("Decorative Panels");
+    else if (t.includes("FEATURE") && t.includes("WALL")) out.push("Feature Wall Material");
   });
   return out;
 }
@@ -252,17 +322,26 @@ function buildStructureRecords(parcelId, buildings) {
     const exteriorMaterials = mapExteriorMaterials(extTokens);
     if (exteriorMaterials.length) {
       structure.exterior_wall_material_primary = exteriorMaterials[0];
-      if (exteriorMaterials.length > 1) {
-        structure.exterior_wall_material_secondary = exteriorMaterials[1];
+    }
+
+    // Map secondary materials separately from the second token onwards - only accent/trim materials are valid
+    if (extTokens.length > 1) {
+      const secondaryTokens = extTokens.slice(1);
+      const exteriorSecondary = mapExteriorSecondaryMaterials(secondaryTokens);
+      if (exteriorSecondary.length > 0) {
+        structure.exterior_wall_material_secondary = exteriorSecondary[0];
       }
     }
 
     const interiorSurface = mapInteriorSurface(intTokens);
     if (interiorSurface.length) {
       structure.interior_wall_surface_material_primary = interiorSurface[0];
-      if (interiorSurface.length > 1) {
-        structure.interior_wall_surface_material_secondary = interiorSurface[1];
-      }
+    }
+
+    // Map secondary materials separately - only decorative accents are valid
+    const interiorSecondary = mapInteriorSecondaryAccent(intTokens);
+    if (interiorSecondary.length > 0) {
+      structure.interior_wall_surface_material_secondary = interiorSecondary[0];
     }
 
     const flooring = mapFlooring(floorTokens);

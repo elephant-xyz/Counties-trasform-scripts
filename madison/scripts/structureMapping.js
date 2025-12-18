@@ -112,6 +112,20 @@ function normalizeRoofCover(value) {
   return null;
 }
 
+function normalizePrimaryFraming(value) {
+  const raw = (value || "").toUpperCase();
+  if (!raw) return null;
+  if (raw.includes("WOOD")) return "Wood Frame";
+  if (raw.includes("STEEL")) return "Steel Frame";
+  if (raw.includes("CONCRETE") && raw.includes("BLOCK")) return "Concrete Block";
+  if (raw.includes("POURED") || (raw.includes("CONCRETE") && !raw.includes("BLOCK"))) return "Poured Concrete";
+  if (raw.includes("MASON")) return "Masonry";
+  if (raw.includes("ENGINEER")) return "Engineered Lumber";
+  if (raw.includes("POST") && raw.includes("BEAM")) return "Post and Beam";
+  if (raw.includes("LOG")) return "Log Construction";
+  return null;
+}
+
 function getParcelId($) {
   const parcel = textTrim($(PARCEL_SELECTOR).text());
   return parcel || null;
@@ -169,7 +183,7 @@ function parseBuildings($) {
     );
     building.flooring_material_primary = normalizeFloorCover(floorRaw);
     building.roof_covering_material = normalizeRoofCover(roofRaw);
-    building.primary_framing_material = raw["frame type"] || null;
+    building.primary_framing_material = normalizePrimaryFraming(raw["frame type"]);
     building.number_of_stories = asNumber(raw["stories"]) || null;
     building.finished_base_area =
       asNumber(raw["heated area"]) || asNumber(raw["total area"]);
