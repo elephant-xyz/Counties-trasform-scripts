@@ -1677,6 +1677,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         }
         return false;
       });
+
       if (!alreadyLinked) {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
