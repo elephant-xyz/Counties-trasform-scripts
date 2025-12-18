@@ -7224,6 +7224,160 @@ function enforceFinalAddressVariant(addressFilePath, options = {}) {
   writeJSON(addressFilePath, payload);
 }
 
+// Final reducer: pick a single valid address branch and guarantee the full
+// schema surface is present (nullable) so oneOf validation never complains
+// about missing normalized fields when we only have an unnormalized string.
+function stabilizeFinalAddressBranch(addressPath, defaults = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...payload })
+      : null;
+  const normalizedReady =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  const fallbackCounty =
+    safeNullIfEmpty(payload.county_name) ||
+    safeNullIfEmpty(defaults.county) ||
+    null;
+  const fallbackState =
+    safeNullIfEmpty(payload.state_code) || safeNullIfEmpty(defaults.state) || null;
+  const fallbackCountry =
+    safeNullIfEmpty(payload.country_code) ||
+    safeNullIfEmpty(defaults.country) ||
+    (fallbackState ? "US" : null);
+
+  let finalOut = null;
+
+  if (rawValue) {
+    finalOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        finalOut.unnormalized_address = rawValue;
+        return;
+      }
+      if (field === "request_identifier") {
+        const requestId = safeNullIfEmpty(payload.request_identifier);
+        finalOut.request_identifier =
+          requestId === undefined ? null : requestId;
+        return;
+      }
+      if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(
+          resolveSourceHttpRequest(payload.source_http_request),
+        );
+        finalOut.source_http_request = prepared ? prepared : null;
+        return;
+      }
+      let value =
+        payload[field] !== undefined
+          ? payload[field]
+          : normalizedSurface && normalizedSurface[field];
+      if (field === "county_name" && !hasMeaningfulAddressValue(value)) {
+        value = fallbackCounty;
+      }
+      if (field === "state_code" && !hasMeaningfulAddressValue(value)) {
+        value = fallbackState;
+      }
+      if (field === "country_code" && !hasMeaningfulAddressValue(value)) {
+        value = fallbackCountry;
+      }
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        finalOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        finalOut[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      finalOut[field] = value === undefined ? null : value;
+    });
+  } else if (normalizedReady) {
+    finalOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value =
+        payload[field] !== undefined
+          ? payload[field]
+          : normalizedSurface && normalizedSurface[field];
+      if (field === "request_identifier") {
+        const requestId = safeNullIfEmpty(payload.request_identifier);
+        finalOut.request_identifier =
+          requestId === undefined ? null : requestId;
+        return;
+      }
+      if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(
+          resolveSourceHttpRequest(
+            payload.source_http_request,
+            normalizedSurface && normalizedSurface.source_http_request,
+          ),
+        );
+        finalOut.source_http_request = prepared ? prepared : null;
+        return;
+      }
+      if (field === "county_name" && !hasMeaningfulAddressValue(value)) {
+        value = fallbackCounty;
+      }
+      if (field === "state_code" && !hasMeaningfulAddressValue(value)) {
+        value = fallbackState;
+      }
+      if (field === "country_code" && !hasMeaningfulAddressValue(value)) {
+        value = fallbackCountry;
+      }
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        finalOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        finalOut[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      finalOut[field] = value === undefined ? null : value;
+    });
+    if (
+      Object.prototype.hasOwnProperty.call(finalOut, "unnormalized_address")
+    ) {
+      delete finalOut.unnormalized_address;
+    }
+  } else {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if (!finalOut.postal_code) {
+    finalOut.plus_four_postal_code = null;
+  }
+  if ((finalOut.latitude == null) !== (finalOut.longitude == null)) {
+    finalOut.latitude = null;
+    finalOut.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(finalOut.state_code) &&
+    !hasMeaningfulAddressValue(finalOut.country_code)
+  ) {
+    finalOut.country_code = fallbackCountry || "US";
+  }
+
+  originalWriteFileSync(
+    addressPath,
+    `${JSON.stringify(finalOut, null, 2)}\n`,
+  );
+}
+
 function normalizeCandidateForCoverage(candidate) {
   if (!candidate || typeof candidate !== "object") return null;
   const working = { ...candidate };
@@ -30356,6 +30510,11 @@ async function main() {
   // Final clean-up: keep property address relationships null and drop any
   // locally generated address relationship artifacts (URs are populated
   // downstream).
+  stabilizeFinalAddressBranch(addressOutputPath, {
+    county: formattedCountyName || countyName || "Palm Beach",
+    state: inferredStateCode || "FL",
+    country: "US",
+  });
   enforcePropertyRelationshipNulls(path.join(dataDir, "property.json"));
   removeAddressRelationshipFiles(dataDir);
   removeAddressRelationshipFiles(relationshipsDir);
