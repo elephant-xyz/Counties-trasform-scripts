@@ -10252,17 +10252,38 @@ const NORMALIZED_ADDRESS_FIELDS = [
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 const NORMALIZED_ADDRESS_FIELD_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 
-const ADDRESS_SCHEMA_FIELDS = [
-  ...NORMALIZED_ADDRESS_FIELDS,
+// Raw (unnormalized) branch per schema: do not include normalized street fields.
+const RAW_ADDRESS_FIELDS = [
+  "latitude",
+  "longitude",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "city_name",
+  "country_code",
+  "plus_four_postal_code",
+  "postal_code",
+  "state_code",
+  "route_number",
+  "county_name",
+  "municipality_name",
+  "request_identifier",
+  "source_http_request",
+  "unit_identifier",
   "unnormalized_address",
 ];
+const RAW_ADDRESS_FIELD_SET = new Set(RAW_ADDRESS_FIELDS);
 
-// The raw oneOf branch still needs to surface every address field (nullable)
-// alongside the unnormalized string so required keys exist even when the source
-// only provides a raw address.
-const RAW_BRANCH_ALLOWED_FIELDS = Object.freeze([
-  ...ADDRESS_SCHEMA_FIELDS,
-]);
+// Union of both branches for intermediate parsing.
+const ADDRESS_SCHEMA_FIELDS = Array.from(
+  new Set([...NORMALIZED_ADDRESS_FIELDS, ...RAW_ADDRESS_FIELDS]),
+);
+
+// The raw oneOf branch should only carry the unnormalized surface; avoid
+// normalized-only street components so the first oneOf branch remains valid.
+const RAW_BRANCH_ALLOWED_FIELDS = Object.freeze([...RAW_ADDRESS_FIELDS]);
 const RAW_BRANCH_ALLOWED_FIELD_SET = new Set(RAW_BRANCH_ALLOWED_FIELDS);
 
 // Align the raw branch with the full address schema surface so the oneOf raw
@@ -10279,9 +10300,7 @@ const RAW_MINIMAL_ADDRESS_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
 
 // Keep the raw address template aligned with the address schema surface while
 // anchoring on the unnormalized string.
-const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
-  new Set([...RAW_ONE_OF_ALLOWED_FIELDS]),
-);
+const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(new Set([...RAW_ONE_OF_ALLOWED_FIELDS]));
 
 // Keep raw (unnormalized) address payloads limited to the oneOf surface so we
 // don't leak normalized fields that break validation.
