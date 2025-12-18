@@ -1203,7 +1203,8 @@ function main() {
         const middle = cleanName(o.middle_name);
 
         // Only create person if we have valid first_name and last_name (both required by schema)
-        if (!first || !last) {
+        // Ensure they are strings and not null/undefined
+        if (!first || !last || typeof first !== 'string' || typeof last !== 'string') {
           console.warn(`Skipping person with invalid name: first="${o.first_name}", last="${o.last_name}"`);
           return;
         }
@@ -1212,12 +1213,17 @@ function main() {
           birth_date: null,
           first_name: first,
           last_name: last,
-          middle_name: middle,
           prefix_name: null,
           suffix_name: null,
           us_citizenship_status: null,
           veteran_status: null,
         };
+
+        // Only add middle_name if it's a valid string
+        if (middle && typeof middle === 'string') {
+          person.middle_name = middle;
+        }
+
         const file = `person_${personIndex}.json`;
         writeJSON(path.join(dataDir, file), person);
         personFiles.push(file);
