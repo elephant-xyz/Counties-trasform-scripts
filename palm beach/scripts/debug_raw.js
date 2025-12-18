@@ -31706,6 +31706,10 @@ async function main() {
       resolvedRequestIdentifier ?? trimmedRequestIdentifier ?? parcelId ?? null,
     sourceHttpRequest: resolvedSourceHttp ?? sourceHttpCandidate ?? null,
   });
+  // Final guard: pick a single address branch per oneOf. Prefer normalized only
+  // when it is fully covered; otherwise emit the raw branch anchored on the
+  // unnormalized string with the full schema surface populated (nullable).
+  enforceFinalAddressBranch(addressOutputPath);
   enforcePropertyRelationshipNulls(path.join(dataDir, "property.json"));
   removeAddressRelationshipFiles(dataDir);
   removeAddressRelationshipFiles(relationshipsDir);
