@@ -1658,36 +1658,25 @@ function sanitizeAddressPayloadForWrite(payload) {
   // Otherwise emit the lean raw branch anchored on the unnormalized string so
   // the oneOf selects the correct schema without demanding normalized fields.
   if (trimmedUnnormalized.length) {
-    const rawOut = { unnormalized_address: trimmedUnnormalized };
-    RAW_MINIMAL_OUTPUT_FIELDS.forEach((field) => {
-      if (field === "unnormalized_address") return;
-      if (field === "request_identifier") {
-        const identifier = safeNullIfEmpty(payload.request_identifier);
-        rawOut[field] = identifier === undefined ? null : identifier;
-        return;
-      }
-      if (field === "source_http_request") {
-        const prepared = prepareSourceHttpRequest(payload.source_http_request);
-        rawOut[field] = prepared ? prepared : null;
-        return;
-      }
-      let value = payload[field];
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(value);
-        value = Number.isFinite(numeric) ? numeric : null;
-      } else if (typeof value === "string") {
-        const trimmed = value.trim();
-        value = trimmed.length ? trimmed : null;
-      }
-      if (value !== undefined && value !== null) {
-        rawOut[field] = value;
-      }
-    });
+    const rawOut =
+      sanitizeRawOneOfPayload(payload, {
+        unnormalized_address: trimmedUnnormalized,
+        request_identifier:
+          payload.request_identifier === undefined
+            ? null
+            : safeNullIfEmpty(payload.request_identifier),
+        source_http_request:
+          prepareSourceHttpRequest(payload.source_http_request) || null,
+      }) || { ...RAW_ONE_OF_SCHEMA_TEMPLATE, unnormalized_address: trimmedUnnormalized };
     if (
       hasMeaningfulAddressValue(rawOut.state_code) &&
       !hasMeaningfulAddressValue(rawOut.country_code)
     ) {
       rawOut.country_code = "US";
+    }
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
     }
     return rawOut;
   }
@@ -28740,75 +28729,48 @@ async function main() {
   );
 
   if (finalOneOfRaw) {
-    // The source only provides an unnormalized string; emit the minimal raw
-    // branch so the oneOf selects the correct schema and does not demand
-    // normalized street/coordinate fields.
-    const minimalRaw = {};
-    RAW_MINIMAL_OUTPUT_FIELDS.forEach((field) => {
-      switch (field) {
-        case "unnormalized_address":
-          minimalRaw[field] = finalOneOfRaw;
-          break;
-        case "request_identifier":
-          minimalRaw[field] =
-            finalOneOfRequestId === undefined ? null : finalOneOfRequestId;
-          break;
-        case "source_http_request":
-          minimalRaw[field] =
-            prepareSourceHttpRequest(finalOneOfSourceHttp) || null;
-          break;
-        case "county_name": {
-          const resolvedCounty =
-            safeNullIfEmpty(finalOneOfSnapshot.county_name) ||
-            safeNullIfEmpty(formattedCountyName) ||
-            safeNullIfEmpty(countyName) ||
-            null;
-          if (resolvedCounty) minimalRaw[field] = resolvedCounty;
-          break;
-        }
-        case "state_code": {
-          const resolvedState =
-            safeNullIfEmpty(finalOneOfSnapshot.state_code) ||
-            safeNullIfEmpty(inferredStateCode) ||
-            "FL";
-          if (resolvedState) minimalRaw[field] = resolvedState;
-          break;
-        }
-        case "country_code": {
-          const resolvedCountry =
-            safeNullIfEmpty(finalOneOfSnapshot.country_code) || null;
-          if (resolvedCountry) minimalRaw[field] = resolvedCountry;
-          break;
-        }
-        case "postal_code": {
-          const postal = safeNullIfEmpty(finalOneOfSnapshot.postal_code);
-          if (postal) minimalRaw[field] = postal;
-          break;
-        }
-        case "plus_four_postal_code": {
-          const plus4 = safeNullIfEmpty(
-            finalOneOfSnapshot.plus_four_postal_code,
-          );
-          if (plus4) minimalRaw[field] = plus4;
-          break;
-        }
-        case "latitude":
-        case "longitude": {
-          const numeric = parseCoordinate(finalOneOfSnapshot[field]);
-          if (Number.isFinite(numeric)) {
-            minimalRaw[field] = numeric;
-          }
-          break;
-        }
-        default:
-          break;
-      }
-    });
+    // The source only provides an unnormalized string; emit the raw branch
+    // with the full address schema surface so required fields exist (as null)
+    // and the oneOf selector does not fall through to the normalized variant.
+    const resolvedCounty =
+      safeNullIfEmpty(finalOneOfSnapshot.county_name) ||
+      safeNullIfEmpty(formattedCountyName) ||
+      safeNullIfEmpty(countyName) ||
+      null;
+    const resolvedState =
+      safeNullIfEmpty(finalOneOfSnapshot.state_code) ||
+      safeNullIfEmpty(inferredStateCode) ||
+      "FL";
+    const resolvedCountry = safeNullIfEmpty(finalOneOfSnapshot.country_code);
+    const postal = safeNullIfEmpty(finalOneOfSnapshot.postal_code);
+    const plus4 = safeNullIfEmpty(finalOneOfSnapshot.plus_four_postal_code);
+    const latNum = parseCoordinate(finalOneOfSnapshot.latitude);
+    const lonNum = parseCoordinate(finalOneOfSnapshot.longitude);
+
+    const minimalRaw =
+      sanitizeRawOneOfPayload(finalOneOfSnapshot, {
+        unnormalized_address: finalOneOfRaw,
+        request_identifier:
+          finalOneOfRequestId === undefined ? null : finalOneOfRequestId,
+        source_http_request: prepareSourceHttpRequest(finalOneOfSourceHttp) || null,
+        county_name: resolvedCounty,
+        state_code: resolvedState,
+        country_code: resolvedCountry,
+        postal_code: postal,
+        plus_four_postal_code: plus4,
+        latitude: Number.isFinite(latNum) ? latNum : null,
+        longitude: Number.isFinite(lonNum) ? lonNum : null,
+      }) || { ...RAW_ONE_OF_SCHEMA_TEMPLATE, unnormalized_address: finalOneOfRaw };
+
     if (
       hasMeaningfulAddressValue(minimalRaw.state_code) &&
       !hasMeaningfulAddressValue(minimalRaw.country_code)
     ) {
       minimalRaw.country_code = "US";
+    }
+    if ((minimalRaw.latitude == null) !== (minimalRaw.longitude == null)) {
+      minimalRaw.latitude = null;
+      minimalRaw.longitude = null;
     }
     writeJSON(addressOutputPath, minimalRaw);
   } else if (finalOneOfNormalizedReady) {
