@@ -24,7 +24,7 @@ const DEED_TYPE_MAP = {
   SD: "Sheriff's Deed",
   "SHRF'S DEED": "Sheriff's Deed",
   TD: "Tax Deed",
-  TR: "Trustee's Deed",
+  TR: "Miscellaneous",
   TRD: "Trustee's Deed",
   "TRUSTEE DEED": "Trustee's Deed",
   PRD: "Personal Representative Deed",
@@ -874,7 +874,7 @@ function mapDorToPropertyType(dorCode) {
     "90": {
       property_type: "LandParcel",
       property_usage_type: "Unknown",
-      build_status: null,
+      build_status: "VacantLand",
       ownership_estate_type: "Leasehold",
       structure_form: null,
     },
@@ -954,15 +954,21 @@ function mapDorToPropertyType(dorCode) {
 
 // Modified extractTopAddressBlock to be more specific
 function extractTopAddressBlock($) {
-  // Find the div.row that contains the parcel H2, then look for the next div.row
-  // which should contain the address paragraph.
+  // Find the div.row that contains the parcel H2, then look for address paragraph
+  // The address can be in the same row or the next row
   const parcelH2 = $('h2:contains("Parcel")').first();
   if (!parcelH2.length) return [];
 
-  const addressRow = parcelH2.closest('.row').nextAll('.row').first();
-  if (!addressRow.length) return [];
+  // First try to find paragraph in the same row as the parcel H2
+  let p = parcelH2.closest('.row').find("p").first();
 
-  const p = addressRow.find("p").first();
+  // If not found in same row, try the next row
+  if (!p || !p.length) {
+    const addressRow = parcelH2.closest('.row').nextAll('.row').first();
+    if (!addressRow.length) return [];
+    p = addressRow.find("p").first();
+  }
+
   if (!p || !p.length) return [];
 
   const html = p.html() || "";
@@ -2377,6 +2383,7 @@ function main() {
     view: null,
   };
   writeJson(path.join("data", "lot.json"), lot);
+  writeRelationshipFile("relationship_property_has_lot.json", "./property.json", "./lot.json");
 }
 
 try {

@@ -1167,7 +1167,7 @@ function extractMailingAddress($) {
 }
 
 function mapDeedType(deedType) {
-  if (!deedType) return null;
+  if (!deedType) return "Miscellaneous";
   const u = deedType.trim().toUpperCase();
   if (u.includes("WARRANTY DEED") || u === "WD") return "Warranty Deed";
   if (u.includes("SPECIAL WARRANTY")) return "Special Warranty Deed";
