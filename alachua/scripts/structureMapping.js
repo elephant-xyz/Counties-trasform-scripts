@@ -165,6 +165,17 @@ function mapFrameMaterial(token) {
   return null;
 }
 
+function mapSecondaryFramingMaterial(token) {
+  // Valid values for secondary_framing_material enum: "Steel Beams", "Engineered Lumber", "Concrete Lintels", "Wood Beams", null
+  const upper = token.toUpperCase();
+  if (upper.includes("STEEL")) return "Steel Beams";
+  if (upper.includes("ENGINEERED") || upper.includes("LVL") || upper.includes("GLULAM")) return "Engineered Lumber";
+  if (upper.includes("CONCRETE") && (upper.includes("LINTEL") || upper.includes("BEAM"))) return "Concrete Lintels";
+  if (upper.includes("WOOD") || upper.includes("TIMBER") || upper.includes("BEAM")) return "Wood Beams";
+  if (upper.includes("MASONRY")) return "Concrete Lintels";
+  return null;
+}
+
 function mapFloorMaterial(token) {
   const upper = token.toUpperCase();
   if (upper.includes("CARPET")) return "Carpet";
@@ -260,6 +271,9 @@ function buildStructureForBuilding(building, requestIdentifier) {
   const frameVals = dedupe(
     splitTokens(left["frame"]).map(mapFrameMaterial),
   );
+  const frameTokens = splitTokens(left["frame"]);
+  const secondaryFraming = frameTokens[1] ? mapSecondaryFramingMaterial(frameTokens[1]) : null;
+
   const roofCover = mapRoofCover(left["roofing"]);
   let roofMaterialType = null;
   if (roofCover === "Architectural Asphalt Shingle") {
@@ -283,7 +297,7 @@ function buildStructureForBuilding(building, requestIdentifier) {
     roof_material_type: roofMaterialType,
     roof_design_type: roofDesign,
     primary_framing_material: frameVals[0] || null,
-    secondary_framing_material: frameVals[1] || null,
+    secondary_framing_material: secondaryFraming,
     number_of_stories: stories != null ? stories : null,
     finished_base_area: heatedArea,
     source_http_request: {
