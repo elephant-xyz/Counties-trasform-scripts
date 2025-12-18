@@ -142,7 +142,37 @@ function validateSuffixName(suffix) {
 
 function parsePersonNames(nameStr) {
   if (!nameStr || nameStr.trim() === "") return [];
-  return ownerParser.parsePersonsFromString(nameStr);
+  const persons = ownerParser.parsePersonsFromString(nameStr);
+
+  // Validate and fix person objects to ensure first_name and last_name are never null
+  return persons.map(person => {
+    let first = person.first_name;
+    let last = person.last_name;
+    let mid = person.middle_name;
+
+    // Ensure first_name and last_name are non-null strings
+    // Use fallbacks similar to buildOwners logic
+    if (!first || first === "" || typeof first !== "string") {
+      first = last || mid || "Unknown";
+    }
+    if (!last || last === "" || typeof last !== "string") {
+      last = first || mid || "Unknown";
+    }
+
+    return {
+      ...person,
+      first_name: first,
+      last_name: last,
+    };
+  }).filter(person =>
+    // Only include persons with valid first_name and last_name
+    person.first_name &&
+    typeof person.first_name === "string" &&
+    person.first_name !== "" &&
+    person.last_name &&
+    typeof person.last_name === "string" &&
+    person.last_name !== ""
+  );
 }
 
 
