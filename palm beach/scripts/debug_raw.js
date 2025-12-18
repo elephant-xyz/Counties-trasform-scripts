@@ -5621,54 +5621,28 @@ function enforceRawPreferredFinalAddress(addressPath, options = {}) {
     hasCompleteNormalizedAddress({ ...normalizedSurface });
 
   if (rawValue) {
-    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-      if (field === "unnormalized_address") {
-        rawOut[field] = rawValue;
-        return;
-      }
-      if (field === "request_identifier") {
-        rawOut[field] = requestId === undefined ? null : requestId;
-        return;
-      }
-      if (field === "source_http_request") {
-        rawOut[field] = prepareSourceHttpRequest(sourceHttp) || null;
-        return;
-      }
-      let value =
-        snapshot[field] !== undefined ? snapshot[field] : normalizedSurface[field];
-      if (
-        field === "county_name" &&
-        options.countyFallback &&
-        !hasMeaningfulAddressValue(value)
-      ) {
-        value = options.countyFallback;
-      }
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(value);
-        rawOut[field] = Number.isFinite(numeric) ? numeric : null;
-        return;
-      }
-      rawOut[field] = sanitizeAddressFieldValue(field, value);
+    const rawOut = buildMinimalRawAddress(rawValue, {
+      snapshot,
+      normalizedSurface,
+      county: options.countyFallback,
+      state: snapshot.state_code || normalizedSurface.state_code,
+      country:
+        snapshot.country_code ||
+        normalizedSurface.country_code ||
+        options.countryFallback ||
+        "US",
+      requestIdentifier: requestId,
+      sourceHttpRequest: sourceHttp,
     });
-
-    if (!rawOut.postal_code) {
-      rawOut.plus_four_postal_code = null;
-    } else if (rawOut.plus_four_postal_code) {
-      rawOut.plus_four_postal_code = sanitizePlus4(rawOut.plus_four_postal_code);
+    if (!rawOut || typeof rawOut !== "object") {
+      removeFileIfExists(addressPath);
+      return;
     }
-    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
-      rawOut.latitude = null;
-      rawOut.longitude = null;
-    }
-    if (
-      hasMeaningfulAddressValue(rawOut.state_code) &&
-      !hasMeaningfulAddressValue(rawOut.country_code)
-    ) {
-      rawOut.country_code = "US";
-    }
-
-    writeJSON(addressPath, rawOut);
+    const withNulls =
+      typeof applyNullAddressRelationships === "function"
+        ? applyNullAddressRelationships({ ...rawOut })
+        : rawOut;
+    writeJSON(addressPath, withNulls);
     return;
   }
 
@@ -10897,8 +10871,6 @@ const RAW_MINIMAL_OUTPUT_FIELDS = Object.freeze([
   "country_code",
   "postal_code",
   "plus_four_postal_code",
-  "latitude",
-  "longitude",
 ]);
 
 function buildMinimalRawAddress(rawValue, options = {}) {
@@ -10944,17 +10916,15 @@ function buildMinimalRawAddress(rawValue, options = {}) {
     resolveString(source.county_name) ??
     resolveString(source.county_jurisdiction);
   base.state_code = resolveString(options.state) ?? resolveString(source.state_code);
-  base.country_code =
-    resolveString(options.country) ?? resolveString(source.country_code);
+  const resolvedCountry =
+    resolveString(options.country) ??
+    resolveString(source.country_code) ??
+    (base.state_code ? "US" : null);
+  base.country_code = resolvedCountry;
   base.postal_code = resolveString(source.postal_code);
   base.plus_four_postal_code = base.postal_code
-    ? resolveString(source.plus_four_postal_code)
+    ? sanitizePlus4(resolveString(source.plus_four_postal_code))
     : null;
-
-  const lat = parseCoordinate(source.latitude);
-  const lon = parseCoordinate(source.longitude);
-  base.latitude = Number.isFinite(lat) ? lat : null;
-  base.longitude = Number.isFinite(lon) ? lon : null;
 
   const preparedSource = prepareSourceHttpRequest(sourceHttp) || null;
   base.source_http_request = preparedSource;
@@ -11756,20 +11726,12 @@ function buildMinimalRawAddressPayload(options = {}) {
     ...(options.sourceHttpRequestCandidates || []),
   );
 
-  const minimalPayload = {
-    unnormalized_address: rawValue,
-    request_identifier: requestId === undefined ? null : requestId,
-    source_http_request: sourceHttp ? deepClone(sourceHttp) : null,
-  };
-
-  // Expand to the full raw address surface so required fields are present
-  // (nullable) for the raw oneOf branch.
-  return (
-    ensureAddressOutputCoverage(minimalPayload) || {
-      ...RAW_ONE_OF_SCHEMA_TEMPLATE,
-      ...minimalPayload,
-    }
-  );
+  return buildMinimalRawAddress(rawValue, {
+    snapshot: {
+      request_identifier: requestId === undefined ? null : requestId,
+      source_http_request: sourceHttp ? deepClone(sourceHttp) : null,
+    },
+  });
 }
 
 function buildLeanRawAddressPayload(rawValue, options = {}) {
@@ -16554,32 +16516,91 @@ function ensureAddressFileCoverage(addressPath) {
     return;
   }
 
-  const hydrated =
-    ensureAddressOutputCoverage({ ...snapshot }) || {
-      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-      ...snapshot,
-    };
+  const rawValue = safeNullIfEmpty(snapshot.unnormalized_address);
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...snapshot })
+      : { ...snapshot };
+  const normalizedReady =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
 
-  if (!hydrated || typeof hydrated !== "object") {
+  let nextPayload = null;
+
+  if (rawValue && !normalizedReady) {
+    const rawOut = buildMinimalRawAddress(rawValue, {
+      snapshot,
+      normalizedSurface,
+      county: snapshot.county_name,
+      state: snapshot.state_code || normalizedSurface.state_code,
+      country:
+        snapshot.country_code || normalizedSurface.country_code || "US",
+      requestIdentifier: snapshot.request_identifier,
+      sourceHttpRequest: snapshot.source_http_request,
+    });
+    if (rawOut && typeof rawOut === "object") {
+      nextPayload =
+        typeof applyNullAddressRelationships === "function"
+          ? applyNullAddressRelationships({ ...rawOut })
+          : rawOut;
+    }
+  } else if (normalizedReady) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value =
+        snapshot[field] !== undefined ? snapshot[field] : normalizedSurface[field];
+      if (field === "source_http_request") {
+        value = prepareSourceHttpRequest(value) || null;
+      } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    } else if (normalizedOut.plus_four_postal_code) {
+      normalizedOut.plus_four_postal_code = sanitizePlus4(
+        normalizedOut.plus_four_postal_code,
+      );
+    }
+    if (
+      (normalizedOut.latitude == null) !== (normalizedOut.longitude == null)
+    ) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")
+    ) {
+      delete normalizedOut.unnormalized_address;
+    }
+    nextPayload =
+      typeof applyNullAddressRelationships === "function"
+        ? applyNullAddressRelationships({ ...normalizedOut })
+        : normalizedOut;
+  }
+
+  if (!nextPayload || typeof nextPayload !== "object") {
     removeFileIfExists(addressPath);
     return;
   }
 
-  if (!hydrated.postal_code) {
-    hydrated.plus_four_postal_code = null;
-  }
-  if ((hydrated.latitude == null) !== (hydrated.longitude == null)) {
-    hydrated.latitude = null;
-    hydrated.longitude = null;
-  }
-  const withNullRelationships =
-    typeof applyNullAddressRelationships === "function"
-      ? applyNullAddressRelationships({ ...hydrated })
-      : hydrated;
-
   originalWriteFileSync(
     addressPath,
-    `${JSON.stringify(withNullRelationships, null, 2)}\n`,
+    `${JSON.stringify(nextPayload, null, 2)}\n`,
   );
 }
 
