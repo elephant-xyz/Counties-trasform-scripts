@@ -20,47 +20,71 @@ function norm(str) {
 function titleCase(str) {
   if (!str) return str;
 
-  // Trim to remove leading/trailing whitespace
-  str = str.trim();
-  if (!str) return str;
+  // Clean and normalize whitespace
+  let cleaned = str.trim().replace(/\s+/g, ' ');
 
-  // Clean up malformed separator-space patterns globally
-  // Examples: "CARI- HEYWOOD" -> "CARI-HEYWOOD", "O' BRIEN" -> "O'BRIEN", "D 'ANGELO" -> "D'ANGELO"
-  str = str.replace(/-\s+/g, '-').replace(/\s+-/g, '-');
-  str = str.replace(/'\s+/g, "'").replace(/\s+'/g, "'");
+  // Remove trailing periods
+  cleaned = cleaned.replace(/\.+$/, '');
 
-  // Split on delimiters while preserving them
-  const parts = str.split(/(\s+|\-|'|,|\.)/);
+  // Remove commas followed by spaces and what follows (usually suffixes like ", Jr." or ", III")
+  // These don't fit the strict pattern which doesn't allow consecutive separators
+  cleaned = cleaned.replace(/,\s+.*$/, '');
 
-  const capitalized = parts.map((part, index) => {
-    // If it's a delimiter, keep it as is
-    if (/^(\s+|\-|'|,|\.)$/.test(part)) return part;
+  // Remove any characters that are not letters, spaces, or allowed separators
+  cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, '');
 
-    // Skip empty parts
-    if (!part) return part;
+  // Remove any remaining commas and periods that aren't part of valid name patterns
+  cleaned = cleaned.replace(/,/g, '');
 
-    // Single letter: uppercase
-    if (part.length === 1) {
-      return part.toUpperCase();
-    }
+  // Remove standalone periods (but keep them in abbreviations like "St.John" -> "St.John")
+  cleaned = cleaned.replace(/\.\s+/g, ' ');
+  cleaned = cleaned.replace(/\s+\./g, '');
 
-    // Check if previous part was an apostrophe or hyphen
-    const prevPart = index > 0 ? parts[index - 1] : null;
-    if (prevPart === "'" || prevPart === "-") {
-      // Capitalize after apostrophe or hyphen
+  // Clean up malformed separator-space patterns
+  // Examples: "CARI- HEYWOOD" -> "CARI-HEYWOOD", "O' BRIEN" -> "O'BRIEN"
+  cleaned = cleaned.replace(/-\s+/g, '-').replace(/\s+-/g, '-');
+  cleaned = cleaned.replace(/'\s+/g, "'").replace(/\s+'/g, "'");
+
+  if (!cleaned || cleaned.length === 0) return str; // Return original if cleaning fails
+
+  // Split by spaces and format each word part
+  const result = cleaned.split(' ').map(part => {
+    if (!part || part.length === 0) return '';
+
+    // For parts with special characters (like O'Brien, Mary-Jane, St.John)
+    if (/[\-'.]/.test(part)) {
+      // Split by separators while keeping them
+      const segments = part.split(/([\-'.])/).filter(s => s.length > 0);
+      let formatted = '';
+
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+
+        // If it's a separator, keep it as is
+        if (/[\-'.]/.test(segment)) {
+          formatted += segment;
+        } else if (segment.length > 0) {
+          // Format as: First letter uppercase, rest lowercase
+          formatted += segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+        }
+      }
+      return formatted;
+    } else {
+      // Normal word: capitalize first letter, lowercase rest
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     }
+  }).filter(p => p.length > 0).join(' ');
 
-    // Standard capitalization
-    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-  });
+  // Validate result matches the STRICT required pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // - Must start with uppercase letter
+  // - Followed by zero or more lowercase letters
+  // - Then optionally: (separator + one letter (any case) + lowercase letters)*
+  if (!result || result.length === 0 || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
+    // If validation fails, return empty string to signal invalid name
+    return "";
+  }
 
-  // Join and remove any trailing separators (hyphens, apostrophes, commas, periods)
-  let result = capitalized.join("");
-  // Remove trailing separators
-  result = result.replace(/[\-',.]+$/, '');
-  // Remove leading separators
-  result = result.replace(/^[\-',.]+/, '');
   return result;
 }
 
@@ -360,7 +384,12 @@ function classifyOwner(raw) {
       }
     }
 
-    lastName = processedTokens.map(titleCase).join(" ").replace(/'\s+/g, "'");
+    lastName = processedTokens.map(titleCase).filter(t => t && t.trim()).join(" ").replace(/'\s+/g, "'");
+
+    // If lastName is empty after titleCase, return invalid
+    if (!lastName || !lastName.trim()) {
+      return { valid: false, reason: "invalid_last_name_pattern", raw: text };
+    }
 
     // Parse right side (first + middle names)
     const firstMiddle = parts[1].trim();
@@ -382,17 +411,24 @@ function classifyOwner(raw) {
         const firstName = titleCase(tokens[0]);
         const middleName = tokens.length > 1 ? constructMiddleName(tokens.slice(1)) : null;
 
-        persons.push({
-          type: "person",
-          first_name: firstName,
-          last_name: lastName,
-          middle_name: middleName,
-          suffix_name: suffixName,
-        });
+        // Only add person if firstName is valid (not empty)
+        if (firstName && firstName.trim()) {
+          persons.push({
+            type: "person",
+            first_name: firstName,
+            last_name: lastName,
+            middle_name: middleName,
+            suffix_name: suffixName,
+          });
+        }
       }
 
-      // Return multiple owners
-      return { valid: true, owners: persons };
+      // Return multiple owners (only if we have at least one valid person)
+      if (persons.length > 0) {
+        return { valid: true, owners: persons };
+      } else {
+        return { valid: false, reason: "no_valid_names_after_formatting", raw: text };
+      }
     }
 
     // Check if there's "&" separator (like "ROBERT J & NANCY B") indicating multiple people with same last name
@@ -407,17 +443,24 @@ function classifyOwner(raw) {
         const firstName = titleCase(tokens[0]);
         const middleName = tokens.length > 1 ? constructMiddleName(tokens.slice(1)) : null;
 
-        persons.push({
-          type: "person",
-          first_name: firstName,
-          last_name: lastName,
-          middle_name: middleName,
-          suffix_name: suffixName,
-        });
+        // Only add person if firstName is valid (not empty)
+        if (firstName && firstName.trim()) {
+          persons.push({
+            type: "person",
+            first_name: firstName,
+            last_name: lastName,
+            middle_name: middleName,
+            suffix_name: suffixName,
+          });
+        }
       }
 
-      // Return multiple owners
-      return { valid: true, owners: persons };
+      // Return multiple owners (only if we have at least one valid person)
+      if (persons.length > 0) {
+        return { valid: true, owners: persons };
+      } else {
+        return { valid: false, reason: "no_valid_names_after_formatting", raw: text };
+      }
     }
 
     const firstMiddleTokens = firstMiddle.split(/\s+/).filter(Boolean);
@@ -430,6 +473,11 @@ function classifyOwner(raw) {
     const middleName = firstMiddleTokens.length > 1
       ? constructMiddleName(firstMiddleTokens.slice(1))
       : null;
+
+    // Validate firstName is not empty after titleCase
+    if (!firstName || !firstName.trim()) {
+      return { valid: false, reason: "invalid_first_name_pattern", raw: text };
+    }
 
     const person = {
       type: "person",
@@ -488,24 +536,35 @@ function classifyOwner(raw) {
       const lastName = titleCase(tokens[tokens.length - 1]).replace(/'\s+/g, "'");
       tokens.pop(); // Remove last name
 
+      // Validate lastName is not empty after titleCase
+      if (!lastName || !lastName.trim()) {
+        return { valid: false, reason: "invalid_last_name_pattern", raw: text };
+      }
+
       // Now tokens contains all first names (and possibly middle names)
       // For "STEVEN=& MARILYN KINNIRY", we now have ["STEVEN", "MARILYN"]
       const persons = [];
 
       for (const firstName of tokens) {
         if (firstName && firstName.trim()) {
-          persons.push({
-            type: "person",
-            first_name: titleCase(firstName),
-            last_name: lastName,
-            middle_name: null,
-            suffix_name: suffixName,
-          });
+          const formattedFirstName = titleCase(firstName);
+          // Only add person if formatted name is valid (not empty)
+          if (formattedFirstName && formattedFirstName.trim()) {
+            persons.push({
+              type: "person",
+              first_name: formattedFirstName,
+              last_name: lastName,
+              middle_name: null,
+              suffix_name: suffixName,
+            });
+          }
         }
       }
 
       if (persons.length > 0) {
         return { valid: true, owners: persons };
+      } else {
+        return { valid: false, reason: "no_valid_names_after_formatting", raw: text };
       }
     }
 
@@ -526,6 +585,11 @@ function classifyOwner(raw) {
       const lastName = titleCase(tokens[tokens.length - 1]).replace(/'\s+/g, "'");
       tokens.pop(); // Remove last name
 
+      // Validate lastName is not empty after titleCase
+      if (!lastName || !lastName.trim()) {
+        return { valid: false, reason: "invalid_last_name_pattern", raw: text };
+      }
+
       // Split by "&"
       const beforeAmp = tokens.slice(0, ampersandIndex);
       const afterAmp = tokens.slice(ampersandIndex + 1);
@@ -538,13 +602,16 @@ function classifyOwner(raw) {
         const middleName1 = beforeAmp.length > 1
           ? constructMiddleName(beforeAmp.slice(1))
           : null;
-        persons.push({
-          type: "person",
-          first_name: firstName1,
-          last_name: lastName,
-          middle_name: middleName1,
-          suffix_name: suffixName,
-        });
+        // Only add person if firstName is valid (not empty)
+        if (firstName1 && firstName1.trim()) {
+          persons.push({
+            type: "person",
+            first_name: firstName1,
+            last_name: lastName,
+            middle_name: middleName1,
+            suffix_name: suffixName,
+          });
+        }
       }
 
       // Parse second person (after &)
@@ -553,16 +620,23 @@ function classifyOwner(raw) {
         const middleName2 = afterAmp.length > 1
           ? constructMiddleName(afterAmp.slice(1))
           : null;
-        persons.push({
-          type: "person",
-          first_name: firstName2,
-          last_name: lastName,
-          middle_name: middleName2,
-          suffix_name: suffixName,
-        });
+        // Only add person if firstName is valid (not empty)
+        if (firstName2 && firstName2.trim()) {
+          persons.push({
+            type: "person",
+            first_name: firstName2,
+            last_name: lastName,
+            middle_name: middleName2,
+            suffix_name: suffixName,
+          });
+        }
       }
 
-      return { valid: true, owners: persons };
+      if (persons.length > 0) {
+        return { valid: true, owners: persons };
+      } else {
+        return { valid: false, reason: "no_valid_names_after_formatting", raw: text };
+      }
     }
 
     // No "&", single person
@@ -582,6 +656,14 @@ function classifyOwner(raw) {
 
     // Last token is the last name (after potentially removing suffix)
     const lastName = titleCase(tokens[tokens.length - 1]).replace(/'\s+/g, "'");
+
+    // Validate both firstName and lastName are not empty after titleCase
+    if (!firstName || !firstName.trim()) {
+      return { valid: false, reason: "invalid_first_name_pattern", raw: text };
+    }
+    if (!lastName || !lastName.trim()) {
+      return { valid: false, reason: "invalid_last_name_pattern", raw: text };
+    }
 
     // Everything in between is middle name
     const middleName = tokens.length > 2

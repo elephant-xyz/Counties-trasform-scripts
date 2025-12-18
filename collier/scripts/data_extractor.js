@@ -87,48 +87,71 @@ function cleanInvalidCharsFromName(raw) {
 function capitalizeProperName(name) {
   if (!name) return "";
 
-  // Clean invalid characters first
-  let cleaned = cleanInvalidCharsFromName(name);
-  if (!cleaned) return "";
+  // Clean and normalize whitespace
+  let cleaned = name.trim().replace(/\s+/g, ' ');
 
-  // Clean up malformed separator-space patterns globally
-  // Examples: "CARI- HEYWOOD" -> "CARI-HEYWOOD", "O' BRIEN" -> "O'BRIEN", "D 'ANGELO" -> "D'ANGELO"
+  // Remove trailing periods
+  cleaned = cleaned.replace(/\.+$/, '');
+
+  // Remove commas followed by spaces and what follows (usually suffixes like ", Jr." or ", III")
+  // These don't fit the strict pattern which doesn't allow consecutive separators
+  cleaned = cleaned.replace(/,\s+.*$/, '');
+
+  // Remove any characters that are not letters, spaces, or allowed separators
+  cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, '');
+
+  // Remove any remaining commas and periods that aren't part of valid name patterns
+  cleaned = cleaned.replace(/,/g, '');
+
+  // Remove standalone periods (but keep them in abbreviations like "St.John" -> "St.John")
+  cleaned = cleaned.replace(/\.\s+/g, ' ');
+  cleaned = cleaned.replace(/\s+\./g, '');
+
+  // Clean up malformed separator-space patterns
+  // Examples: "CARI- HEYWOOD" -> "CARI-HEYWOOD", "O' BRIEN" -> "O'BRIEN"
   cleaned = cleaned.replace(/-\s+/g, '-').replace(/\s+-/g, '-');
   cleaned = cleaned.replace(/'\s+/g, "'").replace(/\s+'/g, "'");
 
-  // Split on spaces, hyphens, apostrophes, but preserve the delimiters
-  const parts = cleaned.split(/(\s+|\-|'|,|\.)/);
+  if (!cleaned || cleaned.length === 0) return "";
 
-  const capitalized = parts.map((part, index) => {
-    // If it's a delimiter, normalize multiple spaces to single space
-    if (/^(\s+|\-|'|,|\.)$/.test(part)) {
-      // Normalize multiple spaces to a single space
-      if (/^\s+$/.test(part)) return " ";
-      return part;
-    }
+  // Split by spaces and format each word part
+  const result = cleaned.split(' ').map(part => {
+    if (!part || part.length === 0) return '';
 
-    // Skip empty parts
-    if (!part) return part;
+    // For parts with special characters (like O'Brien, Mary-Jane, St.John)
+    if (/[\-'.]/.test(part)) {
+      // Split by separators while keeping them
+      const segments = part.split(/([\-'.])/).filter(s => s.length > 0);
+      let formatted = '';
 
-    // Capitalize: first letter uppercase, rest lowercase
-    // Handle special cases like O'Brien, McDonald
-    if (part.length === 1) {
-      return part.toUpperCase();
-    }
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
 
-    // Check if previous part was an apostrophe or hyphen
-    const prevPart = index > 0 ? parts[index - 1] : null;
-    if (prevPart === "'" || prevPart === "-" || (prevPart && /^\s+$/.test(prevPart))) {
-      // Capitalize after apostrophe, hyphen, or space
+        // If it's a separator, keep it as is
+        if (/[\-'.]/.test(segment)) {
+          formatted += segment;
+        } else if (segment.length > 0) {
+          // Format as: First letter uppercase, rest lowercase
+          formatted += segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+        }
+      }
+      return formatted;
+    } else {
+      // Normal word: capitalize first letter, lowercase rest
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     }
+  }).filter(p => p.length > 0).join(' ');
 
-    // Standard capitalization (no special handling for Mc/Mac prefixes)
-    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-  });
+  // Validate result matches the STRICT required pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // - Must start with uppercase letter
+  // - Followed by zero or more lowercase letters
+  // - Then optionally: (separator + one letter (any case) + lowercase letters)*
+  if (!result || result.length === 0 || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
+    return "";
+  }
 
-  // Join and normalize any remaining multiple spaces (safety check)
-  return capitalized.join("").replace(/\s+/g, " ").trim();
+  return result;
 }
 
 function isValidFirstOrLastName(name) {
