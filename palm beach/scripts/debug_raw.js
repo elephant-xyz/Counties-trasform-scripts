@@ -1918,7 +1918,14 @@ function sanitizeAddressPayloadForWrite(payload) {
   // string; only emit a normalized variant when we truly lack a raw address.
   if (trimmedUnnormalized.length) {
     const rawOut =
-      sanitizeRawOneOfPayload(payload, {
+      buildMinimalRawAddress(trimmedUnnormalized, {
+        snapshot: payload,
+        requestIdentifier:
+          payload.request_identifier === undefined
+            ? payload.request_identifier
+            : safeNullIfEmpty(payload.request_identifier),
+        sourceHttpRequest: payload.source_http_request,
+      }) || {
         unnormalized_address: trimmedUnnormalized,
         request_identifier:
           payload.request_identifier === undefined
@@ -1926,13 +1933,6 @@ function sanitizeAddressPayloadForWrite(payload) {
             : safeNullIfEmpty(payload.request_identifier),
         source_http_request:
           prepareSourceHttpRequest(payload.source_http_request) || null,
-      }) ||
-      ensureAddressOutputCoverage({
-        ...RAW_ONE_OF_SCHEMA_TEMPLATE,
-        unnormalized_address: trimmedUnnormalized,
-      }) || {
-        ...RAW_ONE_OF_SCHEMA_TEMPLATE,
-        unnormalized_address: trimmedUnnormalized,
       };
     if (
       hasMeaningfulAddressValue(rawOut.state_code) &&
@@ -10864,6 +10864,8 @@ const RAW_ONE_OF_SCHEMA_TEMPLATE = Object.freeze(
 
 const RAW_MINIMAL_OUTPUT_FIELDS = Object.freeze([
   "unnormalized_address",
+  "latitude",
+  "longitude",
   "request_identifier",
   "source_http_request",
   "county_name",
@@ -10886,10 +10888,11 @@ function buildMinimalRawAddress(rawValue, options = {}) {
       ? options.normalizedSurface
       : null;
 
-  // Build on the full raw oneOf surface so required address fields stay
-  // present (nullable) even when we only have an unnormalized string.
   const source = { ...(normalizedSurface || {}), ...snapshot };
-  const base = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+  const base = RAW_MINIMAL_OUTPUT_FIELDS.reduce((acc, field) => {
+    acc[field] = null;
+    return acc;
+  }, {});
 
   const resolveString = (value) => {
     if (value === undefined || value === null) return null;
@@ -10924,36 +10927,59 @@ function buildMinimalRawAddress(rawValue, options = {}) {
   base.plus_four_postal_code = base.postal_code
     ? sanitizePlus4(resolveString(source.plus_four_postal_code))
     : null;
+  ADDRESS_COORDINATE_FIELDS.forEach((coord) => {
+    const numeric = parseCoordinate(source[coord]);
+    base[coord] = Number.isFinite(numeric) ? numeric : null;
+  });
 
   const preparedSource = prepareSourceHttpRequest(sourceHttp) || null;
   base.source_http_request = preparedSource;
   base.request_identifier = resolveString(requestIdentifier);
 
-  // Populate remaining normalized fields with source values (or null) to keep
-  // the raw branch aligned with the schema surface.
-  NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-    if (
-      field === "unnormalized_address" ||
-      field === "request_identifier" ||
-      field === "source_http_request" ||
-      field === "county_name" ||
-      field === "state_code" ||
-      field === "country_code" ||
-      field === "postal_code" ||
-      field === "plus_four_postal_code"
-    ) {
-      return;
-    }
-    const value = source[field];
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(value);
-      base[field] = Number.isFinite(numeric) ? numeric : null;
-    } else {
-      base[field] = resolveString(value);
-    }
+  return base;
+}
+
+function clampRawAddressToMinimalBranch(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(snapshot.unnormalized_address);
+  if (!rawValue) {
+    return;
+  }
+
+  const normalizedSurface =
+    (typeof ensureNormalizedAddressSchemaSurface === "function" &&
+      ensureNormalizedAddressSchemaSurface({ ...snapshot })) ||
+    null;
+  const normalizedReady =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+  if (normalizedReady) {
+    return;
+  }
+
+  const minimal = buildMinimalRawAddress(rawValue, {
+    snapshot,
+    requestIdentifier: snapshot.request_identifier,
+    sourceHttpRequest: snapshot.source_http_request,
+    county: snapshot.county_name,
+    state: snapshot.state_code,
+    country: snapshot.country_code,
   });
 
-  return base;
+  if (!minimal) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  writeJSON(addressPath, applyNullAddressRelationships(minimal));
 }
 
 // Clamp the address payload onto a single oneOf branch. When we only have an
@@ -32812,6 +32838,7 @@ async function main() {
     sourceHttpRequest: resolvedSourceHttp,
     countyFallback: formattedCountyName || countyName || "Palm Beach",
   });
+  clampRawAddressToMinimalBranch(addressOutputPath);
   enforceAddressRelationshipNulls(addressOutputPath);
   ensureAddressFileCoverage(addressOutputPath);
 
