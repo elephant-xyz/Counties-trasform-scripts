@@ -10886,11 +10886,10 @@ function buildMinimalRawAddress(rawValue, options = {}) {
       ? options.normalizedSurface
       : null;
 
+  // Build on the full raw oneOf surface so required address fields stay
+  // present (nullable) even when we only have an unnormalized string.
   const source = { ...(normalizedSurface || {}), ...snapshot };
-  const base = RAW_MINIMAL_OUTPUT_FIELDS.reduce((acc, field) => {
-    acc[field] = null;
-    return acc;
-  }, {});
+  const base = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
 
   const resolveString = (value) => {
     if (value === undefined || value === null) return null;
@@ -10929,6 +10928,30 @@ function buildMinimalRawAddress(rawValue, options = {}) {
   const preparedSource = prepareSourceHttpRequest(sourceHttp) || null;
   base.source_http_request = preparedSource;
   base.request_identifier = resolveString(requestIdentifier);
+
+  // Populate remaining normalized fields with source values (or null) to keep
+  // the raw branch aligned with the schema surface.
+  NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+    if (
+      field === "unnormalized_address" ||
+      field === "request_identifier" ||
+      field === "source_http_request" ||
+      field === "county_name" ||
+      field === "state_code" ||
+      field === "country_code" ||
+      field === "postal_code" ||
+      field === "plus_four_postal_code"
+    ) {
+      return;
+    }
+    const value = source[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      base[field] = Number.isFinite(numeric) ? numeric : null;
+    } else {
+      base[field] = resolveString(value);
+    }
+  });
 
   return base;
 }
