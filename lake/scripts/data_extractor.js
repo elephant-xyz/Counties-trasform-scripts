@@ -1200,6 +1200,13 @@ function main() {
         const first = cleanName(o.first_name);
         const last = cleanName(o.last_name);
         const middle = cleanName(o.middle_name);
+
+        // Only create person if we have valid first_name and last_name (both required by schema)
+        if (!first || !last) {
+          console.warn(`Skipping person with invalid name: first="${o.first_name}", last="${o.last_name}"`);
+          return;
+        }
+
         const person = {
           birth_date: null,
           first_name: first,
