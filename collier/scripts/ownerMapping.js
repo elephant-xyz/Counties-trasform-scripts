@@ -349,13 +349,14 @@ function classifyOwner(raw) {
         const firstName = titleCase(tokens[0]);
         const middleName = tokens.length > 1 ? constructMiddleName(tokens.slice(1)) : null;
 
-        persons.push({
+        const personObj = {
           type: "person",
           first_name: firstName,
           last_name: lastName,
-          middle_name: middleName,
-          suffix_name: suffixName,
-        });
+        };
+        if (middleName) personObj.middle_name = middleName;
+        if (suffixName) personObj.suffix_name = suffixName;
+        persons.push(personObj);
       }
 
       // Return multiple owners
@@ -374,13 +375,14 @@ function classifyOwner(raw) {
         const firstName = titleCase(tokens[0]);
         const middleName = tokens.length > 1 ? constructMiddleName(tokens.slice(1)) : null;
 
-        persons.push({
+        const personObj = {
           type: "person",
           first_name: firstName,
           last_name: lastName,
-          middle_name: middleName,
-          suffix_name: suffixName,
-        });
+        };
+        if (middleName) personObj.middle_name = middleName;
+        if (suffixName) personObj.suffix_name = suffixName;
+        persons.push(personObj);
       }
 
       // Return multiple owners
@@ -402,9 +404,9 @@ function classifyOwner(raw) {
       type: "person",
       first_name: firstName,
       last_name: lastName,
-      middle_name: middleName,
-      suffix_name: suffixName,
     };
+    if (middleName) person.middle_name = middleName;
+    if (suffixName) person.suffix_name = suffixName;
     return { valid: true, owner: person };
   } else {
     // Format: "FIRST MIDDLE LAST" or "FIRST MIDDLE LAST SUFFIX" (no comma)
@@ -461,13 +463,13 @@ function classifyOwner(raw) {
 
       for (const firstName of tokens) {
         if (firstName && firstName.trim()) {
-          persons.push({
+          const personObj = {
             type: "person",
             first_name: titleCase(firstName),
             last_name: lastName,
-            middle_name: null,
-            suffix_name: suffixName,
-          });
+          };
+          if (suffixName) personObj.suffix_name = suffixName;
+          persons.push(personObj);
         }
       }
 
@@ -505,13 +507,14 @@ function classifyOwner(raw) {
         const middleName1 = beforeAmp.length > 1
           ? constructMiddleName(beforeAmp.slice(1))
           : null;
-        persons.push({
+        const personObj1 = {
           type: "person",
           first_name: firstName1,
           last_name: lastName,
-          middle_name: middleName1,
-          suffix_name: suffixName,
-        });
+        };
+        if (middleName1) personObj1.middle_name = middleName1;
+        if (suffixName) personObj1.suffix_name = suffixName;
+        persons.push(personObj1);
       }
 
       // Parse second person (after &)
@@ -520,13 +523,14 @@ function classifyOwner(raw) {
         const middleName2 = afterAmp.length > 1
           ? constructMiddleName(afterAmp.slice(1))
           : null;
-        persons.push({
+        const personObj2 = {
           type: "person",
           first_name: firstName2,
           last_name: lastName,
-          middle_name: middleName2,
-          suffix_name: suffixName,
-        });
+        };
+        if (middleName2) personObj2.middle_name = middleName2;
+        if (suffixName) personObj2.suffix_name = suffixName;
+        persons.push(personObj2);
       }
 
       return { valid: true, owners: persons };
@@ -559,9 +563,9 @@ function classifyOwner(raw) {
       type: "person",
       first_name: firstName,
       last_name: lastName,
-      middle_name: middleName,
-      suffix_name: suffixName,
     };
+    if (middleName) person.middle_name = middleName;
+    if (suffixName) person.suffix_name = suffixName;
     return { valid: true, owner: person };
   }
 }
