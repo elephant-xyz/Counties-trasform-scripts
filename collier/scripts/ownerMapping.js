@@ -20,6 +20,10 @@ function norm(str) {
 function titleCase(str) {
   if (!str) return str;
 
+  // Trim to remove leading/trailing whitespace
+  str = str.trim();
+  if (!str) return str;
+
   // Clean up malformed hyphen-space patterns (e.g., "TRACEY- " becomes "TRACEY-")
   str = str.replace(/-\s+$/, '-').replace(/^-\s+/, '-');
 
@@ -64,7 +68,8 @@ function constructMiddleName(tokens) {
 
   if (processed.length === 0) return null;
 
-  const joined = processed.join(" ").trim();
+  // Join with single space and trim, then normalize multiple spaces to single space
+  const joined = processed.join(" ").trim().replace(/\s+/g, ' ');
 
   // Only return if it's non-empty and matches the required pattern
   if (joined && /^[A-Z][a-zA-Z\s\-',.]*$/.test(joined)) {
