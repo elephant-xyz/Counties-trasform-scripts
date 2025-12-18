@@ -29,8 +29,8 @@ function deriveExteriorMaterials(extWallRaw) {
     ["WOOD", "Wood Siding"],
     ["WD", "Wood Siding"],
     ["EIFS", "EIFS"],
+    ["CURTAIN WALL", "Curtain Wall"],
     ["CONCRETE BLOCK", "Concrete Block"],
-    ["CONCRETE", "Concrete"],
     ["CB", "Concrete Block"],
   ]);
   const value = String(extWallRaw || "").toUpperCase();
