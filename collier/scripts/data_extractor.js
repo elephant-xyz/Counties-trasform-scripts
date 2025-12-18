@@ -1240,7 +1240,7 @@ function main() {
     JSON.stringify(structureObj, null, 2),
   );
 
-  // Create relationship from layout_1 to structure_1 (if layout_1 exists)
+  // Create relationship from layout_1 to structure_1 (if layout_1 exists), otherwise from property
   if (layoutIdx > 1) {
     // layoutIdx was incremented after creating layout_1, so if it's > 1, layout_1 exists
     fs.writeFileSync(
@@ -1263,6 +1263,35 @@ function main() {
         JSON.stringify(
           {
             from: { "/": "./layout_1.json" },
+            to: { "/": "./utility_1.json" },
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  } else {
+    // No layouts exist, connect structure directly to property
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_structure_1.json"),
+      JSON.stringify(
+        {
+          from: { "/": "./property.json" },
+          to: { "/": "./structure_1.json" },
+        },
+        null,
+        2,
+      ),
+    );
+
+    // Also connect utility directly to property if it exists
+    const utility1Path = path.join(dataDir, "utility_1.json");
+    if (fs.existsSync(utility1Path)) {
+      fs.writeFileSync(
+        path.join(dataDir, "relationship_property_has_utility_1.json"),
+        JSON.stringify(
+          {
+            from: { "/": "./property.json" },
             to: { "/": "./utility_1.json" },
           },
           null,
