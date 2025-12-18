@@ -133,11 +133,71 @@ function mapInteriorMaterial(token) {
 }
 
 function mapRoofCover(token) {
-  if (!token) return null;
-  const upper = token.toUpperCase();
-  if (upper.includes("ASPHALT")) return "Architectural Asphalt Shingle";
+  if (!token || String(token).trim() === "") return null;
+  const upper = String(token).toUpperCase().trim();
+
+  // Check for asphalt shingles
+  if (upper.includes("ASPHALT") || upper.includes("SHINGLE")) {
+    if (upper.includes("3-TAB") || upper.includes("3 TAB")) {
+      return "3-Tab Asphalt Shingle";
+    }
+    return "Architectural Asphalt Shingle";
+  }
+
+  // Check for built-up roof (tar and gravel)
   if (upper.includes("TAR") && upper.includes("GRAVEL")) return "Built-Up Roof";
-  if (upper.includes("MINIMUM") || upper.includes("N/A")) return null;
+  if (upper.includes("BUILT") && upper.includes("UP")) return "Built-Up Roof";
+
+  // Check for metal roofing
+  if (upper.includes("METAL")) {
+    if (upper.includes("STANDING") && upper.includes("SEAM")) {
+      return "Metal Standing Seam";
+    }
+    if (upper.includes("CORRUGAT")) {
+      return "Metal Corrugated";
+    }
+    if (upper.includes("MODULAR")) {
+      return "Metal Corrugated";
+    }
+    // Default metal type
+    return "Metal Corrugated";
+  }
+
+  // Check for tile roofing
+  if (upper.includes("CLAY") && upper.includes("TILE")) return "Clay Tile";
+  if (upper.includes("CONCRETE") && upper.includes("TILE")) return "Concrete Tile";
+  if (upper.includes("TILE")) {
+    // Default tile type
+    return "Concrete Tile";
+  }
+
+  // Check for slate
+  if (upper.includes("SLATE")) {
+    if (upper.includes("NATURAL")) return "Natural Slate";
+    if (upper.includes("SYNTHETIC")) return "Synthetic Slate";
+    return "Natural Slate";
+  }
+
+  // Check for wood
+  if (upper.includes("WOOD")) {
+    if (upper.includes("SHAKE")) return "Wood Shake";
+    if (upper.includes("SHINGLE")) return "Wood Shingle";
+    return "Wood Shake";
+  }
+
+  // Check for membrane roofing
+  if (upper.includes("TPO")) return "TPO Membrane";
+  if (upper.includes("EPDM")) return "EPDM Membrane";
+  if (upper.includes("MODIFIED") && upper.includes("BITUMEN")) return "Modified Bitumen";
+  if (upper.includes("MEMBRANE")) return "TPO Membrane";
+
+  // Check for special types
+  if (upper.includes("GREEN") && upper.includes("ROOF")) return "Green Roof System";
+  if (upper.includes("SOLAR")) return "Solar Integrated Tiles";
+
+  // Return null for unknown, minimum, or N/A
+  if (upper.includes("MINIMUM") || upper.includes("N/A") || upper.includes("NONE") || upper.includes("UNKNOWN")) return null;
+
   return null;
 }
 
