@@ -1860,30 +1860,6 @@ function createGeometryClass(geometryInstances) {
 
 function main() {
   ensureDir("data");
-
-  // Cleanup orphaned person/company files from any previous failed runs
-  // This ensures we start with a clean state
-  try {
-    const dataDir = "data";
-    if (fs.existsSync(dataDir)) {
-      const files = fs.readdirSync(dataDir);
-      files.forEach((f) => {
-        if (
-          /^person_\d+\.json$/.test(f) ||
-          /^company_\d+\.json$/.test(f) ||
-          /^relationship_sales_person_\d+\.json$/.test(f) ||
-          /^relationship_sales_company_\d+\.json$/.test(f) ||
-          /^relationship_person_has_mailing_address_\d+\.json$/.test(f) ||
-          /^relationship_company_has_mailing_address_\d+\.json$/.test(f)
-        ) {
-          fs.unlinkSync(path.join(dataDir, f));
-        }
-      });
-    }
-  } catch (e) {
-    // Ignore cleanup errors - data directory might not exist yet
-  }
-
   const $ = loadHTML();
 
   const propertySeed = readJSON("property_seed.json");

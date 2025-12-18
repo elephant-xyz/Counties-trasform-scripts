@@ -1280,11 +1280,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
 
   // Remove records with keys starting with 'unknown_date_' to prevent orphaned person/company files
   // These represent grantors that couldn't be matched to a grantee date and cannot be linked to sales
-  Object.keys(ownersByDate).forEach(dateKey => {
-    if (dateKey.startsWith('unknown_date_')) {
-      delete ownersByDate[dateKey];
-    }
-  });
+  // Commented out for testing: unknown_date_ removal
 
   // Maps to track created entities: key -> entity data
   const personMap = new Map(); // key: "FIRSTNAME|LASTNAME" -> person data
@@ -1860,30 +1856,6 @@ function createGeometryClass(geometryInstances) {
 
 function main() {
   ensureDir("data");
-
-  // Cleanup orphaned person/company files from any previous failed runs
-  // This ensures we start with a clean state
-  try {
-    const dataDir = "data";
-    if (fs.existsSync(dataDir)) {
-      const files = fs.readdirSync(dataDir);
-      files.forEach((f) => {
-        if (
-          /^person_\d+\.json$/.test(f) ||
-          /^company_\d+\.json$/.test(f) ||
-          /^relationship_sales_person_\d+\.json$/.test(f) ||
-          /^relationship_sales_company_\d+\.json$/.test(f) ||
-          /^relationship_person_has_mailing_address_\d+\.json$/.test(f) ||
-          /^relationship_company_has_mailing_address_\d+\.json$/.test(f)
-        ) {
-          fs.unlinkSync(path.join(dataDir, f));
-        }
-      });
-    }
-  } catch (e) {
-    // Ignore cleanup errors - data directory might not exist yet
-  }
-
   const $ = loadHTML();
 
   const propertySeed = readJSON("property_seed.json");
