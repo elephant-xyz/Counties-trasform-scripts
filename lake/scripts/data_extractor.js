@@ -1294,11 +1294,11 @@ function main() {
     writeJSON(path.join(dataDir, relName), rel);
   }
 
-  // relationship_sales_history_*_has_deed.json (sales → deed)
+  // relationship_sales_history_*_has_deed.json (deed → sales)
   for (let i = 0; i < Math.min(salesFiles.length, deedFiles.length); i++) {
     const rel = {
-      from: { "/": `./${salesFiles[i]}` },
-      to: { "/": `./${deedFiles[i]}` },
+      from: { "/": `./${deedFiles[i]}` },
+      to: { "/": `./${salesFiles[i]}` },
     };
     const relName = `relationship_sales_history_${i + 1}_has_deed.json`;
     writeJSON(path.join(dataDir, relName), rel);
