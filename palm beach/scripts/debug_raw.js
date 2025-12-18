@@ -98,19 +98,21 @@ function writeNullRelationshipFile(targetPath) {
 }
 
 function removeAddressRelationshipFiles(directoryPath) {
-  if (!directoryPath) return;
-  ADDRESS_RELATIONSHIP_BASENAMES.forEach((baseName) => {
-    const targetPath = path.join(directoryPath, `${baseName}.json`);
-    if (!fs.existsSync(targetPath)) {
-      return;
-    }
-    try {
-      const trimmed = fs.readFileSync(targetPath, "utf8").trim();
-      if (!trimmed || trimmed === "null") {
-        removeFileIfExists(targetPath);
-      }
-    } catch {
-      removeFileIfExists(targetPath);
+  if (!directoryPath || !fs.existsSync(directoryPath)) return;
+
+  const managed = ADDRESS_RELATIONSHIP_BASENAMES.map((name) =>
+    name.toLowerCase(),
+  );
+
+  const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
+  entries.forEach((entry) => {
+    if (!entry.isFile()) return;
+    const base = entry.name.toLowerCase().replace(/\.json$/, "");
+    const shouldRemove = managed.some(
+      (name) => base === name || base.startsWith(`${name}_`),
+    );
+    if (shouldRemove) {
+      removeFileIfExists(path.join(directoryPath, entry.name));
     }
   });
 }
@@ -29234,7 +29236,7 @@ async function main() {
     ]),
   );
 
-  if (finalTerminalRawCandidate && !finalTerminalNormalizedComplete) {
+  if (finalTerminalRawCandidate) {
     const finalRawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
     RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
       if (field === "unnormalized_address") {
