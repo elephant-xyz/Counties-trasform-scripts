@@ -1213,16 +1213,12 @@ function main() {
           birth_date: null,
           first_name: first,
           last_name: last,
+          middle_name: middle || null,
           prefix_name: null,
           suffix_name: null,
           us_citizenship_status: null,
           veteran_status: null,
         };
-
-        // Only add middle_name if it's a valid string
-        if (middle && typeof middle === 'string') {
-          person.middle_name = middle;
-        }
 
         const file = `person_${personIndex}.json`;
         writeJSON(path.join(dataDir, file), person);

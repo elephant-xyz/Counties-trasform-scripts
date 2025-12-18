@@ -108,9 +108,7 @@ function parsePersonNameTokens(tokens, options = {}) {
       const midCandidate = stripPunctuation(t.slice(1).join(" "));
       if (midCandidate && hasLetters(midCandidate)) middle = midCandidate;
     }
-    const person = { type: "person", first_name: first, last_name: last };
-    if (middle) person.middle_name = middle;
-    return person;
+    return { type: "person", first_name: first, last_name: last, middle_name: middle };
   }
 
   // Heuristic: for ALL-CAPS names without comma, assume LAST FIRST [MIDDLE]
@@ -120,9 +118,8 @@ function parsePersonNameTokens(tokens, options = {}) {
     const last = stripPunctuation(t[0]);
     const first = stripPunctuation(t[1]);
     const middle = t.length > 2 ? stripPunctuation(t.slice(2).join(" ")) : null;
-    const person = { type: "person", first_name: first, last_name: last };
-    if (middle && hasLetters(middle)) person.middle_name = middle;
-    return person;
+    const middleName = middle && hasLetters(middle) ? middle : null;
+    return { type: "person", first_name: first, last_name: last, middle_name: middleName };
   }
 
   // Default: FIRST [MIDDLE] LAST
@@ -130,9 +127,8 @@ function parsePersonNameTokens(tokens, options = {}) {
   const last = stripPunctuation(t[t.length - 1]);
   const middle =
     t.length > 2 ? stripPunctuation(t.slice(1, -1).join(" ")) : null;
-  const person = { type: "person", first_name: first, last_name: last };
-  if (middle && hasLetters(middle)) person.middle_name = middle;
-  return person;
+  const middleName = middle && hasLetters(middle) ? middle : null;
+  return { type: "person", first_name: first, last_name: last, middle_name: middleName };
 }
 
 function parsePersonWithComma(name) {
@@ -146,9 +142,8 @@ function parsePersonWithComma(name) {
   const first = stripPunctuation(tokens[0]);
   const middle =
     tokens.length > 1 ? stripPunctuation(tokens.slice(1).join(" ")) : null;
-  const person = { type: "person", first_name: first, last_name: last };
-  if (middle && hasLetters(middle)) person.middle_name = middle;
-  return person;
+  const middleName = middle && hasLetters(middle) ? middle : null;
+  return { type: "person", first_name: first, last_name: last, middle_name: middleName };
 }
 
 function splitOwners(raw) {
