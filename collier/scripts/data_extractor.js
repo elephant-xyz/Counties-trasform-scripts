@@ -88,8 +88,13 @@ function capitalizeProperName(name) {
   if (!name) return "";
 
   // Clean invalid characters first
-  const cleaned = cleanInvalidCharsFromName(name);
+  let cleaned = cleanInvalidCharsFromName(name);
   if (!cleaned) return "";
+
+  // Clean up malformed separator-space patterns globally
+  // Examples: "CARI- HEYWOOD" -> "CARI-HEYWOOD", "O' BRIEN" -> "O'BRIEN", "D 'ANGELO" -> "D'ANGELO"
+  cleaned = cleaned.replace(/-\s+/g, '-').replace(/\s+-/g, '-');
+  cleaned = cleaned.replace(/'\s+/g, "'").replace(/\s+'/g, "'");
 
   // Split on spaces, hyphens, apostrophes, but preserve the delimiters
   const parts = cleaned.split(/(\s+|\-|'|,|\.)/);

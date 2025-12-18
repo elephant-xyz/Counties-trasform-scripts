@@ -24,8 +24,10 @@ function titleCase(str) {
   str = str.trim();
   if (!str) return str;
 
-  // Clean up malformed hyphen-space patterns (e.g., "TRACEY- " becomes "TRACEY-")
-  str = str.replace(/-\s+$/, '-').replace(/^-\s+/, '-');
+  // Clean up malformed separator-space patterns globally
+  // Examples: "CARI- HEYWOOD" -> "CARI-HEYWOOD", "O' BRIEN" -> "O'BRIEN", "D 'ANGELO" -> "D'ANGELO"
+  str = str.replace(/-\s+/g, '-').replace(/\s+-/g, '-');
+  str = str.replace(/'\s+/g, "'").replace(/\s+'/g, "'");
 
   // Split on delimiters while preserving them
   const parts = str.split(/(\s+|\-|'|,|\.)/);
@@ -53,7 +55,13 @@ function titleCase(str) {
     return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
   });
 
-  return capitalized.join("");
+  // Join and remove any trailing separators (hyphens, apostrophes, commas, periods)
+  let result = capitalized.join("");
+  // Remove trailing separators
+  result = result.replace(/[\-',.]+$/, '');
+  // Remove leading separators
+  result = result.replace(/^[\-',.]+/, '');
+  return result;
 }
 
 // Helper function to safely construct middle name from tokens
