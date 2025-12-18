@@ -10252,28 +10252,12 @@ const NORMALIZED_ADDRESS_FIELDS = [
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 const NORMALIZED_ADDRESS_FIELD_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 
-// Raw (unnormalized) branch per schema: do not include normalized street fields.
-const RAW_ADDRESS_FIELDS = [
-  "latitude",
-  "longitude",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "city_name",
-  "country_code",
-  "plus_four_postal_code",
-  "postal_code",
-  "state_code",
-  "route_number",
-  "county_name",
-  "municipality_name",
-  "request_identifier",
-  "source_http_request",
-  "unit_identifier",
-  "unnormalized_address",
-];
+// Raw (unnormalized) branch per schema: include the full address surface so
+// required fields remain present (nullable) when only an unnormalized string is
+// available from the source.
+const RAW_ADDRESS_FIELDS = Array.from(
+  new Set([...NORMALIZED_ADDRESS_FIELDS, "unnormalized_address"]),
+);
 const RAW_ADDRESS_FIELD_SET = new Set(RAW_ADDRESS_FIELDS);
 
 // Union of both branches for intermediate parsing.
@@ -10281,8 +10265,9 @@ const ADDRESS_SCHEMA_FIELDS = Array.from(
   new Set([...NORMALIZED_ADDRESS_FIELDS, ...RAW_ADDRESS_FIELDS]),
 );
 
-// The raw oneOf branch should only carry the unnormalized surface; avoid
-// normalized-only street components so the first oneOf branch remains valid.
+// The raw oneOf branch carries the full address surface (with normalized
+// fields nullable) plus the unnormalized string so oneOf validation always has
+// the required keys present.
 const RAW_BRANCH_ALLOWED_FIELDS = Object.freeze([...RAW_ADDRESS_FIELDS]);
 const RAW_BRANCH_ALLOWED_FIELD_SET = new Set(RAW_BRANCH_ALLOWED_FIELDS);
 
