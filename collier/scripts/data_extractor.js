@@ -930,18 +930,10 @@ function main() {
     }
   }
 
-  // Utilities from owners/utilities_data.json
-  const utilsEntry = utils[ownerKey];
-  if (utilsEntry) {
-    fs.writeFileSync(
-      path.join(dataDir, "utility.json"),
-      JSON.stringify(utilsEntry, null, 2),
-    );
-  }
-
   // Layouts from owners/layout_data.json
   let layoutIdx = 1;
   const layoutEntry = layouts[ownerKey];
+  let layoutCount = 0;
   if (layoutEntry && Array.isArray(layoutEntry.layouts)) {
     for (const lay of layoutEntry.layouts) {
       if (lay && Object.keys(lay).length > 0) {
@@ -961,7 +953,41 @@ function main() {
           JSON.stringify(lay, null, 2),
         );
         layoutIdx++;
+        layoutCount++;
       }
+    }
+  }
+
+  // Utilities from owners/utilities_data.json
+  const utilsEntry = utils[ownerKey];
+  if (utilsEntry) {
+    // Write utility file with index
+    fs.writeFileSync(
+      path.join(dataDir, "utility_1.json"),
+      JSON.stringify(utilsEntry, null, 2),
+    );
+
+    // Create relationship between layout/property and utility
+    if (layoutCount === 1) {
+      // If there's exactly one layout, create relationship from layout to utility
+      const relationship = {
+        from: { "/": "./layout_1.json" },
+        to: { "/": "./utility_1.json" },
+      };
+      fs.writeFileSync(
+        path.join(dataDir, "relationship_layout_1_has_utility_1.json"),
+        JSON.stringify(relationship, null, 2),
+      );
+    } else {
+      // Otherwise, create relationship from property to utility
+      const relationship = {
+        from: { "/": "./property.json" },
+        to: { "/": "./utility_1.json" },
+      };
+      fs.writeFileSync(
+        path.join(dataDir, "relationship_property_has_utility_1.json"),
+        JSON.stringify(relationship, null, 2),
+      );
     }
   }
 
