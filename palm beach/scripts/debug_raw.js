@@ -173,6 +173,28 @@ function enforcePropertyRelationshipNulls(propertyPath) {
   writeJSON(propertyPath, payload);
 }
 
+function applyNullAddressRelationships(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+  const relationships =
+    payload.relationships && typeof payload.relationships === "object"
+      ? { ...payload.relationships }
+      : {};
+  relationships.property_has_address = null;
+  relationships.address_has_fact_sheet = null;
+  payload.relationships = relationships;
+  return payload;
+}
+
+function enforceAddressRelationshipNulls(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
+  const withNulls = applyNullAddressRelationships({ ...payload });
+  writeJSON(addressPath, withNulls);
+}
+
 function nullifyAddressRelationshipFiles(dataDir, relationshipsDir) {
   const dirs = [dataDir, relationshipsDir].filter(Boolean);
   dirs.forEach((dirPath) => {
@@ -781,7 +803,11 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
           ? sanitizeAddressPayloadForWrite(payload)
           : payload;
       if (sanitized && typeof sanitized === "object") {
-        data = `${JSON.stringify(sanitized, null, 2)}\n`;
+        const prepared =
+          typeof applyNullAddressRelationships === "function"
+            ? applyNullAddressRelationships({ ...sanitized })
+            : sanitized;
+        data = `${JSON.stringify(prepared, null, 2)}\n`;
       }
     } catch {
       // fall through to original write
@@ -1920,7 +1946,7 @@ function sanitizeAddressPayloadForWrite(payload) {
       normalizedOut.country_code = "US";
     }
     delete normalizedOut.unnormalized_address;
-    return normalizedOut;
+    return applyNullAddressRelationships(normalizedOut);
   }
 
   // Otherwise emit the lean raw branch anchored on the unnormalized string so
@@ -1946,10 +1972,12 @@ function sanitizeAddressPayloadForWrite(payload) {
       rawOut.latitude = null;
       rawOut.longitude = null;
     }
-    return rawOut;
+    return applyNullAddressRelationships(rawOut);
   }
 
-  return stripAddressRequestMetadata(normalizedCandidate);
+  return applyNullAddressRelationships(
+    stripAddressRequestMetadata(normalizedCandidate),
+  );
 }
 
 function writeJSON(p, obj) {
@@ -32595,6 +32623,7 @@ async function main() {
     sourceHttpRequest: resolvedSourceHttp,
     countyFallback: formattedCountyName || countyName || "Palm Beach",
   });
+  enforceAddressRelationshipNulls(addressOutputPath);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
