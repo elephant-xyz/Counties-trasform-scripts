@@ -62,15 +62,37 @@ function parseDateToISO(mdyy) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function normalizeWhitespace(str) {
+  return (str || "")
+    .replace(/\s+/g, " ")
+    .replace(/[\u00A0\s]+/g, " ")
+    .trim();
+}
+
+function cleanInvalidCharsFromName(raw) {
+  if (!raw) return "";
+  let parsedName = normalizeWhitespace(raw)
+    .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
+    .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .trim();
+  while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(1);
+  }
+  while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(0, parsedName.length - 1);
+  }
+  return parsedName;
+}
+
 function capitalizeProperName(name) {
   if (!name) return "";
 
-  // Trim and handle empty strings
-  const trimmed = name.trim();
-  if (!trimmed) return "";
+  // Clean invalid characters first
+  const cleaned = cleanInvalidCharsFromName(name);
+  if (!cleaned) return "";
 
   // Split on spaces, hyphens, apostrophes, but preserve the delimiters
-  const parts = trimmed.split(/(\s+|\-|'|,|\.)/);
+  const parts = cleaned.split(/(\s+|\-|'|,|\.)/);
 
   const capitalized = parts.map((part, index) => {
     // If it's a delimiter, keep it as is
