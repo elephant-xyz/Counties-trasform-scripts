@@ -1299,14 +1299,16 @@ function main() {
     JSON.stringify(structureObj, null, 2),
   );
 
-  // Create relationship from property to structure
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_property_has_structure.json"),
-    JSON.stringify({
-      from: { "/": "./property.json" },
-      to: { "/": "./structure.json" }
-    }, null, 2),
-  );
+  // Create relationship from first layout to structure (if layout exists)
+  if (firstLayoutIndex !== null) {
+    fs.writeFileSync(
+      path.join(dataDir, `relationship_layout_${firstLayoutIndex}_to_structure.json`),
+      JSON.stringify({
+        from: { "/": `./layout_${firstLayoutIndex}.json` },
+        to: { "/": "./structure.json" }
+      }, null, 2),
+    );
+  }
 
   // Tax from Summary and History
   // From Summary (preliminary/current)
