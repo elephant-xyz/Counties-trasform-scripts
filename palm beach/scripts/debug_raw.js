@@ -30826,6 +30826,14 @@ async function main() {
     country: "US",
   });
   finalizeAddressOneOfBranch(addressOutputPath);
+  lockAddressToOneOf(addressOutputPath, { preferRaw: true });
+  enforceTerminalAddressBranch(addressOutputPath, {
+    unnormalizedPath: "unnormalized_address.json",
+    seedPath: "property_seed.json",
+    defaultCountyName: formattedCountyName || countyName || "Palm Beach",
+    defaultStateCode: inferredStateCode || "FL",
+    defaultCountryCode: "US",
+  });
   enforcePropertyRelationshipNulls(path.join(dataDir, "property.json"));
   removeAddressRelationshipFiles(dataDir);
   removeAddressRelationshipFiles(relationshipsDir);
