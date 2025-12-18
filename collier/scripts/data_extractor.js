@@ -865,17 +865,13 @@ function main() {
             birth_date: owner.birth_date || null,
             first_name: firstName,
             last_name: lastName,
+            middle_name: middleName,
             prefix_name: owner.prefix_name || null,
             suffix_name: owner.suffix_name || null,
             us_citizenship_status: owner.us_citizenship_status || null,
             veteran_status:
               owner.veteran_status != null ? owner.veteran_status : null,
           };
-
-          // Only include middle_name if it's valid (optional field should be omitted if invalid)
-          if (middleName && isValidMiddleName(middleName)) {
-            person.middle_name = middleName;
-          }
           const filename = `person_${personIdx}.json`;
           fs.writeFileSync(
             path.join(dataDir, filename),
