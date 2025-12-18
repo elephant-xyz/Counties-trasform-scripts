@@ -24482,26 +24482,58 @@ function clampFinalRawAddress(addressPath, options = {}) {
     return;
   }
 
-  const minimal = buildMinimalRawAddress(rawValue, {
-    snapshot,
-    normalizedSurface,
-    requestIdentifier: options.requestIdentifier,
-    sourceHttpRequest: options.sourceHttpRequest,
-    county: options.county,
-    state: options.state,
-    country: options.country,
-  });
+  const hydrated =
+    ensureRawAddressSchemaDefaults(
+      {
+        ...snapshot,
+        unnormalized_address: rawValue,
+        request_identifier:
+          options.requestIdentifier !== undefined
+            ? options.requestIdentifier
+            : snapshot.request_identifier,
+        source_http_request:
+          options.sourceHttpRequest !== undefined
+            ? options.sourceHttpRequest
+            : snapshot.source_http_request,
+        county_name:
+          snapshot.county_name ||
+          normalizedSurface?.county_name ||
+          options.county ||
+          null,
+        state_code:
+          snapshot.state_code ||
+          normalizedSurface?.state_code ||
+          options.state ||
+          null,
+        country_code:
+          snapshot.country_code ||
+          normalizedSurface?.country_code ||
+          options.country ||
+          null,
+      },
+      RAW_ADDRESS_ALLOWED_FIELDS,
+    ) || { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
 
-  if (minimal) {
-    originalWriteFileSync.call(
-      fs,
-      addressPath,
-      `${JSON.stringify(minimal, null, 2)}\n`,
-    );
-    return;
+  const latNum = parseCoordinate(hydrated.latitude);
+  const lonNum = parseCoordinate(hydrated.longitude);
+  hydrated.latitude = Number.isFinite(latNum) ? latNum : null;
+  hydrated.longitude = Number.isFinite(lonNum) ? lonNum : null;
+
+  if (!hydrated.postal_code) {
+    hydrated.plus_four_postal_code = null;
+  }
+  if ((hydrated.latitude == null) !== (hydrated.longitude == null)) {
+    hydrated.latitude = null;
+    hydrated.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(hydrated.state_code) &&
+    !hasMeaningfulAddressValue(hydrated.country_code)
+  ) {
+    hydrated.country_code = options.country || "US";
   }
 
-  removeFileIfExists(addressPath);
+  writeJSON(addressPath, hydrated);
 }
 
 async function main() {
