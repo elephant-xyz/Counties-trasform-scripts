@@ -5545,6 +5545,150 @@ function enforceTerminalAddressSurface(addressPath) {
   removeFileIfExists(addressPath);
 }
 
+// Final clamp to a single address oneOf branch. Prefer the raw variant when an
+// unnormalized string is present and always emit the full schema surface (with
+// nullable fields) to avoid missing required properties. If no raw string is
+// available but a complete normalized surface exists, emit the normalized
+// branch and strip any raw-only fields.
+function enforceRawPreferredFinalAddress(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const snapshot = readJSONIfExists(addressPath) || {};
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      snapshot.unnormalized_address,
+      ...(options.rawCandidates || []),
+    ]),
+  );
+  const requestId =
+    options.requestIdentifier !== undefined
+      ? safeNullIfEmpty(options.requestIdentifier)
+      : safeNullIfEmpty(snapshot.request_identifier);
+  const sourceHttp = resolveSourceHttpRequest(
+    snapshot.source_http_request,
+    options.sourceHttpRequest,
+  );
+
+  const normalizedSurface =
+    (typeof ensureNormalizedAddressSchemaSurface === "function" &&
+      ensureNormalizedAddressSchemaSurface({ ...snapshot })) ||
+    { ...snapshot };
+  const normalizedReady =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (rawValue) {
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        rawOut[field] = rawValue;
+        return;
+      }
+      if (field === "request_identifier") {
+        rawOut[field] = requestId === undefined ? null : requestId;
+        return;
+      }
+      if (field === "source_http_request") {
+        rawOut[field] = prepareSourceHttpRequest(sourceHttp) || null;
+        return;
+      }
+      let value =
+        snapshot[field] !== undefined ? snapshot[field] : normalizedSurface[field];
+      if (
+        field === "county_name" &&
+        options.countyFallback &&
+        !hasMeaningfulAddressValue(value)
+      ) {
+        value = options.countyFallback;
+      }
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      rawOut[field] = sanitizeAddressFieldValue(field, value);
+    });
+
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
+    } else if (rawOut.plus_four_postal_code) {
+      rawOut.plus_four_postal_code = sanitizePlus4(rawOut.plus_four_postal_code);
+    }
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rawOut.state_code) &&
+      !hasMeaningfulAddressValue(rawOut.country_code)
+    ) {
+      rawOut.country_code = "US";
+    }
+
+    writeJSON(addressPath, rawOut);
+    return;
+  }
+
+  if (normalizedReady) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value =
+        snapshot[field] !== undefined ? snapshot[field] : normalizedSurface[field];
+      if (field === "request_identifier") {
+        value = requestId === undefined ? null : requestId;
+      } else if (field === "source_http_request") {
+        value = prepareSourceHttpRequest(sourceHttp) || null;
+      } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else {
+        value = sanitizeAddressFieldValue(field, value);
+      }
+      normalizedOut[field] =
+        value === undefined || value === null
+          ? null
+          : typeof value === "string"
+            ? value.trim() || null
+            : value;
+    });
+
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    } else if (normalizedOut.plus_four_postal_code) {
+      normalizedOut.plus_four_postal_code = sanitizePlus4(
+        normalizedOut.plus_four_postal_code,
+      );
+    }
+    if (
+      (normalizedOut.latitude == null) !== (normalizedOut.longitude == null)
+    ) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")) {
+      delete normalizedOut.unnormalized_address;
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  removeFileIfExists(addressPath);
+}
+
 // Final deterministic oneOf selection: keep normalized only when fully covered;
 // otherwise emit the raw branch with full schema surface (nullable) anchored to
 // the unnormalized source string. This prevents partial normalized payloads
@@ -32444,6 +32588,12 @@ async function main() {
     county_name: formattedCountyName || countyName || "Palm Beach",
     state_code: inferredStateCode || "FL",
     country_code: "US",
+  });
+  enforceRawPreferredFinalAddress(addressOutputPath, {
+    rawCandidates,
+    requestIdentifier: resolvedRequestIdentifier,
+    sourceHttpRequest: resolvedSourceHttp,
+    countyFallback: formattedCountyName || countyName || "Palm Beach",
   });
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
