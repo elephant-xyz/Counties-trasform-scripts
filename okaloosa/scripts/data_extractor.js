@@ -10,6 +10,9 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const SCRIPT_DIR = __dirname;
+const WORKING_DIR = process.cwd();
+
 const propertyTypeMapping = [
   {
     "property_usecode": "AG LAND",
@@ -1902,7 +1905,7 @@ function extractOwnerMailingAddress($) {
   return textOf($(OWNER_MAILING_ADDRESS_SELECTOR)).replace(/  +/g, ' ');;
 }
 
-function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
+function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress, parcelId) {
   let hasOwnerMailingAddress = false;
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty) {
@@ -1910,11 +1913,22 @@ function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
   }
   const county_name = inputCounty || null;
   if (mailingAddress) {
-    const mailingAddressObj = {
-      unnormalized_address: mailingAddress,
-    };
-    writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
-    hasOwnerMailingAddress = true;
+    // Only create mailing_address.json if there are current owners to link it to
+    const owners = readJSON(path.join("owners", "owner_data.json"));
+    if (owners && parcelId) {
+      const key = `property_${parcelId}`;
+      const record = owners[key];
+      if (record && record.owners_by_date && record.owners_by_date["current"]) {
+        const currentOwners = record.owners_by_date["current"] || [];
+        if (currentOwners.length > 0) {
+          const mailingAddressObj = {
+            unnormalized_address: mailingAddress,
+          };
+          writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
+          hasOwnerMailingAddress = true;
+        }
+      }
+    }
   }
   if (siteAddress) {
     const addressObj = {
@@ -2204,27 +2218,66 @@ function createGeometryInstances(csvContent) {
   return records.flatMap((record) => splitGeometry(record));
 }
 
-function createGeometryClass(geometryInstances) {
-  let geomIndex = 1;
-  for(let geom of geometryInstances) {
-    let polygon = [];
-    let geometry = {
-      "latitude": geom.latitude,
-      "longitude": geom.longitude,
-    }
-    if (geom && geom.polygon) {
-      for (const coordinate of geom.polygon.coordinates[0]) {
-        polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
+function loadGeometryCsvContent() {
+  const parentDir = path.dirname(SCRIPT_DIR);
+  const candidates = [
+    path.join(WORKING_DIR, "input.csv"),
+    path.join(SCRIPT_DIR, "input.csv"),
+    path.join(parentDir, "input.csv"),
+    path.join(WORKING_DIR, "seed.csv"),
+    path.join(SCRIPT_DIR, "seed.csv"),
+    path.join(parentDir, "seed.csv"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        return fs.readFileSync(candidate, "utf8");
+      } catch (err) {
+        console.warn(`Unable to read geometry CSV at ${candidate}: ${err.message}`);
       }
-      geometry.polygon = polygon;
     }
-    writeJSON(path.join("data", `geometry_${geomIndex}.json`), geometry);
-    writeJSON(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
-        from: { "/": `./parcel.json` },
-        to: { "/": `./geometry_${geomIndex}.json` },
-    });
-    geomIndex++;
   }
+
+  return null;
+}
+
+function geometry_parcel(geometryInstances) {
+  let geomIndex = 1;
+  for (const geom of geometryInstances || []) {
+    if (!geom) {
+      continue;
+    }
+
+    const geometry = {
+      latitude: geom.latitude ?? null,
+      longitude: geom.longitude ?? null,
+    };
+
+    if (geom.polygon && Array.isArray(geom.polygon.coordinates)) {
+      const exteriorRing = geom.polygon.coordinates[0] || [];
+      const polygon = exteriorRing.map((coordinate) => ({
+        longitude: coordinate[0],
+        latitude: coordinate[1],
+      }));
+      if (polygon.length) {
+        geometry.polygon = polygon;
+      }
+    }
+
+    const geometryFile = `geometry_parcel_${geomIndex}.json`;
+    const relationshipFile = `relationship_parcel_has_geometry_parcel_${geomIndex}.json`;
+    writeJSON(path.join("data", geometryFile), geometry);
+    writeJSON(path.join("data", relationshipFile), {
+      from: { "/": "./parcel.json" },
+      to: { "/": `./${geometryFile}` },
+    });
+    geomIndex += 1;
+  }
+}
+
+function createGeometryClass(geometryInstances) {
+  geometry_parcel(geometryInstances);
 }
 
 function main() {
@@ -2241,10 +2294,37 @@ function main() {
   const utilitiesData = readJSON(path.join("owners", "utilities_data.json"));
   const structureData = readJSON(path.join("owners", "structure_data.json"));
   const key = `property_${parcelId}`;
-  const seedCsvPath = path.join(".", "input.csv");
-  
-  const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
-  createGeometryClass(createGeometryInstances(seedCsv));
+  const geometryCsv = loadGeometryCsvContent();
+  let geometryCreated = false;
+  if (geometryCsv) {
+    try {
+      const geometryInstances = createGeometryInstances(geometryCsv);
+      if (geometryInstances.length) {
+        createGeometryClass(geometryInstances);
+        geometryCreated = true;
+      }
+    } catch (err) {
+      console.warn(`Unable to build geometry from CSV: ${err.message}`);
+    }
+  }
+  if (!geometryCreated) {
+    const latitude =
+      (unnormalized && unnormalized.latitude) ||
+      (propertySeed && propertySeed.latitude) ||
+      null;
+    const longitude =
+      (unnormalized && unnormalized.longitude) ||
+      (propertySeed && propertySeed.longitude) ||
+      null;
+    if (latitude && longitude) {
+      const coordinate = new Geometry({
+        latitude,
+        longitude,
+      });
+      createGeometryClass([coordinate]);
+      geometryCreated = true;
+    }
+  }
   let struct = null;
   if (structureData) {
     struct = key && structureData[key] ? structureData[key] : null;
@@ -2264,7 +2344,7 @@ function main() {
   const secTwpRng = extractSecTwpRng($);
   const addressText = extractAddressText($);
   const mailingAddress = extractOwnerMailingAddress($);
-  const hasOwnerMailingAddress = attemptWriteAddress(unnormalized, secTwpRng, addressText, mailingAddress);
+  const hasOwnerMailingAddress = attemptWriteAddress(unnormalized, secTwpRng, addressText, mailingAddress, parcelId);
 
   if (parcelId) {
     writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress);
