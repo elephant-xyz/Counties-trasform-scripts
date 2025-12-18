@@ -240,7 +240,11 @@ function enforceFinalAddressBranch(addressPath) {
     ) {
       delete normalizedOut.unnormalized_address;
     }
-    writeJSON(addressPath, normalizedOut);
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(normalizedOut, null, 2)}\n`,
+    );
     return;
   }
 
@@ -10296,6 +10300,68 @@ const RAW_MINIMAL_OUTPUT_FIELDS = Object.freeze([
   "latitude",
   "longitude",
 ]);
+
+function buildMinimalRawAddress(rawValue, options = {}) {
+  const unnormalized = safeNullIfEmpty(rawValue);
+  if (!unnormalized) return null;
+
+  const snapshot =
+    options.snapshot && typeof options.snapshot === "object"
+      ? options.snapshot
+      : {};
+  const normalizedSurface =
+    options.normalizedSurface && typeof options.normalizedSurface === "object"
+      ? options.normalizedSurface
+      : null;
+
+  const source = { ...(normalizedSurface || {}), ...snapshot };
+  const base = RAW_MINIMAL_OUTPUT_FIELDS.reduce((acc, field) => {
+    acc[field] = null;
+    return acc;
+  }, {});
+
+  const resolveString = (value) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed.length ? trimmed : null;
+    }
+    return null;
+  };
+
+  const requestIdentifier =
+    options.requestIdentifier === undefined
+      ? source.request_identifier
+      : options.requestIdentifier;
+  const sourceHttp =
+    options.sourceHttpRequest === undefined
+      ? source.source_http_request
+      : options.sourceHttpRequest;
+
+  base.unnormalized_address = unnormalized;
+  base.county_name =
+    resolveString(options.county) ??
+    resolveString(source.county_name) ??
+    resolveString(source.county_jurisdiction);
+  base.state_code = resolveString(options.state) ?? resolveString(source.state_code);
+  base.country_code =
+    resolveString(options.country) ?? resolveString(source.country_code);
+  base.postal_code = resolveString(source.postal_code);
+  base.plus_four_postal_code = base.postal_code
+    ? resolveString(source.plus_four_postal_code)
+    : null;
+
+  const lat = parseCoordinate(source.latitude);
+  const lon = parseCoordinate(source.longitude);
+  base.latitude = Number.isFinite(lat) ? lat : null;
+  base.longitude = Number.isFinite(lon) ? lon : null;
+
+  const preparedSource = prepareSourceHttpRequest(sourceHttp) || null;
+  base.source_http_request = preparedSource;
+  base.request_identifier = resolveString(requestIdentifier);
+
+  return base;
+}
 
 // Clamp the address payload onto a single oneOf branch. When we only have an
 // unnormalized string, emit the raw branch but keep the full schema surface
@@ -24340,6 +24406,104 @@ function finalizeCountyOneOfBranch(addressPath, options = {}) {
   removeFileIfExists(addressPath);
 }
 
+function clampFinalRawAddress(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...snapshot })
+      : null;
+  const normalizedReady =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  const rawCandidates = Array.isArray(options.rawCandidates)
+    ? options.rawCandidates
+    : [];
+
+  if (normalizedReady) {
+    const normalizedOut = {};
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value =
+        snapshot[field] !== undefined ? snapshot[field] : normalizedSurface[field];
+      if (field === "request_identifier") {
+        value =
+          options.requestIdentifier !== undefined
+            ? options.requestIdentifier
+            : snapshot.request_identifier;
+      } else if (field === "source_http_request") {
+        value =
+          resolveSourceHttpRequest(
+            snapshot.source_http_request,
+            normalizedSurface.source_http_request,
+            options.sourceHttpRequest,
+          ) || null;
+      } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) normalizedOut.plus_four_postal_code = null;
+    if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = options.country || "US";
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")) {
+      delete normalizedOut.unnormalized_address;
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([snapshot.unnormalized_address, ...rawCandidates]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const minimal = buildMinimalRawAddress(rawValue, {
+    snapshot,
+    normalizedSurface,
+    requestIdentifier: options.requestIdentifier,
+    sourceHttpRequest: options.sourceHttpRequest,
+    county: options.county,
+    state: options.state,
+    country: options.country,
+  });
+
+  if (minimal) {
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(minimal, null, 2)}\n`,
+    );
+    return;
+  }
+
+  removeFileIfExists(addressPath);
+}
+
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -31008,6 +31172,26 @@ async function main() {
     defaultCounty: formattedCountyName || countyName || "Palm Beach",
     defaultState: inferredStateCode || "FL",
     defaultCountry: "US",
+  });
+  clampFinalRawAddress(addressOutputPath, {
+    rawCandidates: [
+      finalRawCandidate,
+      finalRawCandidateClamp,
+      finalRawString,
+      canonicalUnnormalized,
+      unnormalizedAddressCandidate,
+      fullAddrInput,
+      siteLocationLine,
+      ...(rawAddressCandidates || []),
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ],
+    requestIdentifier:
+      resolvedRequestIdentifier ?? trimmedRequestIdentifier ?? parcelId ?? null,
+    sourceHttpRequest: resolvedSourceHttp ?? sourceHttpCandidate ?? null,
+    county: formattedCountyName || countyName || "Palm Beach",
+    state: inferredStateCode || "FL",
+    country: "US",
   });
   enforcePropertyRelationshipNulls(path.join(dataDir, "property.json"));
   removeAddressRelationshipFiles(dataDir);
