@@ -98,11 +98,46 @@ function extractLegalDescription($) {
 function extractUseCode($) {
   let code = null;
   $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
-    if ((th || "").toLowerCase().includes("property use code")) {
-      code = textOf($(tr).find("td span"));
+    if (code) return false;
+    const $tr = $(tr);
+    const labelText = textTrim(
+      $tr.find("th strong, th, td strong").first().text(),
+    ).toLowerCase();
+    if (
+      labelText.includes("property use code") ||
+      labelText === "use code" ||
+      labelText.includes("land use code")
+    ) {
+      const $valueCell = $tr.find("td").last().clone();
+      $valueCell.find("strong").remove();
+      const valueText = textTrim(
+        $valueCell.text() || $tr.find("td span").first().text(),
+      );
+      if (valueText) {
+        code = valueText;
+        return false;
+      }
     }
+    return true;
   });
+  if (!code) {
+    const $fallbackStrong = $("strong")
+      .filter((_, el) =>
+        textTrim($(el).text()).toLowerCase().includes("use code"),
+      )
+      .first();
+    if ($fallbackStrong.length) {
+      const $row = $fallbackStrong.closest("tr");
+      if ($row.length) {
+        const $valueCell = $row.find("td").last().clone();
+        $valueCell.find("strong").remove();
+        const fallbackValue = textTrim($valueCell.text());
+        if (fallbackValue) {
+          code = fallbackValue;
+        }
+      }
+    }
+  }
   return code || null;
 }
 
