@@ -459,6 +459,9 @@ function main() {
     if (mYear) out.taxYear = parseInt(mYear[1], 10);
 
     // Sales History: Book/Page, Sale Date, Instrument, Sale Price
+    // Track which deed indices have corresponding files
+    out.deedToFileMap = [];
+
     $("#cphMain_gvSalesHistory tr").each((i, tr) => {
       if (i === 0) return; // header
       const tds = $(tr).find("td");
@@ -478,19 +481,33 @@ function main() {
       out.sales.push(sale);
 
       const deed = { deed_type: instrument || null };
+      const deedIndex = out.deeds.length;
       out.deeds.push(deed);
 
-      const fileObj = {
-        document_type: /Warranty Deed/i.test(instrument)
-          ? "ConveyanceDeedWarrantyDeed"
-          : null,
-        file_format: null,
-        name: bookPageText ? `Official Records ${bookPageText}` : null,
-      };
+      // Skip creating file objects for invalid book/page data (e.g., "NO** / DATA", "N/A", "NONE")
+      // These entries have invalid URLs that cannot be processed
+      // Check for patterns like: NO**, **/**, N/A, NONE, UNKNOWN, or missing book/page numbers
+      const isInvalidBookPage = !bookPageText ||
+                                /\*\*/.test(bookPageText) ||
+                                /^(N\/?A|NONE|UNKNOWN)$/i.test(bookPageText.trim());
 
-      // original_url is omitted and will be populated by the process
+      if (!isInvalidBookPage) {
+        const fileObj = {
+          document_type: /Warranty Deed/i.test(instrument)
+            ? "ConveyanceDeedWarrantyDeed"
+            : null,
+          file_format: null,
+          name: bookPageText ? `Official Records ${bookPageText}` : null,
+        };
 
-      out.files.push(fileObj);
+        // original_url is omitted and will be populated by the process
+
+        const fileIndex = out.files.length;
+        out.files.push(fileObj);
+
+        // Map this deed to its file
+        out.deedToFileMap.push({ deedIndex, fileIndex });
+      }
     });
 
     // Residential Building Characteristics (Sections) for stories and exterior wall types
@@ -1277,13 +1294,18 @@ function main() {
   });
 
   // relationship_deed_*_has_file_*.json (deed → file)
-  for (let i = 0; i < Math.min(deedFiles.length, fileFiles.length); i++) {
-    const rel = {
-      from: { "/": `./${deedFiles[i]}` },
-      to: { "/": `./${fileFiles[i]}` },
-    };
-    const relName = `relationship_deed_${i + 1}_has_file_${i + 1}.json`;
-    writeJSON(path.join(dataDir, relName), rel);
+  // Use the mapping to create correct relationships
+  if (bx.deedToFileMap && bx.deedToFileMap.length > 0) {
+    bx.deedToFileMap.forEach((mapping) => {
+      const deedNum = mapping.deedIndex + 1;
+      const fileNum = mapping.fileIndex + 1;
+      const rel = {
+        from: { "/": `./deed_${deedNum}.json` },
+        to: { "/": `./file_${fileNum}.json` },
+      };
+      const relName = `relationship_deed_${deedNum}_has_file_${fileNum}.json`;
+      writeJSON(path.join(dataDir, relName), rel);
+    });
   }
 
   // relationship_sales_history_*_has_deed.json (sales → deed)
