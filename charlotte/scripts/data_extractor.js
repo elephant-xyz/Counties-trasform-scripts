@@ -7,6 +7,9 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const SCRIPT_DIR = __dirname;
+const WORKING_DIR = process.cwd();
+
 function readJSON(p) {
   try {
     return JSON.parse(fs.readFileSync(p, "utf8"));
@@ -2222,6 +2225,13 @@ function splitGeometry(record) {
   });
 }
 
+function writeOut(filePath, obj) {
+  const outPath = path.join("data", filePath);
+  ensureDir(path.dirname(outPath));
+  fs.writeFileSync(outPath, JSON.stringify(obj, null, 2), "utf8");
+}
+
+
 /**
  * Read the provided CSV file (defaults to ./input.csv) and return Geometry instances.
  */
@@ -2241,25 +2251,30 @@ function createGeometryInstances(csvContent) {
     }, {})
   );
 
+
   return records.flatMap((record) => splitGeometry(record));
 }
 
 function createGeometryClass(geometryInstances) {
+
   let geomIndex = 1;
+  console.log("geometryInstances", geometryInstances)
   for(let geom of geometryInstances) {
     let polygon = [];
-    let geometry = {
+    if (!geom || !geom.polygon) {
+      continue;
+    }
+    for (const coordinate of geom.polygon.coordinates[0]) {
+      polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
+    }
+    const geometry = {
       "latitude": geom.latitude,
       "longitude": geom.longitude,
+      "polygon": polygon,
     }
-    if (geom && geom.polygon) {
-      for (const coordinate of geom.polygon.coordinates[0]) {
-        polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
-      }
-      geometry.polygon = polygon;
-    }
-    writeJSON(path.join("data", `geometry_${geomIndex}.json`), geometry);
-    writeJSON(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
+
+    writeOut(`geometry_${geomIndex}.json`, geometry);
+    writeOut(`relationship_parcel_to_geometry_${geomIndex}.json`, {
         from: { "/": `./parcel.json` },
         to: { "/": `./geometry_${geomIndex}.json` },
     });
@@ -2327,21 +2342,24 @@ function main() {
     unaddr.request_identifier ||
     "";
   const key = `property_${parcelId}`;
-  try {
-    const seedCsvPath = path.join(".", "input.csv");
-    const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
-    createGeometryClass(createGeometryInstances(seedCsv));
-  } catch (e) {
-    const latitude = unaddr && unaddr.latitude ? unaddr.latitude : null;
-    const longitude = unaddr && unaddr.longitude ? unaddr.longitude : null;
-    if (latitude && longitude) {
-      const coordinate = new Geometry({
-        latitude: latitude,
-        longitude: longitude
-      });
-      createGeometryClass([coordinate]);
-    }
-  }
+ const geometryCsvCandidates = [
+        path.join(SCRIPT_DIR, "input.csv"),
+        path.join(SCRIPT_DIR, "..", "input.csv"),
+        path.join(WORKING_DIR, "input.csv"),
+        path.join(SCRIPT_DIR, "seed.csv"),
+        path.join(SCRIPT_DIR, "..", "seed.csv"),
+        path.join(WORKING_DIR, "seed.csv"),
+      ];
+      const seedCsvPath = geometryCsvCandidates.find((candidate) =>
+        fs.existsSync(candidate)
+      );
+      if (!seedCsvPath) {
+        throw new Error("Unable to locate input.csv or seed.csv for geometry creation.");
+      }
+      const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
+      const instance = createGeometryInstances(seedCsv);
+      createGeometryClass(instance);
+  
   let struct = null;
   if (structureData) {
     struct = key && structureData[key] ? structureData[key] : null;
