@@ -169,6 +169,18 @@ const companyKeywords = [
   "HOMEOWNERS",
   "ASSOCIATES",
   "OWNERS",
+  "S C",
+  "S.C",
+  "S.C.",
+  "SC",
+  "P C",
+  "P.C",
+  "P.C.",
+  "PC",
+  "P A",
+  "P.A",
+  "P.A.",
+  "PA",
 ];
 
 function looksLikeCompany(name) {
