@@ -1914,6 +1914,39 @@ function sanitizeAddressPayloadForWrite(payload) {
     typeof hasCompleteNormalizedAddress === "function" &&
     hasCompleteNormalizedAddress({ ...normalizedCandidate });
 
+  // Always prefer the raw branch when the source gives us an unnormalized
+  // string; only emit a normalized variant when we truly lack a raw address.
+  if (trimmedUnnormalized.length) {
+    const rawOut =
+      sanitizeRawOneOfPayload(payload, {
+        unnormalized_address: trimmedUnnormalized,
+        request_identifier:
+          payload.request_identifier === undefined
+            ? null
+            : safeNullIfEmpty(payload.request_identifier),
+        source_http_request:
+          prepareSourceHttpRequest(payload.source_http_request) || null,
+      }) ||
+      ensureAddressOutputCoverage({
+        ...RAW_ONE_OF_SCHEMA_TEMPLATE,
+        unnormalized_address: trimmedUnnormalized,
+      }) || {
+        ...RAW_ONE_OF_SCHEMA_TEMPLATE,
+        unnormalized_address: trimmedUnnormalized,
+      };
+    if (
+      hasMeaningfulAddressValue(rawOut.state_code) &&
+      !hasMeaningfulAddressValue(rawOut.country_code)
+    ) {
+      rawOut.country_code = "US";
+    }
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
+    }
+    return applyNullAddressRelationships(rawOut);
+  }
+
   // If we have a complete normalized address, prefer it (per schema guidance).
   if (normalizedCoverage) {
     const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
@@ -1947,32 +1980,6 @@ function sanitizeAddressPayloadForWrite(payload) {
     }
     delete normalizedOut.unnormalized_address;
     return applyNullAddressRelationships(normalizedOut);
-  }
-
-  // Otherwise emit the lean raw branch anchored on the unnormalized string so
-  // the oneOf selects the correct schema without demanding normalized fields.
-  if (trimmedUnnormalized.length) {
-    const rawOut =
-      sanitizeRawOneOfPayload(payload, {
-        unnormalized_address: trimmedUnnormalized,
-        request_identifier:
-          payload.request_identifier === undefined
-            ? null
-            : safeNullIfEmpty(payload.request_identifier),
-        source_http_request:
-          prepareSourceHttpRequest(payload.source_http_request) || null,
-      }) || { ...RAW_ONE_OF_SCHEMA_TEMPLATE, unnormalized_address: trimmedUnnormalized };
-    if (
-      hasMeaningfulAddressValue(rawOut.state_code) &&
-      !hasMeaningfulAddressValue(rawOut.country_code)
-    ) {
-      rawOut.country_code = "US";
-    }
-    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
-      rawOut.latitude = null;
-      rawOut.longitude = null;
-    }
-    return applyNullAddressRelationships(rawOut);
   }
 
   return applyNullAddressRelationships(
@@ -16534,6 +16541,46 @@ function enforceMinimalAddressBranch(addressPath) {
 
 function ensureAddressOutputFieldPresence(address) {
   return ensureAddressOutputCoverage(address);
+}
+
+// Guardrail: make sure the on-disk address payload carries the full schema
+// surface (nullable) so oneOf validation never sees missing required fields.
+function ensureAddressFileCoverage(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const hydrated =
+    ensureAddressOutputCoverage({ ...snapshot }) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...snapshot,
+    };
+
+  if (!hydrated || typeof hydrated !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if (!hydrated.postal_code) {
+    hydrated.plus_four_postal_code = null;
+  }
+  if ((hydrated.latitude == null) !== (hydrated.longitude == null)) {
+    hydrated.latitude = null;
+    hydrated.longitude = null;
+  }
+  const withNullRelationships =
+    typeof applyNullAddressRelationships === "function"
+      ? applyNullAddressRelationships({ ...hydrated })
+      : hydrated;
+
+  originalWriteFileSync(
+    addressPath,
+    `${JSON.stringify(withNullRelationships, null, 2)}\n`,
+  );
 }
 
 function enforceRawPreferenceWhenAvailable(addressPath, options = {}) {
@@ -32624,6 +32671,7 @@ async function main() {
     countyFallback: formattedCountyName || countyName || "Palm Beach",
   });
   enforceAddressRelationshipNulls(addressOutputPath);
+  ensureAddressFileCoverage(addressOutputPath);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
