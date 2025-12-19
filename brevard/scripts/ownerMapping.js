@@ -128,12 +128,31 @@ const SUFFIX_SYNONYMS = {
 };
 
 function toTitleCase(str) {
-  return str
+  if (!str) return str;
+
+  // Remove parenthetical suffixes like "(GDN)", "(GUARDIAN)", etc.
+  let cleaned = str.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+
+  // Convert to title case
+  cleaned = cleaned
     .toLowerCase()
     .replace(
       /\b([A-Za-z][A-Za-z'\-]*)/g,
       (m) => m.charAt(0).toUpperCase() + m.slice(1),
     );
+
+  // Remove leading and trailing separators (commas, periods, spaces, hyphens, apostrophes)
+  cleaned = cleaned.replace(/^[ \-',.]+|[ \-',.]+$/g, '').trim();
+
+  return cleaned;
+}
+
+function isValidElephantName(name) {
+  // Validates against Elephant schema pattern for first_name and last_name
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  if (!name) return false;
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  return pattern.test(name);
 }
 
 function normalizeAffixKey(value) {
@@ -311,6 +330,15 @@ function classifyPersonName(name) {
 
   if (!first || !last) return null;
 
+  // Apply title case to names
+  const titleCasedFirst = toTitleCase(first);
+  const titleCasedLast = toTitleCase(last);
+
+  // Validate first and last names against Elephant schema pattern
+  if (!isValidElephantName(titleCasedFirst) || !isValidElephantName(titleCasedLast)) {
+    return null;
+  }
+
   // Validate and apply title case for middle name
   let validMiddleName = null;
   if (middle) {
@@ -322,8 +350,8 @@ function classifyPersonName(name) {
 
   return {
     type: "person",
-    first_name: toTitleCase(first),
-    last_name: toTitleCase(last),
+    first_name: titleCasedFirst,
+    last_name: titleCasedLast,
     middle_name: validMiddleName,
     prefix_name,
     suffix_name,

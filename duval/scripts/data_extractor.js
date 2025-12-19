@@ -81,20 +81,42 @@ function titleCaseNamePart(part) {
 
   if (cleaned === "") return null;
 
-  return cleaned
+  // Roman numerals and common suffixes that should stay uppercase
+  const preserveUppercase = new Set([
+    "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+    "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
+    "JR", "SR", "ESQ", "PHD", "MD", "DDS", "DVM", "LLC", "INC", "LTD", "LP", "LLP"
+  ]);
+
+  const result = cleaned
     .toLowerCase()
     .split(/\s+/)
-    .map((word) =>
-      word
+    .map((word) => {
+      // Check if the word (without trailing punctuation) should be preserved in uppercase
+      const wordUpper = word.replace(/[,.]$/g, "").toUpperCase();
+      const trailingPunct = word.match(/[,.]$/)?.[0] || "";
+
+      if (preserveUppercase.has(wordUpper)) {
+        return wordUpper + trailingPunct;
+      }
+
+      return word
         .split(/([-',.])/)
         .map((segment) =>
           /[-',.]/.test(segment)
             ? segment
             : segment.charAt(0).toUpperCase() + segment.slice(1),
         )
-        .join(""),
-    )
+        .join("");
+    })
     .join(" ");
+
+  // Remove any trailing or leading separators that don't belong
+  const finalResult = result
+    .replace(/^[\s\-',.]+/, "")  // Remove leading separators
+    .replace(/[\s\-',.]+$/, "");  // Remove trailing separators
+
+  return finalResult || null;
 }
 
 function cleanMoneyToNumber(str) {
@@ -241,6 +263,26 @@ function findEnumMatch(enumMap, rawValue) {
     }
   }
   return null;
+}
+
+// Maps primary exterior wall materials to secondary accent/trim types
+function mapPrimaryToSecondaryWallMaterial(primaryMaterial) {
+  if (!primaryMaterial) return null;
+
+  const mapping = {
+    "Brick": "Brick Accent",
+    "Natural Stone": "Stone Accent",
+    "Manufactured Stone": "Stone Accent",
+    "Stucco": "Stucco Accent",
+    "Vinyl Siding": "Vinyl Accent",
+    "Wood Siding": "Wood Trim",
+    "Fiber Cement Siding": "Wood Trim",
+    "Metal Siding": "Metal Trim",
+    "Concrete Block": "Decorative Block",
+    "EIFS": "Stucco Accent",
+  };
+
+  return mapping[primaryMaterial] || null;
 }
 
 const LAYOUT_SPACE_TYPE_VALUES = [
@@ -1679,7 +1721,7 @@ function extractStructure($) {
           }
           if (/vertical\s+sheet/i.test(detail)) {
             if (result.exterior_wall_material_primary)
-              result.exterior_wall_material_secondary = "Wood Siding";
+              result.exterior_wall_material_secondary = "Wood Trim";
             else result.exterior_wall_material_primary = "Wood Siding";
           }
         }
@@ -1712,7 +1754,9 @@ function extractStructure($) {
 function extractLot($, legalRows, totalAreaStr) {
   let lot_area_sqft = null;
   const ta = textOrNull(totalAreaStr);
-  if (ta && /^\d+$/.test(ta)) lot_area_sqft = Number(ta);
+  const taNumber = safeParseNumber(ta);
+  if (taNumber != null && taNumber > 0)
+    lot_area_sqft = Math.round(taNumber);
   return {
     lot_type: null,
     lot_length_feet: null,
@@ -1850,7 +1894,7 @@ function applyExtraFeaturesToStructure(features, structureRecord) {
           structureRecord.exterior_wall_material_primary !== wallMatch &&
           !structureRecord.exterior_wall_material_secondary
         )
-          structureRecord.exterior_wall_material_secondary = wallMatch;
+          structureRecord.exterior_wall_material_secondary = mapPrimaryToSecondaryWallMaterial(wallMatch);
       }
 
       const floorMatch = findEnumMatch(
@@ -1968,7 +2012,7 @@ function main() {
   const propertyKey = parcelIdentifier ? `property_${parcelIdentifier}` : null;
   const propertyUseText = textOrNull($("#ctl00_cphBody_lblPropertyUse").text());
   const subdivision = textOrNull($("#ctl00_cphBody_lblSubdivision").text());
-  const totalArea = textOrNull($("#ctl00_cphBody_lblTotalArea1").text());
+  const totalAreaRaw = textOrNull($("#ctl00_cphBody_lblTotalArea1").text());
   const mailingAddress = extractMailingAddress($);
   const extraFeatures = extractExtraFeatures($);
 
@@ -2078,7 +2122,14 @@ function main() {
   if (parcelIdentifier && propertyTypeCategory) {
     const heatedAreaNumber = safeParseNumber(heatedAreaTotal);
     const heatedAreaString =
-      heatedAreaNumber != null ? String(Math.round(heatedAreaNumber)) : null;
+      heatedAreaNumber != null && heatedAreaNumber >= 10
+        ? String(Math.round(heatedAreaNumber))
+        : null;
+    const totalAreaNumber = safeParseNumber(totalAreaRaw);
+    const totalAreaString =
+      totalAreaNumber != null && totalAreaNumber >= 10
+        ? String(Math.round(totalAreaNumber))
+        : null;
     const propertyPayload = {
       parcel_identifier: parcelIdentifier,
       property_type: propertyTypeCategory,
@@ -2094,7 +2145,7 @@ function main() {
       livable_floor_area: heatedAreaString,
       area_under_air: heatedAreaString,
       subdivision: subdivision || null,
-      total_area: totalArea || null,
+      total_area: totalAreaString,
       zoning: zoning || null,
     };
     writeJSON("property.json", propertyPayload);
@@ -2120,10 +2171,6 @@ function main() {
     from: { "/": "./property.json" },
     to: { "/": "./address.json" },
   });
-
-  if (mailingAddress) {
-    writeJSON("mailing_address.json", mailingAddress);
-  }
 
   const sales = [];
   $("#ctl00_cphBody_gridSalesHistory tr").each((i, el) => {
@@ -2294,16 +2341,18 @@ function main() {
       currentOwners.forEach((owner) => {
         if (owner.type === "person") {
           const fileName = `person_${personPaths.length + 1}.json`;
+          const firstName = titleCaseNamePart(owner.first_name);
+          const lastName = titleCaseNamePart(owner.last_name);
+          if (!firstName || !lastName) return;
           const payload = {
-            first_name: titleCaseNamePart(owner.first_name),
-            middle_name: titleCaseNamePart(owner.middle_name),
-            last_name: titleCaseNamePart(owner.last_name),
-            prefix_name: owner.prefix_name || null,
-            suffix_name: owner.suffix || null,
-            birth_date: owner.birth_date || null,
-            us_citizenship_status: owner.us_citizenship_status || null,
-            veteran_status:
-              owner.veteran_status != null ? Boolean(owner.veteran_status) : null,
+            first_name: firstName,
+            last_name: lastName,
+            middle_name: null,
+            prefix_name: null,
+            suffix_name: null,
+            birth_date: null,
+            us_citizenship_status: null,
+            veteran_status: null,
             request_identifier:
               (unnormalizedAddress && unnormalizedAddress.request_identifier) ||
               parcelIdentifier,
@@ -2312,6 +2361,19 @@ function main() {
                 ? unnormalizedAddress.source_http_request
                 : null,
           };
+          const middleName = titleCaseNamePart(owner.middle_name);
+          payload.middle_name = middleName;
+          const prefixName = titleCaseNamePart(owner.prefix_name);
+          payload.prefix_name = prefixName;
+          // Don't apply titleCaseNamePart to suffix - ownerMapping.js already provides it in schema-compliant format
+          payload.suffix_name = owner.suffix || null;
+          payload.birth_date = owner.birth_date || null;
+          payload.us_citizenship_status =
+            owner.us_citizenship_status != null
+              ? owner.us_citizenship_status
+              : null;
+          payload.veteran_status =
+            owner.veteran_status != null ? Boolean(owner.veteran_status) : null;
           writeJSON(fileName, payload);
           personPaths.push(`./${fileName}`);
         } else if (owner.type === "company") {
@@ -2341,7 +2403,9 @@ function main() {
         });
       }
 
-      if (mailingAddress) {
+      if (mailingAddress && (personPaths.length > 0 || companyPaths.length > 0)) {
+        // Only write mailing_address.json if there are owners to create relationships with
+        writeJSON("mailing_address.json", mailingAddress);
         const mailingPath = "./mailing_address.json";
         personPaths.forEach((personPath) => {
         const relName = relationshipFileName(personPath, mailingPath);
@@ -2603,7 +2667,7 @@ function main() {
     });
   });
 
-  const lotObj = extractLot($, legalRows, totalArea);
+  const lotObj = extractLot($, legalRows, totalAreaRaw);
   writeJSON("lot.json", lotObj);
 }
 
