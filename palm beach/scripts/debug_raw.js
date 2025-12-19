@@ -1913,37 +1913,54 @@ function sanitizeAddressPayloadForWrite(payload) {
   // Always prefer the raw branch when the source gives us an unnormalized
   // string; only emit a normalized variant when we truly lack a raw address.
   if (trimmedUnnormalized.length) {
-    const rawOut = {
-      unnormalized_address: trimmedUnnormalized,
-      request_identifier:
-        payload.request_identifier === undefined
-          ? null
-          : safeNullIfEmpty(payload.request_identifier),
-      source_http_request:
-        prepareSourceHttpRequest(payload.source_http_request) || null,
-    };
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        rawOut[field] = trimmedUnnormalized;
+        return;
+      }
+      if (field === "request_identifier") {
+        rawOut[field] =
+          payload.request_identifier === undefined
+            ? null
+            : safeNullIfEmpty(payload.request_identifier);
+        return;
+      }
+      if (field === "source_http_request") {
+        rawOut[field] = prepareSourceHttpRequest(payload.source_http_request) || null;
+        return;
+      }
+      if (field === "county_name") {
+        rawOut[field] =
+          safeNullIfEmpty(payload.county_name || payload.county_jurisdiction) || null;
+        return;
+      }
+      let value = payload[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        rawOut[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      rawOut[field] = value === undefined ? null : value;
+    });
 
-    const latitude = parseCoordinate(payload.latitude);
-    const longitude = parseCoordinate(payload.longitude);
-    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-      rawOut.latitude = latitude;
-      rawOut.longitude = longitude;
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
     }
-
-    const countryCode = safeNullIfEmpty(payload.country_code);
-    const stateCode = safeNullIfEmpty(payload.state_code);
-    const countyName = safeNullIfEmpty(
-      payload.county_name || payload.county_jurisdiction,
-    );
-    const postalCode = safeNullIfEmpty(payload.postal_code);
-    const plusFour = safeNullIfEmpty(payload.plus_four_postal_code);
-
-    if (postalCode) rawOut.postal_code = postalCode;
-    if (plusFour) rawOut.plus_four_postal_code = plusFour;
-    if (stateCode) rawOut.state_code = stateCode;
-    if (countyName) rawOut.county_name = countyName;
-    if (countryCode || stateCode) {
-      rawOut.country_code = countryCode || "US";
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rawOut.state_code) &&
+      !hasMeaningfulAddressValue(rawOut.country_code)
+    ) {
+      rawOut.country_code = "US";
     }
 
     return applyNullAddressRelationships(rawOut);
@@ -33168,42 +33185,93 @@ async function main() {
 
     let finalAddressOut = null;
     if (finalRawCandidate) {
-      const lat = parseCoordinate(snapshot.latitude ?? finalNormalizedSurface?.latitude);
-      const lon = parseCoordinate(snapshot.longitude ?? finalNormalizedSurface?.longitude);
-      const postal = safeNullIfEmpty(
-        snapshot.postal_code ?? finalNormalizedSurface?.postal_code,
-      );
-      const plus4 = safeNullIfEmpty(
-        snapshot.plus_four_postal_code ?? finalNormalizedSurface?.plus_four_postal_code,
-      );
-      const stateCode =
-        safeNullIfEmpty(snapshot.state_code ?? finalNormalizedSurface?.state_code) ||
-        inferredStateCode ||
-        null;
-      const county =
+      const finalCounty =
         safeNullIfEmpty(snapshot.county_name) ||
         safeNullIfEmpty(formattedCountyName) ||
         safeNullIfEmpty(countyName) ||
         null;
-      const country =
+      const finalState =
+        safeNullIfEmpty(snapshot.state_code ?? finalNormalizedSurface?.state_code) ||
+        inferredStateCode ||
+        null;
+      const finalCountry =
         safeNullIfEmpty(snapshot.country_code ?? finalNormalizedSurface?.country_code) ||
-        (stateCode ? "US" : null);
+        (finalState ? "US" : null);
 
-      finalAddressOut = {
-        unnormalized_address: finalRawCandidate,
-        request_identifier: resolvedRequestId,
-        source_http_request: resolvedSourceHttp,
-      };
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (field === "unnormalized_address") {
+          rawOut[field] = finalRawCandidate;
+          return;
+        }
+        if (field === "request_identifier") {
+          rawOut[field] = resolvedRequestId === undefined ? null : resolvedRequestId;
+          return;
+        }
+        if (field === "source_http_request") {
+          rawOut[field] = resolvedSourceHttp || null;
+          return;
+        }
+        if (field === "county_name") {
+          rawOut[field] = finalCounty;
+          return;
+        }
+        if (field === "state_code") {
+          rawOut[field] = finalState;
+          return;
+        }
+        if (field === "country_code") {
+          rawOut[field] = finalCountry;
+          return;
+        }
+        if (field === "postal_code") {
+          rawOut[field] =
+            safeNullIfEmpty(snapshot.postal_code ?? finalNormalizedSurface?.postal_code) ||
+            rawOut[field] ||
+            null;
+          return;
+        }
+        if (field === "plus_four_postal_code") {
+          const plus4Candidate =
+            safeNullIfEmpty(
+              snapshot.plus_four_postal_code ?? finalNormalizedSurface?.plus_four_postal_code,
+            ) || null;
+          rawOut[field] = rawOut.postal_code ? plus4Candidate : null;
+          return;
+        }
 
-      if (Number.isFinite(lat) && Number.isFinite(lon)) {
-        finalAddressOut.latitude = lat;
-        finalAddressOut.longitude = lon;
+        let value = snapshot[field];
+        if (value === undefined && finalNormalizedSurface) {
+          value = finalNormalizedSurface[field];
+        }
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+          return;
+        }
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          rawOut[field] = trimmed.length ? trimmed : null;
+          return;
+        }
+        rawOut[field] = value === undefined ? null : value;
+      });
+
+      if (!rawOut.postal_code) {
+        rawOut.plus_four_postal_code = null;
       }
-      if (postal) finalAddressOut.postal_code = postal;
-      if (plus4) finalAddressOut.plus_four_postal_code = plus4;
-      if (stateCode) finalAddressOut.state_code = stateCode;
-      if (county) finalAddressOut.county_name = county;
-      if (country) finalAddressOut.country_code = country;
+      if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+        rawOut.latitude = null;
+        rawOut.longitude = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rawOut.state_code) &&
+        !hasMeaningfulAddressValue(rawOut.country_code)
+      ) {
+        rawOut.country_code = "US";
+      }
+
+      finalAddressOut = rawOut;
     } else if (finalNormalizedReady) {
       finalAddressOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
       NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
