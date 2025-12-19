@@ -11891,6 +11891,92 @@ const RAW_ONE_OF_REQUIRED_SURFACE_FIELDS = Object.freeze([
   "county_name",
 ]);
 
+// Guarantee the raw branch carries every schema field so oneOf validation
+// never complains about missing normalized keys when we only have a raw string.
+function enforceRawAddressFieldCoverage(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(snapshot.unnormalized_address);
+  if (!rawValue) return;
+
+  const completed = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      completed.unnormalized_address = rawValue;
+      return;
+    }
+    if (field === "request_identifier") {
+      const resolvedRequestId = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          snapshot.request_identifier,
+          ...(options.requestIdentifierCandidates || []),
+        ]),
+      );
+      completed.request_identifier = resolvedRequestId ?? null;
+      return;
+    }
+    if (field === "source_http_request") {
+      completed.source_http_request =
+        resolveSourceHttpRequest(
+          snapshot.source_http_request,
+          ...(options.sourceHttpRequestCandidates || []),
+        ) || null;
+      return;
+    }
+
+    let value = snapshot[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      completed[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      completed[field] =
+        trimmed.length && typeof sanitizeAddressFieldValue === "function"
+          ? sanitizeAddressFieldValue(field, trimmed)
+          : trimmed.length
+            ? trimmed
+            : null;
+      return;
+    }
+    completed[field] =
+      value === undefined || value === null
+        ? null
+        : typeof sanitizeAddressFieldValue === "function"
+          ? sanitizeAddressFieldValue(field, value)
+          : value;
+  });
+
+  if (!completed.county_name) {
+    completed.county_name =
+      safeNullIfEmpty(options.countyFallback) || null;
+  }
+  if (!completed.state_code) {
+    completed.state_code =
+      safeNullIfEmpty(options.stateFallback) || null;
+  }
+  if (!completed.postal_code) {
+    completed.plus_four_postal_code = null;
+  }
+  if ((completed.latitude == null) !== (completed.longitude == null)) {
+    completed.latitude = null;
+    completed.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(completed.state_code) &&
+    !hasMeaningfulAddressValue(completed.country_code)
+  ) {
+    completed.country_code = options.countryFallback || "US";
+  }
+
+  writeJSON(addressPath, completed);
+}
+
 function buildMinimalRawAddress(rawValue, options = {}) {
   const unnormalized = safeNullIfEmpty(rawValue);
   if (!unnormalized) return null;
@@ -36614,6 +36700,26 @@ async function main() {
       removeFileIfExists(addressOutputPath);
     }
   }
+
+  enforceRawAddressFieldCoverage(addressOutputPath, {
+    requestIdentifierCandidates: [
+      resolvedRequestIdentifier,
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      unAddr && unAddr.source_http_request,
+      seed && seed.source_http_request,
+    ],
+    countyFallback:
+      formattedCountyName || countyName || (unAddr && unAddr.county_jurisdiction),
+    stateFallback: inferredStateCode || "FL",
+    countryFallback: "US",
+  });
 
   enforcePropertyRelationshipNulls(propertyFilePath);
   enforceAddressRelationshipNulls(addressOutputPath);
