@@ -28,6 +28,16 @@ const ADDRESS_RELATIONSHIP_BASENAME_SET = new Set(
 
 let lockedAddressPath = null;
 
+function parsePostalFromAddressString(raw) {
+  if (typeof raw !== "string") return { postal_code: null, plus_four_postal_code: null };
+  const cleaned = raw.replace(/\s+/g, " ").trim();
+  const zipMatch = cleaned.match(/(\d{5})(?:-?(\d{4}))?$/);
+  if (!zipMatch) return { postal_code: null, plus_four_postal_code: null };
+  const postal = zipMatch[1] || null;
+  const plus4 = zipMatch[2] || null;
+  return { postal_code: postal, plus_four_postal_code: plus4 };
+}
+
 function isExplicitNullPayload(payload) {
   if (payload === null) return true;
   if (typeof payload === "string") {
@@ -11846,6 +11856,51 @@ function buildMinimalRawAddress(rawValue, options = {}) {
   const preparedSource = prepareSourceHttpRequest(sourceHttp) || null;
   base.source_http_request = preparedSource;
   base.request_identifier = resolveString(requestIdentifier);
+
+  return base;
+}
+
+function buildRawAddressDeterministicSurface(rawValue, options = {}) {
+  const unnormalized = safeNullIfEmpty(rawValue);
+  if (!unnormalized) return null;
+
+  /** @type {Record<string, any>} */
+  const base = {};
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    base[field] = null;
+  });
+
+  const postalFromRaw = parsePostalFromAddressString(unnormalized);
+  const lat = parseCoordinate(options.latitude);
+  const lon = parseCoordinate(options.longitude);
+
+  base.unnormalized_address = unnormalized;
+  base.request_identifier = safeNullIfEmpty(options.request_identifier) ?? null;
+  base.source_http_request = prepareSourceHttpRequest(options.source_http_request) || null;
+  base.county_name = safeNullIfEmpty(options.county_name) ?? null;
+  base.state_code = safeNullIfEmpty(options.state_code) ?? null;
+  base.country_code =
+    safeNullIfEmpty(options.country_code) ??
+    (base.state_code ? "US" : null);
+
+  base.postal_code =
+    safeNullIfEmpty(options.postal_code) ?? postalFromRaw.postal_code ?? null;
+  base.plus_four_postal_code = base.postal_code
+    ? sanitizePlus4(
+        safeNullIfEmpty(options.plus_four_postal_code) ??
+          postalFromRaw.plus_four_postal_code ??
+          null,
+      )
+    : null;
+
+  if (Number.isFinite(lat) && Number.isFinite(lon)) {
+    base.latitude = lat;
+    base.longitude = lon;
+  }
+  if ((base.latitude == null) !== (base.longitude == null)) {
+    base.latitude = null;
+    base.longitude = null;
+  }
 
   return base;
 }
@@ -35234,6 +35289,64 @@ async function main() {
     }
   }
 
+  // Hard-stop: force the raw oneOf branch when the source gives us an
+  // unnormalized address. Rebuild the payload with the full address surface so
+  // required fields are always present (nullable) and UR relationships stay
+  // null for downstream population.
+  {
+    const snapshot = readJSONIfExists(addressOutputPath) || {};
+    const forcedRawValue = resolveFirstNonEmptyString([
+      snapshot.unnormalized_address,
+      ...rawCandidates,
+      canonicalUnnormalized,
+      unnormalizedAddressCandidate,
+      fullAddr,
+      fullAddrInput,
+      siteLocationLine,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ]);
+    const deterministicRaw = buildRawAddressDeterministicSurface(
+      forcedRawValue,
+      {
+        request_identifier:
+          resolvedRequestIdentifier ??
+          snapshot.request_identifier ??
+          trimmedRequestIdentifier ??
+          parcelId ??
+          null,
+        source_http_request:
+          resolvedSourceHttp ??
+          sourceHttpCandidate ??
+          snapshot.source_http_request ??
+          null,
+        county_name: formattedCountyName || countyName || snapshot.county_name || "Palm Beach",
+        state_code: inferredStateCode || snapshot.state_code || "FL",
+        country_code: snapshot.country_code || "US",
+        postal_code: snapshot.postal_code ?? fallbackPostalValue,
+        plus_four_postal_code:
+          snapshot.plus_four_postal_code ?? fallbackPlus4Value ?? null,
+        latitude: snapshot.latitude ?? (parcelCentroid && parcelCentroid.latitude),
+        longitude: snapshot.longitude ?? (parcelCentroid && parcelCentroid.longitude),
+      },
+    );
+
+    if (deterministicRaw) {
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (!Object.prototype.hasOwnProperty.call(deterministicRaw, field)) {
+          deterministicRaw[field] = null;
+        }
+      });
+      writeJSON(addressOutputPath, applyNullAddressRelationships(deterministicRaw));
+    } else {
+      console.warn(
+        "No raw address candidate available; removing address.json to avoid invalid schema output. Raw inputs considered:",
+        forcedRawValue,
+      );
+      removeFileIfExists(addressOutputPath);
+    }
+  }
+
   lockRawBranchWhenUnnormalized(addressOutputPath, {
     rawCandidates,
     requestIdentifier:
@@ -35243,6 +35356,29 @@ async function main() {
     stateFallback: inferredStateCode || "FL",
     countryFallback: "US",
   });
+
+  // Normalize the postal fields one last time from the raw string so we don't
+  // emit bogus plus-four values (for example, picking up the street number).
+  if (fs.existsSync(addressOutputPath)) {
+    const finalSnapshot = readJSONIfExists(addressOutputPath) || {};
+    const parsedPostal = parsePostalFromAddressString(
+      finalSnapshot.unnormalized_address || "",
+    );
+    if (parsedPostal.postal_code && !finalSnapshot.postal_code) {
+      finalSnapshot.postal_code = parsedPostal.postal_code;
+    }
+    if (finalSnapshot.postal_code) {
+      finalSnapshot.plus_four_postal_code = parsedPostal.plus_four_postal_code || null;
+    } else {
+      finalSnapshot.plus_four_postal_code = null;
+    }
+    if ((finalSnapshot.latitude == null) !== (finalSnapshot.longitude == null)) {
+      finalSnapshot.latitude = null;
+      finalSnapshot.longitude = null;
+    }
+    writeJSON(addressOutputPath, applyNullAddressRelationships(finalSnapshot));
+  }
+
   enforceAddressRelationshipNulls(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
 
