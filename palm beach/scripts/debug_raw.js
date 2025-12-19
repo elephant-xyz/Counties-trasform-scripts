@@ -30337,7 +30337,7 @@ async function main() {
   const seedSource = readJSONIfExists("property_seed.json") || {};
   const existingAddress = readJSONIfExists(addressOutputPath) || {};
 
-  const rawCandidates = [
+  const finalRawCandidates = [
     existingAddress.unnormalized_address,
     ...finalUnnormalizedCandidates,
     unnormalizedAddressCandidate,
@@ -30350,7 +30350,9 @@ async function main() {
     unAddr && unAddr.unnormalized_address,
   ].filter((candidate) => candidate !== undefined);
 
-  const resolvedRaw = safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates));
+  const resolvedRaw = safeNullIfEmpty(
+    resolveFirstNonEmptyString(finalRawCandidates),
+  );
   const resolvedRequestIdentifier = safeNullIfEmpty(
     resolveFirstNonEmptyString([
       existingAddress.request_identifier,
@@ -30543,7 +30545,7 @@ async function main() {
   // populated, otherwise the lean raw variant anchored on the unnormalized string.
   enforceMinimalRawAddressBranch(addressOutputPath);
   alignAddressOneOfSurfaceForOutput(addressOutputPath, {
-    rawCandidates,
+    rawCandidates: finalRawCandidates,
     requestIdentifierCandidates: [
       resolvedRequestIdentifier,
       trimmedRequestIdentifier,
@@ -30559,7 +30561,7 @@ async function main() {
     ],
   });
   finalizeAddressBranchForSchema(addressOutputPath, {
-    rawCandidates,
+    rawCandidates: finalRawCandidates,
     requestIdentifierCandidates: [
       resolvedRequestIdentifier,
       trimmedRequestIdentifier,
@@ -30576,7 +30578,7 @@ async function main() {
   });
   enforceAddressSchemaSurfaceForOutput(addressOutputPath);
   lockAddressToSchemaOneOf(addressOutputPath, {
-    rawCandidates,
+    rawCandidates: finalRawCandidates,
     requestIdentifier: resolvedRequestIdentifier,
     sourceHttpRequest: resolvedSourceHttp,
   });
@@ -30587,7 +30589,10 @@ async function main() {
   if (fs.existsSync(addressOutputPath)) {
     const payload = readJSONIfExists(addressOutputPath) || {};
     const rawValue = safeNullIfEmpty(
-      resolveFirstNonEmptyString([payload.unnormalized_address, ...rawCandidates]),
+      resolveFirstNonEmptyString([
+        payload.unnormalized_address,
+        ...finalRawCandidates,
+      ]),
     );
     const normalizedSurface =
       ensureNormalizedAddressSchemaSurface &&
