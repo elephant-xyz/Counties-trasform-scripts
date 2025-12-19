@@ -1939,59 +1939,22 @@ function sanitizeAddressPayloadForWrite(payload) {
   // Always prefer the raw branch when the source gives us an unnormalized
   // string; only emit a normalized variant when we truly lack a raw address.
   if (trimmedUnnormalized.length) {
-    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-      if (field === "unnormalized_address") {
-        rawOut[field] = trimmedUnnormalized;
-        return;
-      }
-      if (field === "request_identifier") {
-        rawOut[field] =
-          payload.request_identifier === undefined
-            ? null
-            : safeNullIfEmpty(payload.request_identifier);
-        return;
-      }
-      if (field === "source_http_request") {
-        rawOut[field] = prepareSourceHttpRequest(payload.source_http_request) || null;
-        return;
-      }
-      if (field === "county_name") {
-        const countyCandidate =
-          payload.county_name === undefined || payload.county_name === null
-            ? payload.county_jurisdiction
-            : payload.county_name;
-        rawOut[field] = safeNullIfEmpty(countyCandidate) || null;
-        return;
-      }
-      let value = payload[field];
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(value);
-        rawOut[field] = Number.isFinite(numeric) ? numeric : null;
-        return;
-      }
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        rawOut[field] = trimmed.length ? trimmed : null;
-        return;
-      }
-      rawOut[field] = value === undefined ? null : value;
-    });
-
-    if (!rawOut.postal_code) {
-      rawOut.plus_four_postal_code = null;
+    const rawOut = {
+      unnormalized_address: trimmedUnnormalized,
+      request_identifier:
+        payload.request_identifier === undefined
+          ? null
+          : safeNullIfEmpty(payload.request_identifier),
+      source_http_request:
+        prepareSourceHttpRequest(payload.source_http_request) || null,
+    };
+    const countyCandidate =
+      payload.county_name === undefined || payload.county_name === null
+        ? payload.county_jurisdiction
+        : payload.county_name;
+    if (countyCandidate !== undefined) {
+      rawOut.county_name = safeNullIfEmpty(countyCandidate) || null;
     }
-    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
-      rawOut.latitude = null;
-      rawOut.longitude = null;
-    }
-    if (
-      hasMeaningfulAddressValue(rawOut.state_code) &&
-      !hasMeaningfulAddressValue(rawOut.country_code)
-    ) {
-      rawOut.country_code = "US";
-    }
-
     return applyNullAddressRelationships(rawOut);
   }
 
@@ -35658,6 +35621,71 @@ async function main() {
     removeAddressRelationshipFiles(dataDir);
     removeAddressRelationshipFiles(relationshipsDir);
     nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
+  }
+
+  // Final oneOf clamp: prefer the raw branch whenever the source provides an
+  // unnormalized string, otherwise emit the normalized branch only when it is
+  // fully populated. Strip cross-branch fields so validation cleanly picks a
+  // single schema option.
+  if (fs.existsSync(addressOutputPath)) {
+    const snapshot = readJSONIfExists(addressOutputPath) || {};
+    const rawCandidate = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        snapshot.unnormalized_address,
+        ...rawCandidates,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+    const normalizedSurface =
+      typeof ensureNormalizedAddressSchemaSurface === "function"
+        ? ensureNormalizedAddressSchemaSurface({ ...snapshot })
+        : null;
+    const normalizedReady =
+      normalizedSurface &&
+      typeof hasCompleteNormalizedAddress === "function" &&
+      hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+    if (rawCandidate) {
+      const cleanedRaw = {
+        unnormalized_address: rawCandidate,
+        request_identifier:
+          safeNullIfEmpty(
+            resolveFirstNonEmptyString([
+              snapshot.request_identifier,
+              resolvedRequestIdentifier,
+              trimmedRequestIdentifier,
+              parcelId,
+              seed && seed.request_identifier,
+              unAddr && unAddr.request_identifier,
+            ]),
+          ) ?? null,
+        source_http_request:
+          prepareSourceHttpRequest(
+            resolveSourceHttpRequest(
+              snapshot.source_http_request,
+              resolvedSourceHttp,
+              sourceHttpCandidate,
+              unnormalizedSource.source_http_request,
+              seedSource && seedSource.source_http_request,
+            ),
+          ) || null,
+      };
+      writeJSON(addressOutputPath, cleanedRaw);
+    } else if (normalizedReady) {
+      const normalizedOut = { ...normalizedSurface };
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOut,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOut.unnormalized_address;
+      }
+      writeJSON(addressOutputPath, normalizedOut);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
   }
 
   // Normalize the postal fields one last time from the raw string so we don't
