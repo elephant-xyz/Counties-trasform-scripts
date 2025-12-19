@@ -2034,8 +2034,11 @@ function sanitizeAddressPayloadForWrite(payload) {
   // Always prefer the raw branch when the source gives us an unnormalized
   // string; only emit a normalized variant when we truly lack a raw address.
   if (trimmedUnnormalized.length) {
-    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    const rawOut = RAW_MINIMAL_OUTPUT_FIELDS.reduce((acc, field) => {
+      acc[field] = null;
+      return acc;
+    }, {});
+    RAW_MINIMAL_OUTPUT_FIELDS.forEach((field) => {
       if (field === "unnormalized_address") {
         rawOut[field] = trimmedUnnormalized;
         return;
@@ -2071,7 +2074,9 @@ function sanitizeAddressPayloadForWrite(payload) {
         rawOut[field] = trimmed.length ? trimmed : null;
         return;
       }
-      rawOut[field] = value === undefined ? null : value;
+      if (value !== undefined) {
+        rawOut[field] = value;
+      }
     });
 
     if (!rawOut.postal_code) {
@@ -11876,19 +11881,23 @@ const RAW_MINIMAL_OUTPUT_FIELDS = Object.freeze([
   "request_identifier",
   "source_http_request",
   "county_name",
+  "city_name",
+  "municipality_name",
   "state_code",
   "country_code",
   "postal_code",
   "plus_four_postal_code",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "route_number",
 ]);
 
 // Normalize the raw branch surface so required oneOf fields are always present.
 const RAW_ONE_OF_REQUIRED_SURFACE_FIELDS = Object.freeze([
-  "unnormalized_address",
-  ...ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS,
-  "request_identifier",
-  "source_http_request",
-  "county_name",
+  ...RAW_MINIMAL_OUTPUT_FIELDS,
 ]);
 
 // Guarantee the raw branch carries every schema field so oneOf validation
@@ -27673,8 +27682,12 @@ function finalizeAddressOneOfSimplified(addressPath, options = {}) {
   const countryFallback = options.countryFallback || null;
 
   if (rawCandidate) {
-    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    const rawOut = RAW_MINIMAL_OUTPUT_FIELDS.reduce((acc, field) => {
+      acc[field] = null;
+      return acc;
+    }, {});
+
+    RAW_MINIMAL_OUTPUT_FIELDS.forEach((field) => {
       if (field === "unnormalized_address") {
         rawOut[field] = rawCandidate;
         return;
@@ -27692,6 +27705,8 @@ function finalizeAddressOneOfSimplified(addressPath, options = {}) {
         snapshot[field] !== undefined ? snapshot[field] : normalizedSurface[field];
       if (value === undefined) {
         if (field === "county_name") value = countyFallback;
+        if (field === "city_name") value = null;
+        if (field === "municipality_name") value = null;
         if (field === "state_code") value = stateFallback;
         if (field === "country_code") value = countryFallback;
       }
@@ -27706,7 +27721,9 @@ function finalizeAddressOneOfSimplified(addressPath, options = {}) {
         rawOut[field] = trimmed.length ? trimmed : null;
         return;
       }
-      rawOut[field] = value === undefined ? null : value;
+      if (value !== undefined) {
+        rawOut[field] = value;
+      }
     });
 
     if (!rawOut.postal_code) {
