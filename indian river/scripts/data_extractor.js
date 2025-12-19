@@ -100,19 +100,65 @@ function extractUseCode($) {
   $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
     if (code) return false;
     const $tr = $(tr);
-    const labelText = textTrim(
+    let rawLabelText = textTrim(
       $tr.find("th strong, th, td strong").first().text(),
-    ).toLowerCase();
+    );
+    if (!rawLabelText) {
+      const altLabelSelectors = [
+        "td span",
+        "td:first-child",
+        "[data-label]",
+        "[aria-label]",
+      ];
+      for (const selector of altLabelSelectors) {
+        const candidate = textTrim($tr.find(selector).first().text());
+        if (candidate) {
+          rawLabelText = candidate;
+          break;
+        }
+      }
+    }
+    if (!rawLabelText) {
+      const dataLabelAttr =
+        $tr.attr("data-label") || $tr.attr("aria-label") || $tr.data("label");
+      if (dataLabelAttr) {
+        rawLabelText = textTrim(String(dataLabelAttr));
+      }
+    }
+    const labelText = (rawLabelText || "").toLowerCase();
     if (
       labelText.includes("property use code") ||
       labelText === "use code" ||
       labelText.includes("land use code")
     ) {
-      const $valueCell = $tr.find("td").last().clone();
-      $valueCell.find("strong").remove();
-      const valueText = textTrim(
-        $valueCell.text() || $tr.find("td span").first().text(),
-      );
+      const collectValueText = () => {
+        const valueSelectors = [
+          () => $tr.find("td").last(),
+          () => $tr.find("th").last(),
+          () => $tr.children("td, th").eq(1),
+        ];
+        for (const getCandidate of valueSelectors) {
+          const $candidate = getCandidate();
+          if (!$candidate || !$candidate.length) continue;
+          const clone = $candidate.clone();
+          clone.find("strong").remove();
+          const candidateText = textTrim(
+            clone.text() || clone.find("span").first().text(),
+          );
+          if (candidateText) return candidateText;
+        }
+        const inlineText = textTrim($tr.text());
+        if (inlineText) {
+          const match = inlineText.match(
+            /(property\s+use\s+code|land\s+use\s+code|use\s+code)\s*[:\-]?\s*(.+)$/i,
+          );
+          if (match && match[2]) {
+            return textTrim(match[2]);
+          }
+        }
+        return null;
+      };
+      const valueText = collectValueText();
       if (valueText) {
         code = valueText;
         return false;
@@ -837,6 +883,14 @@ const PROPERTY_USE_CODE_MAPPINGS = {
   },
 };
 
+const DEFAULT_PROPERTY_MAPPING = {
+  property_type: "LandParcel",
+  property_usage_type: "Unknown",
+  structure_form: null,
+  ownership_estate_type: "FeeSimple",
+  build_status: "VacantLand",
+};
+
 function normalizeUseCode(code) {
   if (!code) return null;
   const match = /(\d{4})/.exec(code);
@@ -846,14 +900,10 @@ function normalizeUseCode(code) {
 
 function mapPropertyAttributesFromUseCode(rawCode) {
   const code = normalizeUseCode(rawCode);
-  if (!code) return null;
+  if (!code) return { ...DEFAULT_PROPERTY_MAPPING };
   const mapping = PROPERTY_USE_CODE_MAPPINGS[code];
   if (!mapping) {
-    throw {
-      type: "error",
-      message: `Unhandled property use code ${rawCode}.`,
-      path: "property.property_type",
-    };
+    return { ...DEFAULT_PROPERTY_MAPPING };
   }
   return { ...mapping };
 }
@@ -1895,7 +1945,6 @@ function writeLayout(
 ) {
   clearExistingLayoutFiles();
   if (!parcelId) return;
-  if (propertyType === "LandParcel") return;
   const layoutsData = readJSON(path.join("owners", "layout_data.json"));
   if (!layoutsData) return;
   const key = `property_${parcelId}`;
