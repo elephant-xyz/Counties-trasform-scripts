@@ -1950,6 +1950,11 @@ function main() {
       cleanedImprovement.improvement_type = "GeneralBuilding";
     }
 
+    // Extra safety: ensure improvement_type is never an empty string
+    if (cleanedImprovement.improvement_type === "") {
+      cleanedImprovement.improvement_type = "GeneralBuilding";
+    }
+
     // Ensure improvement_type is always a valid enum value or null
     const validImprovementTypes = [
       "GeneralBuilding", "ResidentialConstruction", "CommercialConstruction",

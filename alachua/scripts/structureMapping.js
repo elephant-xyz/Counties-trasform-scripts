@@ -136,6 +136,13 @@ function mapRoofCover(token) {
   if (!token || String(token).trim() === "") return null;
   const upper = String(token).toUpperCase().trim();
 
+  // Return null for unknown, minimum, or N/A - CHECK FIRST before positive matches
+  if (upper.includes("MINIMUM") || upper.includes("N/A") || upper.includes("NONE") || upper.includes("UNKNOWN")) return null;
+
+  // Check for built-up roof (tar and gravel)
+  if (upper.includes("TAR") && upper.includes("GRAVEL")) return "Built-Up Roof";
+  if (upper.includes("BUILT") && upper.includes("UP")) return "Built-Up Roof";
+
   // Check for asphalt shingles
   if (upper.includes("ASPHALT") || upper.includes("SHINGLE")) {
     if (upper.includes("3-TAB") || upper.includes("3 TAB")) {
@@ -143,10 +150,6 @@ function mapRoofCover(token) {
     }
     return "Architectural Asphalt Shingle";
   }
-
-  // Check for built-up roof (tar and gravel)
-  if (upper.includes("TAR") && upper.includes("GRAVEL")) return "Built-Up Roof";
-  if (upper.includes("BUILT") && upper.includes("UP")) return "Built-Up Roof";
 
   // Check for metal roofing
   if (upper.includes("METAL")) {
@@ -163,9 +166,10 @@ function mapRoofCover(token) {
     return "Metal Corrugated";
   }
 
-  // Check for tile roofing
+  // Check for tile roofing - specific types first
   if (upper.includes("CLAY") && upper.includes("TILE")) return "Clay Tile";
   if (upper.includes("CONCRETE") && upper.includes("TILE")) return "Concrete Tile";
+  // Only use TILE as catch-all if it doesn't contain invalid markers
   if (upper.includes("TILE")) {
     // Default tile type
     return "Concrete Tile";
@@ -194,9 +198,6 @@ function mapRoofCover(token) {
   // Check for special types
   if (upper.includes("GREEN") && upper.includes("ROOF")) return "Green Roof System";
   if (upper.includes("SOLAR")) return "Solar Integrated Tiles";
-
-  // Return null for unknown, minimum, or N/A
-  if (upper.includes("MINIMUM") || upper.includes("N/A") || upper.includes("NONE") || upper.includes("UNKNOWN")) return null;
 
   return null;
 }
