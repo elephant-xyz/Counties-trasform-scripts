@@ -11046,6 +11046,15 @@ const RAW_MINIMAL_OUTPUT_FIELDS = Object.freeze([
   "plus_four_postal_code",
 ]);
 
+// Normalize the raw branch surface so required oneOf fields are always present.
+const RAW_ONE_OF_REQUIRED_SURFACE_FIELDS = Object.freeze([
+  "unnormalized_address",
+  ...ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS,
+  "request_identifier",
+  "source_http_request",
+  "county_name",
+]);
+
 function buildMinimalRawAddress(rawValue, options = {}) {
   const unnormalized = safeNullIfEmpty(rawValue);
   if (!unnormalized) return null;
@@ -16923,6 +16932,87 @@ function enforceRawOnlyAddressPayload(addressPath, options = {}) {
   }
 
   writeJSON(addressPath, applyNullAddressRelationships(rawOut));
+}
+
+// Final guard: when a raw address string exists, rebuild the payload so every
+// required oneOf field is present (nullable) and drop any stray keys that could
+// trip the normalized branch. This keeps validation happy by deterministically
+// choosing the raw branch.
+function enforceRawRequiredSurface(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const snapshot = readJSONIfExists(addressPath) || {};
+  const rawCandidate = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      snapshot.unnormalized_address,
+      ...(options.rawCandidates || []),
+    ]),
+  );
+  if (!rawCandidate) {
+    return;
+  }
+
+  const reqId =
+    options.requestIdentifier !== undefined
+      ? options.requestIdentifier
+      : snapshot.request_identifier;
+  const preparedSource =
+    prepareSourceHttpRequest(
+      options.sourceHttpRequest !== undefined
+        ? options.sourceHttpRequest
+        : snapshot.source_http_request,
+    ) || null;
+
+  const rebuilt = {};
+  RAW_ONE_OF_REQUIRED_SURFACE_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      rebuilt[field] = rawCandidate;
+      return;
+    }
+    if (field === "request_identifier") {
+      rebuilt[field] = reqId === undefined ? null : safeNullIfEmpty(reqId);
+      return;
+    }
+    if (field === "source_http_request") {
+      rebuilt[field] = preparedSource;
+      return;
+    }
+
+    let value = snapshot[field];
+    if (field === "county_name") {
+      value =
+        safeNullIfEmpty(value) ||
+        safeNullIfEmpty(options.countyFallback) ||
+        null;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rebuilt[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rebuilt[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    rebuilt[field] = value === undefined ? null : value;
+  });
+
+  if (!rebuilt.postal_code) {
+    rebuilt.plus_four_postal_code = null;
+  }
+  if ((rebuilt.latitude == null) !== (rebuilt.longitude == null)) {
+    rebuilt.latitude = null;
+    rebuilt.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rebuilt.state_code) &&
+    !hasMeaningfulAddressValue(rebuilt.country_code)
+  ) {
+    rebuilt.country_code = options.countryFallback || "US";
+  }
+
+  writeJSON(addressPath, applyNullAddressRelationships(rebuilt));
 }
 
 function enforceRawPreferenceWhenAvailable(addressPath, options = {}) {
@@ -33325,6 +33415,15 @@ async function main() {
       removeFileIfExists(addressOutputPath);
     }
   }
+
+  enforceRawRequiredSurface(addressOutputPath, {
+    rawCandidates,
+    requestIdentifier:
+      resolvedRequestIdentifier ?? trimmedRequestIdentifier ?? parcelId ?? null,
+    sourceHttpRequest: resolvedSourceHttp ?? sourceHttpCandidate ?? null,
+    countyFallback: formattedCountyName || countyName || "Palm Beach",
+    countryFallback: "US",
+  });
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
