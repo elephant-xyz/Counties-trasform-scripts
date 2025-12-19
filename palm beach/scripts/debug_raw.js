@@ -11874,26 +11874,11 @@ const RAW_ONE_OF_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-const RAW_MINIMAL_OUTPUT_FIELDS = Object.freeze([
-  "unnormalized_address",
-  "latitude",
-  "longitude",
-  "request_identifier",
-  "source_http_request",
-  "county_name",
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "country_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "route_number",
-]);
+// Align the raw oneOf surface with the full address schema so every field is
+// present (nullable) even when we only have an unnormalized string. This keeps
+// the oneOf happy by preventing "missing required property" errors on street
+// components and other normalized fields.
+const RAW_MINIMAL_OUTPUT_FIELDS = Object.freeze([...RAW_ADDRESS_ALLOWED_FIELDS]);
 
 // Normalize the raw branch surface so required oneOf fields are always present.
 const RAW_ONE_OF_REQUIRED_SURFACE_FIELDS = Object.freeze([
