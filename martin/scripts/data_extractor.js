@@ -846,6 +846,76 @@ function titleCaseName(s) {
   return cleaned;
 }
 
+function cleanMiddleName(s) {
+  if (s == null) return null;
+  s = String(s).trim();
+  if (!s) return null;
+
+  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
+  s = s.replace(/[^a-zA-Z\s\-',.]/g, "");
+  if (!s) return null;
+
+  // Remove leading/trailing separators and collapse multiple spaces
+  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, "").replace(/\s+/g, " ");
+  if (!s) return null;
+
+  const lower = s.toLowerCase();
+  const parts = [];
+  let currentWord = "";
+  let lastWasSeparator = false;
+
+  for (let i = 0; i < lower.length; i++) {
+    const char = lower[i];
+    if (/[\s\-',.]/.test(char)) {
+      if (currentWord) {
+        parts.push({ type: "word", value: currentWord });
+        currentWord = "";
+      }
+      if (!lastWasSeparator) {
+        parts.push({ type: "sep", value: char });
+        lastWasSeparator = true;
+      }
+    } else {
+      currentWord += char;
+      lastWasSeparator = false;
+    }
+  }
+  if (currentWord) {
+    parts.push({ type: "word", value: currentWord });
+  }
+
+  let result = "";
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.type === "word") {
+      result += part.value.charAt(0).toUpperCase() + part.value.slice(1);
+    } else {
+      result += part.value;
+    }
+  }
+
+  result = result.trim().replace(/\s+/g, " ");
+  result = result.replace(/[\s\-',.]+$/g, "");
+  result = result.replace(/^[\s\-',.]+/g, "");
+
+  if (!result) return null;
+
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+
+  for (let i = 0; i < result.length; i++) {
+    const char = result[i];
+    const code = char.charCodeAt(0);
+    const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    const isSeparator =
+      char === " " || char === "-" || char === "'" || char === "," || char === ".";
+    if (!isLetter && !isSeparator) {
+      return null;
+    }
+  }
+
+  return result;
+}
+
 function getValueByStrong($, label) {
   let out = null;
   $("td > strong").each((i, el) => {
@@ -1724,6 +1794,11 @@ function main() {
     getValueByStrong($, "Total Finished Area") ||
     getValueByStrong($, "Finished Area") ||
     null;
+  const livableSqftValue = parseSquareFeetValue(livable);
+  livable =
+    livableSqftValue != null && livableSqftValue >= 10
+      ? Math.round(livableSqftValue)
+      : null;
   const yearBuiltText = getValueByStrong($, "Year Built");
   const yearBuilt = yearBuiltText
     ? parseInt(yearBuiltText.replace(/[^0-9]/g, ""), 10)
