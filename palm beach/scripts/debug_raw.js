@@ -14385,6 +14385,93 @@ function enforceAddressOneOfRequiredSurface(addressPath, options = {}) {
   writeJSON(addressPath, applyNullAddressRelationships(normalizedOut));
 }
 
+// Final guard: when an unnormalized string exists, rewrite address.json onto the
+// raw oneOf branch with the full schema surface so required keys are always
+// present (nullable). This prevents validators from flagging missing latitude,
+// street components, or unexpected normalized branches.
+function forceRawUnnormalizedAddressSurface(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath) || {};
+  const rawCandidate = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      snapshot.unnormalized_address,
+      ...(Array.isArray(options.rawCandidates) ? options.rawCandidates : []),
+    ]),
+  );
+  if (!rawCandidate) return;
+
+  const resolvedRequestId = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      snapshot.request_identifier,
+      ...(Array.isArray(options.requestIdentifierCandidates)
+        ? options.requestIdentifierCandidates
+        : []),
+    ]),
+  );
+  const resolvedSourceHttp = resolveSourceHttpRequest(
+    snapshot.source_http_request,
+    ...(Array.isArray(options.sourceHttpRequestCandidates)
+      ? options.sourceHttpRequestCandidates
+      : []),
+  );
+
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      rawOut[field] = rawCandidate;
+      return;
+    }
+    if (field === "request_identifier") {
+      rawOut[field] = resolvedRequestId ?? null;
+      return;
+    }
+    if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(resolvedSourceHttp);
+      rawOut[field] = prepared ? deepClone(prepared) : null;
+      return;
+    }
+
+    let value = snapshot[field];
+    if (value === undefined && options.fieldFallbacks) {
+      const fallbacks = options.fieldFallbacks[field];
+      if (Array.isArray(fallbacks)) {
+        value = resolveFirstNonEmptyString(fallbacks);
+      }
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+
+    const sanitized = sanitizeAddressFieldValue(field, value);
+    rawOut[field] = sanitized === undefined ? null : sanitized;
+  });
+
+  if (!rawOut.state_code && options.stateFallback) {
+    rawOut.state_code = options.stateFallback;
+  }
+  if (!rawOut.county_name && options.countyFallback) {
+    rawOut.county_name = options.countyFallback;
+  }
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = options.countryFallback || "US";
+  }
+
+  writeJSON(addressPath, applyNullAddressRelationships(rawOut));
+}
+
 function isRawAddressSchemaReady(address) {
   if (!address || typeof address !== "object") return false;
   const unnormalized =
@@ -27510,6 +27597,7 @@ async function main() {
   let hasNormalizedFinal = false;
   let finalRawCandidateClamp = null;
   let canonicalUnnormalized = "";
+  let addressFieldFallbacks = {};
 
   // Input owners/utilities/layout
   let ownersData = {};
@@ -28801,7 +28889,7 @@ async function main() {
         ? parcelIdRawCandidates
         : [];
 
-    const addressFieldFallbacks = {
+    addressFieldFallbacks = {
       city_name: [
         normalizedSnapshot && normalizedSnapshot.city_name,
         addressForOutput && addressForOutput.city_name,
@@ -36133,6 +36221,26 @@ async function main() {
 
   // Final cleanup: ensure local address relationships are removed/null so the
   // platform can populate URIs downstream.
+  forceRawUnnormalizedAddressSurface(addressOutputPath, {
+    rawCandidates: rawCandidates,
+    requestIdentifierCandidates: [
+      resolvedRequestIdentifier,
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ],
+    fieldFallbacks: addressFieldFallbacks,
+    countyFallback: formattedCountyName || countyName || "Palm Beach",
+    stateFallback: inferredStateCode || "FL",
+    countryFallback: "US",
+  });
   purgeAddressRelationshipArtifacts(dataDir);
   purgeAddressRelationshipArtifacts(relationshipsDir);
   removeAddressRelationshipFiles(dataDir);
