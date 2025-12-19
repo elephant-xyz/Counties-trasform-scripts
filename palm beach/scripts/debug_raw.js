@@ -1929,8 +1929,8 @@ function sanitizeAddressPayloadForWrite(payload) {
   // Always prefer the raw branch when the source gives us an unnormalized
   // string; only emit a normalized variant when we truly lack a raw address.
   if (trimmedUnnormalized.length) {
-    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    const rawOut = {};
+    RAW_MINIMAL_OUTPUT_FIELDS.forEach((field) => {
       if (field === "unnormalized_address") {
         rawOut[field] = trimmedUnnormalized;
         return;
@@ -2977,6 +2977,90 @@ function ensureRawAddressFieldPresence(addressFilePath) {
     addressFilePath,
     `${JSON.stringify(cleaned, null, 2)}\n`,
   );
+}
+
+// Clamp raw address payloads down to the minimal raw branch surface so oneOf
+// selects the unnormalized branch and not the normalized schema.
+function clampRawAddressToMinimalSurface(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) return;
+
+  const normalizedReady =
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...payload });
+  if (normalizedReady) return;
+
+  const minimal = {};
+  RAW_MINIMAL_OUTPUT_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      minimal.unnormalized_address = rawValue;
+      return;
+    }
+    if (field === "request_identifier") {
+      const resolved =
+        safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            payload.request_identifier,
+            options.requestIdentifier,
+          ]),
+        ) ?? null;
+      minimal.request_identifier = resolved;
+      return;
+    }
+    if (field === "source_http_request") {
+      const prepared =
+        prepareSourceHttpRequest(
+          resolveSourceHttpRequest(
+            payload.source_http_request,
+            options.sourceHttpRequest,
+            options.seedSourceHttpRequest,
+          ),
+        ) || null;
+      minimal.source_http_request = prepared;
+      return;
+    }
+
+    let value = payload[field];
+    if (field === "county_name" && !value && options.countyFallback) {
+      value = options.countyFallback;
+    }
+    if (field === "country_code" && !value && options.countryFallback) {
+      value = options.countryFallback;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      value = Number.isFinite(numeric) ? numeric : null;
+    } else if (typeof value === "string") {
+      const trimmed = value.trim();
+      value = trimmed.length ? trimmed : null;
+    } else if (value === undefined) {
+      value = null;
+    }
+    minimal[field] = value;
+  });
+
+  if (!minimal.postal_code) {
+    minimal.plus_four_postal_code = null;
+  }
+  if ((minimal.latitude == null) !== (minimal.longitude == null)) {
+    minimal.latitude = null;
+    minimal.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(minimal.state_code) &&
+    !hasMeaningfulAddressValue(minimal.country_code)
+  ) {
+    minimal.country_code = options.countryFallback || "US";
+  }
+
+  writeJSON(addressPath, applyNullAddressRelationships(minimal));
 }
 
 // Hard-stop guard: if we only have an unnormalized address, rebuild the raw
@@ -34702,6 +34786,15 @@ async function main() {
       removeFileIfExists(addressOutputPath);
     }
   }
+
+  clampRawAddressToMinimalSurface(addressOutputPath, {
+    requestIdentifier:
+      resolvedRequestIdentifier ?? trimmedRequestIdentifier ?? parcelId ?? null,
+    sourceHttpRequest: resolvedSourceHttp ?? sourceHttpCandidate ?? null,
+    seedSourceHttpRequest: seed && seed.source_http_request,
+    countyFallback: formattedCountyName || countyName || "Palm Beach",
+    countryFallback: "US",
+  });
 
   enforceAddressRelationshipNulls(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
