@@ -513,12 +513,18 @@ function parseCurrencyToNumber(text) {
   if (cleaned === "") return null;
   const num = parseFloat(cleaned);
   if (isNaN(num)) return null;
-  return Math.round(num * 100) / 100;
+  // Currency must be positive (>= 0)
+  if (num < 0) return null;
+  // Round to exactly 2 decimal places to avoid floating point precision issues
+  return parseFloat(num.toFixed(2));
 }
 
 const COMPANY_HINTS = [
   " LLC",
   " L.L.C",
+  " L.C.",
+  " L.C",
+  " LC",
   " INC",
   " CORPORATION",
   " CORP",
@@ -838,6 +844,76 @@ function titleCaseName(s) {
   // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
   if (!cleaned || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(cleaned)) return null;
   return cleaned;
+}
+
+function cleanMiddleName(s) {
+  if (s == null) return null;
+  s = String(s).trim();
+  if (!s) return null;
+
+  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
+  s = s.replace(/[^a-zA-Z\s\-',.]/g, "");
+  if (!s) return null;
+
+  // Remove leading/trailing separators and collapse multiple spaces
+  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, "").replace(/\s+/g, " ");
+  if (!s) return null;
+
+  const lower = s.toLowerCase();
+  const parts = [];
+  let currentWord = "";
+  let lastWasSeparator = false;
+
+  for (let i = 0; i < lower.length; i++) {
+    const char = lower[i];
+    if (/[\s\-',.]/.test(char)) {
+      if (currentWord) {
+        parts.push({ type: "word", value: currentWord });
+        currentWord = "";
+      }
+      if (!lastWasSeparator) {
+        parts.push({ type: "sep", value: char });
+        lastWasSeparator = true;
+      }
+    } else {
+      currentWord += char;
+      lastWasSeparator = false;
+    }
+  }
+  if (currentWord) {
+    parts.push({ type: "word", value: currentWord });
+  }
+
+  let result = "";
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.type === "word") {
+      result += part.value.charAt(0).toUpperCase() + part.value.slice(1);
+    } else {
+      result += part.value;
+    }
+  }
+
+  result = result.trim().replace(/\s+/g, " ");
+  result = result.replace(/[\s\-',.]+$/g, "");
+  result = result.replace(/^[\s\-',.]+/g, "");
+
+  if (!result) return null;
+
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+
+  for (let i = 0; i < result.length; i++) {
+    const char = result[i];
+    const code = char.charCodeAt(0);
+    const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    const isSeparator =
+      char === " " || char === "-" || char === "'" || char === "," || char === ".";
+    if (!isLetter && !isSeparator) {
+      return null;
+    }
+  }
+
+  return result;
 }
 
 function getValueByStrong($, label) {
@@ -1571,11 +1647,16 @@ function cleanNum(text) {
 
 function parseSquareFeetValue(value) {
   if (value == null) return null;
-  if (typeof value === "number") return value;
-  const cleaned = String(value).replace(/[^0-9.]/g, "");
-  if (cleaned === "") return null;
-  const num = parseFloat(cleaned);
-  return Number.isNaN(num) ? null : num;
+  let numeric = null;
+  if (typeof value === "number") {
+    numeric = value;
+  } else {
+    const cleaned = String(value).replace(/[^0-9.]/g, "");
+    if (cleaned === "") return null;
+    numeric = parseFloat(cleaned);
+  }
+  if (!Number.isFinite(numeric)) return null;
+  return Math.round(numeric);
 }
 
 function main() {
@@ -1667,7 +1748,8 @@ function main() {
       null,
   };
   const mailingAddressFile = "mailing_address.json";
-  writeJson(path.join("data", mailingAddressFile), mailingAddressOut);
+  // Conditionally write mailing_address.json only if it will be referenced by relationships
+  // (moved to after relationship filtering to avoid unused file)
 
   const geometryOut = {
     latitude: latitude ?? null,
@@ -1717,6 +1799,11 @@ function main() {
     getValueByStrong($, "Total Finished Area") ||
     getValueByStrong($, "Finished Area") ||
     null;
+  const livableSqftValue = parseSquareFeetValue(livable);
+  livable =
+    livableSqftValue != null && livableSqftValue >= 10
+      ? Math.round(livableSqftValue)
+      : null;
   const yearBuiltText = getValueByStrong($, "Year Built");
   const yearBuilt = yearBuiltText
     ? parseInt(yearBuiltText.replace(/[^0-9]/g, ""), 10)
@@ -1748,6 +1835,7 @@ function main() {
 
   const neighborhood = getValueByStrong($, "Neighborhood");
 
+  const livableText = livable != null ? String(livable) : null;
   const propertyOut = {
     parcel_identifier: parcelId,
     property_type: propertyCodeMapping.property_type,
@@ -1757,8 +1845,8 @@ function main() {
     structure_form: propertyCodeMapping.structure_form ?? null,
     property_structure_built_year: yearBuilt || null,
     property_effective_built_year: null,
-    livable_floor_area: livable || null,
-    area_under_air: livable || null,
+    livable_floor_area: livableText,
+    area_under_air: livableText,
     total_area: null,
     number_of_units: numUnits || null,
     number_of_units_type: unitsType,
@@ -1890,9 +1978,10 @@ function main() {
     const idx = persons.length + 1;
     const first = titleCaseName(p.first_name);
     const last = titleCaseName(p.last_name);
-    const middle = p.middle_name ? titleCaseName(p.middle_name) : null;
+    let middle = p.middle_name ? cleanMiddleName(p.middle_name) : null;
     // Ensure first and last names are valid after title casing
     if (!first || !last) return null;
+    // Middle name is already validated by cleanMiddleName (returns null if invalid)
     const personObj = {
       birth_date: null,
       first_name: first,
@@ -2009,7 +2098,6 @@ function main() {
         file_format: null,
         ipfs_url: null,
         name: name,
-        original_url: row.link,
       };
       filesOut.push({ file: `file_${fileIndex}.json`, data: fileObj });
       relDeedFile.push({
@@ -2228,6 +2316,11 @@ function main() {
       const fileName = path.basename(fromPath);
       return companyFilesWithSalesRelation.has(fileName);
     });
+
+  // Only write mailing_address.json if it will be referenced by at least one relationship
+  if (mailingPersonRelationshipsFiltered.length > 0 || mailingCompanyRelationshipsFiltered.length > 0) {
+    writeJson(path.join("data", mailingAddressFile), mailingAddressOut);
+  }
 
   personsToWrite.forEach((p) => writeJson(path.join("data", p.file), p.data));
   companiesToWrite.forEach((c) => writeJson(path.join("data", c.file), c.data));

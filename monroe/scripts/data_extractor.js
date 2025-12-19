@@ -268,6 +268,7 @@ function generateGeometryArtifacts({
   addressPath,
   parcelPath,
   buildingLayoutPaths,
+  addressExists = true,
 }) {
   const seedCsvPath = locateSeedCsv();
   if (!seedCsvPath) return;
@@ -331,12 +332,15 @@ function generateGeometryArtifacts({
       source_http_request: clone(sourceRequest),
     };
     const geometryPath = writeGeometryFile(filename, payload);
-    const relFilename = `relationship_address_has_geometry_${slug}.json`;
-    const relObject = {
-      from: { "/": addressPath },
-      to: { "/": geometryPath },
-    };
-    writeJSON(path.join(geometryDir, relFilename), relObject);
+    // Only create address-geometry relationship if address file exists
+    if (addressExists) {
+      const relFilename = `relationship_address_has_geometry_${slug}.json`;
+      const relObject = {
+        from: { "/": addressPath },
+        to: { "/": geometryPath },
+      };
+      writeJSON(path.join(geometryDir, relFilename), relObject);
+    }
   }
 
   const buildingPolygons = extractPolygons(seedRow.building_polygon);
@@ -386,6 +390,15 @@ function parseIntSafe(str) {
   const n = String(str).replace(/[^0-9]/g, "");
   if (!n) return null;
   return parseInt(n, 10);
+}
+
+function formatSquareFeetLabel(value) {
+  if (value == null) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const rounded = Math.round(numeric);
+  if (rounded < 10) return null;
+  return `${rounded.toLocaleString()} sq ft`;
 }
 
 function parseFloatSafe(str) {
@@ -2857,6 +2870,9 @@ function main() {
     return relPath;
   }
 
+  const totalAreaSqFt = parseIntSafe(binfo.totalArea);
+  const heatedAreaSqFt = parseIntSafe(binfo.heatedArea);
+
   const property = {
     parcel_identifier: parcelId || "",
     ownership_estate_type: propertyUse.ownership_estate_type || null,
@@ -2868,9 +2884,9 @@ function main() {
                         binfo.type === "TRI/QUADRAPLEX" ? "TwoToFour" : "One",
   property_structure_built_year: parseIntSafe(binfo.actYear),
   property_effective_built_year: parseIntSafe(binfo.effYear),
-    livable_floor_area: binfo.heatedArea ? `${parseIntSafe(binfo.heatedArea).toLocaleString()} sq ft` : null,
-    total_area: binfo.totalArea ? `${parseIntSafe(binfo.totalArea).toLocaleString()} sq ft` : null,
-    area_under_air: binfo.heatedArea ? `${parseIntSafe(binfo.heatedArea).toLocaleString()} sq ft` : null,
+    livable_floor_area: formatSquareFeetLabel(heatedAreaSqFt),
+    total_area: formatSquareFeetLabel(totalAreaSqFt),
+    area_under_air: formatSquareFeetLabel(heatedAreaSqFt),
     property_legal_description_text: legalDesc || null,
     subdivision: subdivision && subdivision.length ? subdivision : null,
     zoning: zoning || null,
@@ -3311,8 +3327,6 @@ const structureItems = (() => {
   };
 
   const propertyIsLand = property.property_type === "LandParcel";
-  const totalAreaSqFt = parseIntSafe(binfo.totalArea);
-  const heatedAreaSqFt = parseIntSafe(binfo.heatedArea);
 
   const normalizedBuildings = Array.isArray(layoutBuildings)
     ? layoutBuildings.map((building, idx) => {
@@ -3922,22 +3936,31 @@ const structureItems = (() => {
     unaddr && unaddr.full_address ? String(unaddr.full_address).trim() : null;
   const unnormalizedAddress = htmlFullAddress || fallbackAddress || null;
 
-  const address = {
-    unnormalized_address: unnormalizedAddress,
-    source_http_request: clone(defaultSourceHttpRequest),
-    request_identifier: requestIdentifier,
-    county_name:
-      (unaddr &&
-        (unaddr.county_jurisdiction || unaddr.county_name || unaddr.county)) ||
-      "Monroe",
-    country_code: "US",
-  };
-  if (!address.unnormalized_address && addrFromHTML.addrLine1) {
-    address.unnormalized_address = addrFromHTML.addrLine1;
+  // Only write address if we have a valid unnormalized_address
+  let finalUnnormalizedAddress = unnormalizedAddress;
+  if (!finalUnnormalizedAddress && addrFromHTML.addrLine1) {
+    finalUnnormalizedAddress = addrFromHTML.addrLine1;
   }
+
   const addressFilename = "address.json";
   const addressPath = `./${addressFilename}`;
-  writeJSON(path.join(dataDir, addressFilename), address);
+  let addressWasWritten = false;
+
+  // Only write address if we have a valid non-empty address string
+  if (finalUnnormalizedAddress && finalUnnormalizedAddress.length > 0) {
+    const address = {
+      unnormalized_address: finalUnnormalizedAddress,
+      source_http_request: clone(defaultSourceHttpRequest),
+      request_identifier: requestIdentifier,
+      county_name:
+        (unaddr &&
+          (unaddr.county_jurisdiction || unaddr.county_name || unaddr.county)) ||
+        "Monroe",
+      country_code: "US",
+    };
+    writeJSON(path.join(dataDir, addressFilename), address);
+    addressWasWritten = true;
+  }
 
   const buildingGeometryTargets =
     buildingLayoutsInfo.length
@@ -3951,6 +3974,7 @@ const structureItems = (() => {
     addressPath,
     parcelPath: "./parcel.json",
     buildingLayoutPaths: buildingGeometryTargets,
+    addressExists: addressWasWritten,
   });
 
   const lot = {
@@ -3976,12 +4000,15 @@ const structureItems = (() => {
   writeJSON(path.join(dataDir, lotFilename), lot);
 
   // Create property relationships
-  const relPropertyAddress = makeRelationshipFilename(propertyPath, addressPath);
-  if (relPropertyAddress) {
-    writeJSON(path.join(dataDir, relPropertyAddress), {
-      from: { "/": propertyPath },
-      to: { "/": addressPath },
-    });
+  // Only create address relationship if address was actually written
+  if (addressWasWritten) {
+    const relPropertyAddress = makeRelationshipFilename(propertyPath, addressPath);
+    if (relPropertyAddress) {
+      writeJSON(path.join(dataDir, relPropertyAddress), {
+        from: { "/": propertyPath },
+        to: { "/": addressPath },
+      });
+    }
   }
 
   const relPropertyLot = makeRelationshipFilename(propertyPath, lotPath);

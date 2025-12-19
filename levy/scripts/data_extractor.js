@@ -2813,26 +2813,28 @@ function main() {
     // Validate names against the pattern: must start with uppercase letter
     const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
 
-    // Validate and clean first_name
-    let validFirstName = firstName;
-    if (validFirstName && !namePattern.test(validFirstName)) {
-      // Try to clean it by removing leading/trailing hyphens and special chars
-      validFirstName = validFirstName.replace(/^[\-]+|[\-]+$/g, '').trim();
-      // If still invalid after cleaning, set to null
-      if (!validFirstName || !namePattern.test(validFirstName)) {
-        validFirstName = null;
+    // Clean name by removing trailing/leading punctuation and hyphens
+    const cleanName = (name) => {
+      if (!name) return null;
+      // Remove leading/trailing hyphens, periods, commas, spaces
+      let cleaned = name.replace(/^[\-\.\,\s]+|[\-\.\,\s]+$/g, '').trim();
+      // If the name is just a single letter or initial with period (e.g., "B."), keep just the letter
+      if (/^[A-Z]\.?$/.test(cleaned)) {
+        cleaned = cleaned.replace(/\./g, '');
       }
+      return cleaned || null;
+    };
+
+    // Validate and clean first_name
+    let validFirstName = cleanName(firstName);
+    if (validFirstName && !namePattern.test(validFirstName)) {
+      validFirstName = null;
     }
 
     // Validate and clean last_name
-    let validLastName = lastName;
+    let validLastName = cleanName(lastName);
     if (validLastName && !namePattern.test(validLastName)) {
-      // Try to clean it by removing leading/trailing hyphens and special chars
-      validLastName = validLastName.replace(/^[\-]+|[\-]+$/g, '').trim();
-      // If still invalid after cleaning, set to null
-      if (!validLastName || !namePattern.test(validLastName)) {
-        validLastName = null;
-      }
+      validLastName = null;
     }
 
     // Skip if both first and last names are invalid
@@ -2844,12 +2846,15 @@ function main() {
     const finalFirstName = validFirstName || "";
     const finalLastName = validLastName || "";
 
-    // Validate middle_name against the pattern
-    const middleName = middleRaw && namePattern.test(middleRaw) ? middleRaw : null;
+    // Validate and clean middle_name
+    let middleName = cleanName(middleRaw);
+    if (middleName && !namePattern.test(middleName)) {
+      middleName = null;
+    }
 
     const key =
       finalFirstName || finalLastName
-        ? `${finalFirstName.toLowerCase()}|${middleRaw.toLowerCase()}|${finalLastName.toLowerCase()}`
+        ? `${finalFirstName.toLowerCase()}|${(middleName || "").toLowerCase()}|${finalLastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {

@@ -22,6 +22,14 @@ function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
+function filterNullish(obj, keysToPreserve = []) {
+  if (!obj || typeof obj !== "object") return obj;
+  const preserve = new Set(keysToPreserve);
+  return Object.fromEntries(
+    Object.entries(obj).filter(([key, value]) => preserve.has(key) || value != null),
+  );
+}
+
 function slugify(value) {
   const text = value == null ? "" : String(value);
   const sanitized = text.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
@@ -429,6 +437,12 @@ function parseIntSafe(str) {
   const n = String(str).replace(/[^0-9]/g, "");
   if (!n) return null;
   return parseInt(n, 10);
+}
+
+function formatSquareFeet(value) {
+  const parsed = parseIntSafe(value);
+  if (parsed == null || parsed < 10) return null;
+  return `${parsed.toLocaleString()} sq ft`;
 }
 
 function parseFloatSafe(str) {
@@ -1949,7 +1963,8 @@ function parseValuationsWorking($) {
   const getValue = (labels) => {
     const row = findValuationRow(rows, labels);
     if (!row || !row.length) return null;
-    return moneyToNumber(row[0]) || null;
+    const value = moneyToNumber(row[0]);
+    return value == null ? null : value;
   };
 
   return {
@@ -2337,15 +2352,9 @@ function main() {
           : "One",
     property_structure_built_year: parseIntSafe(binfo.actYear),
     property_effective_built_year: parseIntSafe(binfo.effYear),
-    livable_floor_area: binfo.heatedArea
-      ? `${parseIntSafe(binfo.heatedArea).toLocaleString()} sq ft`
-      : null,
-    total_area: binfo.totalArea
-      ? `${parseIntSafe(binfo.totalArea).toLocaleString()} sq ft`
-      : null,
-    area_under_air: binfo.heatedArea
-      ? `${parseIntSafe(binfo.heatedArea).toLocaleString()} sq ft`
-      : null,
+    livable_floor_area: formatSquareFeet(binfo.heatedArea),
+    total_area: formatSquareFeet(binfo.totalArea),
+    area_under_air: formatSquareFeet(binfo.heatedArea),
     property_legal_description_text: legalDesc || null,
     subdivision: subdivision && subdivision.length ? subdivision : null,
     zoning: zoning || null,
@@ -3611,39 +3620,53 @@ const structureItems = (() => {
 
   const work = parseValuationsWorking($);
   if (work) {
-    const tax = {
+    const tax = filterNullish({
       tax_year: work.year,
-      property_assessed_value_amount: work.assessed || null,
-      property_market_value_amount: work.justMarket || null,
-      property_building_amount: work.improvement || null,
-      property_land_amount: work.land || null,
-      property_taxable_value_amount: work.taxable || 0.0,
+      property_assessed_value_amount: work.assessed ?? null,
+      property_market_value_amount: work.justMarket ?? null,
+      property_building_amount: work.improvement ?? null,
+      property_land_amount: work.land ?? null,
+      property_taxable_value_amount: work.taxable ?? null,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
       yearly_tax_amount: null,
       first_year_on_tax_roll: null,
       first_year_building_on_tax_roll: null,
-    };
+    }, [
+      "monthly_tax_amount",
+      "period_end_date",
+      "period_start_date",
+      "yearly_tax_amount",
+      "first_year_on_tax_roll",
+      "first_year_building_on_tax_roll",
+    ]);
     writeJSON(path.join(dataDir, `tax_${work.year}.json`), tax);
   }
 
   const certs = parseValuationsCertified($);
   certs.forEach((rec) => {
-    const tax = {
+    const tax = filterNullish({
       tax_year: rec.year,
-      property_assessed_value_amount: rec.assessed || null,
-      property_market_value_amount: rec.justMarket || null,
-      property_building_amount: rec.improvement || null,
-      property_land_amount: rec.land || null,
-      property_taxable_value_amount: rec.taxable || 0.0,
+      property_assessed_value_amount: rec.assessed ?? null,
+      property_market_value_amount: rec.justMarket ?? null,
+      property_building_amount: rec.improvement ?? null,
+      property_land_amount: rec.land ?? null,
+      property_taxable_value_amount: rec.taxable ?? null,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
       yearly_tax_amount: null,
       first_year_on_tax_roll: null,
       first_year_building_on_tax_roll: null,
-    };
+    }, [
+      "monthly_tax_amount",
+      "period_end_date",
+      "period_start_date",
+      "yearly_tax_amount",
+      "first_year_on_tax_roll",
+      "first_year_building_on_tax_roll",
+    ]);
     writeJSON(path.join(dataDir, `tax_${rec.year}.json`), tax);
   });
 

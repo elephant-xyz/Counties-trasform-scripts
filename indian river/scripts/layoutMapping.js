@@ -17,56 +17,108 @@ function textTrim(s) {
   return (s || "").replace(/\s+/g, " ").trim();
 }
 
+function sanitizeLabel(label) {
+  if (!label) return null;
+  return label.replace(/:$/, "").trim();
+}
+
+function extractRowData($, tr) {
+  const $tr = $(tr);
+  const labelSources = [
+    $tr.find("th strong").first(),
+    $tr.find("th").first(),
+    $tr.find("td strong").first(),
+    $tr.find("td").first(),
+  ];
+  let label = null;
+
+  for (const $candidate of labelSources) {
+    const candidateText = textTrim($candidate.text());
+    if (candidateText) {
+      label = sanitizeLabel(candidateText);
+      break;
+    }
+  }
+  if (!label) return null;
+
+  const $valueCell = $tr.find("td").last().clone();
+  let value = null;
+  if ($valueCell.length) {
+    $valueCell.find("strong").remove();
+    const rawValue = textTrim($valueCell.text());
+    if (rawValue) {
+      const escapedLabel = label.replace(
+        /[-/\\^$*+?.()|[\]{}]/g,
+        "\\$&",
+      );
+      const cleanedValue = rawValue.replace(
+        new RegExp(`^${escapedLabel}\\s*:?\\s*`, "i"),
+        "",
+      );
+      value = textTrim(cleanedValue);
+    }
+  }
+
+  return { label, value: value || null };
+}
+
+function parseSummaryTable($, $container) {
+  if (!$container || !$container.length) return {};
+  const map = {};
+  $container
+    .find("table tbody tr")
+    .each((_, tr) => {
+      const rowData = extractRowData($, tr);
+      if (!rowData) return;
+      map[rowData.label] = rowData.value;
+    });
+  return map;
+}
+
+function hasMeaningfulData(record) {
+  return Object.values(record).some((value) => {
+    if (value == null) return false;
+    return textTrim(String(value)) !== "";
+  });
+}
+
 function collectBuildings($) {
-  const buildings = [];
-  const section = $("section")
+  const sections = $("section")
     .filter(
       (_, s) =>
         textTrim($(s).find(".module-header .title").first().text()) ===
         BUILDING_SECTION_TITLE,
     )
-    .first();
-  if (!section.length) return buildings;
-  $(section)
-    .find(
-      '.two-column-blocks > div[id$="_dynamicBuildingDataLeftColumn_divSummary"]',
-    )
-    .each((_, div) => {
-      const map = {};
-      $(div)
-        .find("table tbody tr")
-        .each((__, tr) => {
-          let label = textTrim($(tr).find("td strong").first().text());
-          if (!label || !label.trim()) {
-            label = textTrim($(tr).find("th strong").first().text());
-          }
-          const value = textTrim($(tr).find("td span").first().text());
-          if (label) map[label] = value;
-        });
-      if (Object.keys(map).length) buildings.push(map);
-    });
-  let buildingCount = 0;
-  $(section)
-    .find(
-      '.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"]',
-    )
-    .each((_, div) => {
-      const map = {};
-      $(div)
-        .find("table tbody tr")
-        .each((__, tr) => {
-          let label = textTrim($(tr).find("td strong").first().text());
-          if (!label || !label.trim()) {
-            label = textTrim($(tr).find("th strong").first().text());
-          }
-          const value = textTrim($(tr).find("td span").first().text());
-          if (label) map[label] = value;
-        });
-      if (Object.keys(map).length) {
-        const combined_map = { ...buildings[buildingCount], ...map };
-        buildings[buildingCount++] = combined_map;
+    .toArray();
+
+  if (!sections.length) return [];
+
+  const buildings = [];
+
+  sections.forEach((section) => {
+    const $section = $(section);
+    const leftDivs = $section
+      .find(
+        '.two-column-blocks > div[id$="_dynamicBuildingDataLeftColumn_divSummary"]',
+      )
+      .toArray();
+    const rightDivs = $section
+      .find(
+        '.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"]',
+      )
+      .toArray();
+
+    const maxCount = Math.max(leftDivs.length, rightDivs.length);
+    for (let i = 0; i < maxCount; i += 1) {
+      const leftData = parseSummaryTable($, $(leftDivs[i]));
+      const rightData = parseSummaryTable($, $(rightDivs[i]));
+      const combined = { ...leftData, ...rightData };
+      if (hasMeaningfulData(combined)) {
+        buildings.push(combined);
       }
-    });
+    }
+  });
+
   return buildings;
 }
 

@@ -2764,8 +2764,8 @@ function main() {
     writeJSON(path.join("data", deedFileName), deedObj);
 
     // Ensure name is never empty - use default if both parts are empty
-    let fileName = ((instAbbr || "") + " " + (bookPage || "")).trim();
-    if (!fileName) {
+    let fileName = (instAbbr ? instAbbr + " " : "") + (bookPage || "");
+    if (!fileName || fileName.trim() === "") {
       fileName = "Document";
     }
 

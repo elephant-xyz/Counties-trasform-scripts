@@ -807,6 +807,47 @@ function extractOwnerGroups($) {
       pushGroup(context, buyer, saleDate, index === 0 && !ownerStrings.size);
     });
   }
+  const first = processed.tokens[0];
+  const last = processed.tokens[processed.tokens.length - 1];
+  const middle = processed.tokens.slice(1, -1).join(" ") || null;
+  if (
+    first &&
+    last &&
+    isLikelyPersonToken(first) &&
+    isLikelyPersonToken(last)
+  )
+    return {
+      type: "person",
+      first_name: first,
+      last_name: last,
+      middle_name: cleanNameField(middle),
+      prefix_name: processed.prefix || null,
+      suffix_name: processed.suffix || null,
+      _removed_designations: removedDesignations,
+    };
+  return null;
+}
+
+// Helper to clean and validate person name fields according to Elephant schema pattern
+function cleanNameField(value) {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+
+  // Remove any characters that don't match the pattern ^[A-Z][a-zA-Z\s\-',.]*$
+  // Keep only letters, spaces, hyphens, apostrophes, commas, and periods
+  const cleaned = str.replace(/[^a-zA-Z\s\-',.]/g, '').replace(/\s+/g, ' ').trim();
+
+  if (!cleaned) return null;
+
+  // Must start with a letter (uppercase after conversion)
+  if (!/^[a-zA-Z]/.test(cleaned)) return null;
+
+  // Ensure first letter is uppercase
+  const result = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+
+  // Verify final result matches the pattern
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
 
   if ($) {
     const labelRx =
@@ -2527,6 +2568,95 @@ function mapLandUseToPropertyType(landUseDescription) {
   // Default to null for non-residential or unrecognized codes
   return null;
 }
+function properCaseName(s) {
+  if (!s) return s;
+  const lower = s.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function mapLandUseToPropertyType(landUseDescription) {
+  if (!landUseDescription) return null;
+
+  const desc = landUseDescription.toUpperCase();
+
+  // Map Lake County land use descriptions to property types (fallback)
+  if (desc.includes("VACANT")) return "VacantLand";
+  if (desc.includes("SINGLE FAMILY")) return "SingleFamily";
+  if (desc.includes("MANUFACTURED HOME")) return "ManufacturedHome";
+  if (
+    desc.includes("MULTI FAMILY >9") ||
+    desc.includes("MULTI FAMILY >=10") ||
+    desc.includes("MULTI FAMILY 10")
+  )
+    return "MultiFamilyMoreThan10";
+  if (
+    desc.includes("MULTI FAMILY <5") ||
+    desc.includes("MULTI FAMILY >4 AND <10") ||
+    desc.includes("MULTI FAMILY <=9")
+  )
+    return "MultiFamilyLessThan10";
+  if (desc.includes("CONDOMINIUM") || desc.includes("CONDO"))
+    return "Condominium";
+  if (desc.includes("CO-OP")) return "Cooperative";
+  if (desc.includes("RETIREMENT")) return "Retirement";
+  if (desc.includes("MISC RESIDENTIAL") || desc.includes("MIGRANT"))
+    return "MiscellaneousResidential";
+  if (
+    desc.includes("RESIDENTIAL COMMON ELEMENTS") ||
+    desc.includes("COMMON ELEMENTS")
+  )
+    return "ResidentialCommonElementsAreas";
+
+  // Default to null for non-residential or unrecognized codes
+  return null;
+}
+
+function normalizeDeedType(raw) {
+  if (!raw) return null;
+  const value = String(raw).trim();
+  const upper = value.toUpperCase();
+  const patterns = [
+    { regex: /DEED\s+IN\s+LIEU/i, type: "Deed in Lieu of Foreclosure" },
+    { regex: /SPECIAL\s+MASTER/i, type: "Special Master’s Deed" },
+    { regex: /SPECIAL\s+WARRANTY/i, type: "Special Warranty Deed" },
+    { regex: /QUIT/i, type: "Quitclaim Deed" },
+    { regex: /\bGRANT\b/i, type: "Grant Deed" },
+    { regex: /WARRANTY/i, type: "Warranty Deed" },
+    { regex: /LADY\s*BIRD/i, type: "Lady Bird Deed" },
+    { regex: /TRANSFER\s+ON\s+DEATH|TOD\s+DEED/i, type: "Transfer on Death Deed" },
+    { regex: /SHERIFF/i, type: "Sheriff's Deed" },
+    { regex: /\bTAX\b/i, type: "Tax Deed" },
+    { regex: /TRUSTEE/i, type: "Trustee's Deed" },
+    {
+      regex: /PERSONAL\s+REPRESENTATIVE/i,
+      type: "Personal Representative Deed",
+    },
+    { regex: /ADMINISTRATOR/i, type: "Administrator's Deed" },
+    { regex: /GUARDIAN/i, type: "Guardian's Deed" },
+    { regex: /RECEIVER/i, type: "Receiver's Deed" },
+    { regex: /COURT/i, type: "Court Order Deed" },
+    { regex: /BARGAIN/i, type: "Bargain and Sale Deed" },
+    { regex: /LIFE\s+ESTATE/i, type: "Life Estate Deed" },
+    { regex: /JOINT\s+TENANCY/i, type: "Joint Tenancy Deed" },
+    { regex: /TENANCY\s+IN\s+COMMON/i, type: "Tenancy in Common Deed" },
+    { regex: /COMMUNITY\s+PROPERTY/i, type: "Community Property Deed" },
+    { regex: /\bGIFT\b/i, type: "Gift Deed" },
+    { regex: /INTERSPOUSAL/i, type: "Interspousal Transfer Deed" },
+    { regex: /\bWILD\b/i, type: "Wild Deed" },
+    { regex: /CONTRACT\s+FOR\s+DEED|AGREEMENT\s+FOR\s+DEED/i, type: "Contract for Deed" },
+    { regex: /QUIET\s+TITLE/i, type: "Quiet Title Deed" },
+    { regex: /RIGHT\s+OF\s+WAY/i, type: "Right of Way Deed" },
+    { regex: /VACATION\s+OF\s+PLAT/i, type: "Vacation of Plat Deed" },
+    { regex: /ASSIGNMENT.*CONTRACT/i, type: "Assignment of Contract" },
+    { regex: /RELEASE.*CONTRACT/i, type: "Release of Contract" },
+    { regex: /CORRECT/i, type: "Correction Deed" },
+  ];
+
+  for (const { regex, type } of patterns) {
+    if (regex.test(upper)) {
+      return coerceDeedType(type);
+    }
+  }
 
 function normalizeDeedType(raw) {
   if (!raw) return null;
@@ -5522,16 +5652,14 @@ delete layoutContent.space_type_indexer;
   // Add current owner keys ONLY if mailing address exists
   // These will have company/person_has_mailing_address relationships
   // If mailingAddressFile is null, current owners are NOT added to avoid orphaned files
-  // REMOVED: Since mailing_address.json is not being created (person and company classes
-  // don't exist), we don't add current owner keys.
-  // if (mailingAddressFile) {
-  //   const currentOwners = ownerKeysByDate.get('current');
-  //   if (currentOwners) {
-  //     currentOwners.forEach((ownerKey) => {
-  //       usedOwnerKeys.add(ownerKey);
-  //     });
-  //   }
-  // }
+  if (mailingAddressFile) {
+    const currentOwners = ownerKeysByDate.get('current');
+    if (currentOwners) {
+      currentOwners.forEach((ownerKey) => {
+        usedOwnerKeys.add(ownerKey);
+      });
+    }
+  }
 
   // Person and Company files are NOT part of the Sales_History data group schema
   // Owner information is stored separately in owners/owner_data.json
