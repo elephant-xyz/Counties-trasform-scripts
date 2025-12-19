@@ -27314,6 +27314,153 @@ function enforceAddressOneOfPreference(addressPath, options = {}) {
   writeJSON(addressPath, rawOut);
 }
 
+// Deterministically pick a single address branch for the final payload.
+// If an unnormalized string exists, emit the raw branch with the full oneOf
+// surface so required keys are present (nullable). Otherwise emit the
+// normalized branch only when it is fully populated.
+function enforceDeterministicFinalAddress(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(snapshot.unnormalized_address);
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...snapshot })
+      : null;
+  const normalizedComplete =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  const requestIdentifier =
+    options.requestIdentifier === undefined
+      ? safeNullIfEmpty(snapshot.request_identifier)
+      : safeNullIfEmpty(options.requestIdentifier);
+  const sourceHttpRequest =
+    options.sourceHttpRequest === undefined
+      ? snapshot.source_http_request
+      : options.sourceHttpRequest;
+  const defaultCountry =
+    options.defaultCountry ||
+    (typeof options.defaultCountry === "string" ? options.defaultCountry : "US");
+
+  if (rawValue) {
+    const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+    RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        rawOut[field] = rawValue;
+        return;
+      }
+      if (field === "request_identifier") {
+        rawOut[field] = requestIdentifier === undefined ? null : requestIdentifier;
+        return;
+      }
+      if (field === "source_http_request") {
+        rawOut[field] =
+          prepareSourceHttpRequest(sourceHttpRequest) ||
+          prepareSourceHttpRequest(snapshot.source_http_request) ||
+          null;
+        return;
+      }
+      let value =
+        snapshot[field] !== undefined
+          ? snapshot[field]
+          : normalizedSurface
+            ? normalizedSurface[field]
+            : null;
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        rawOut[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      rawOut[field] = value === undefined ? null : value;
+    });
+
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
+    }
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rawOut.state_code) &&
+      !hasMeaningfulAddressValue(rawOut.country_code)
+    ) {
+      rawOut.country_code = defaultCountry;
+    }
+
+    writeJSON(addressPath, applyNullAddressRelationships(rawOut));
+    return;
+  }
+
+  if (normalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") return;
+      let value =
+        snapshot[field] !== undefined
+          ? snapshot[field]
+          : normalizedSurface
+            ? normalizedSurface[field]
+            : null;
+      if (field === "request_identifier") {
+        value = requestIdentifier === undefined ? null : requestIdentifier;
+      } else if (field === "source_http_request") {
+        value =
+          prepareSourceHttpRequest(sourceHttpRequest) ||
+          prepareSourceHttpRequest(snapshot.source_http_request) ||
+          null;
+      } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      (normalizedOut.latitude == null) !== (normalizedOut.longitude == null)
+    ) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = defaultCountry;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOut,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedOut.unnormalized_address;
+    }
+    writeJSON(addressPath, applyNullAddressRelationships(normalizedOut));
+    return;
+  }
+
+  removeFileIfExists(addressPath);
+}
+
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -36306,6 +36453,15 @@ async function main() {
       resolvedRequestIdentifier ?? trimmedRequestIdentifier ?? parcelId ?? null,
     sourceHttpRequest: resolvedSourceHttp ?? sourceHttpCandidate ?? null,
     county: formattedCountyName || countyName || "Palm Beach",
+  });
+
+  // Final guard: lock the address into a single oneOf branch with the full schema
+  // surface populated (nullable) so validation doesn't complain about missing fields.
+  enforceDeterministicFinalAddress(addressOutputPath, {
+    requestIdentifier:
+      resolvedRequestIdentifier ?? trimmedRequestIdentifier ?? parcelId ?? null,
+    sourceHttpRequest: resolvedSourceHttp ?? sourceHttpCandidate ?? null,
+    defaultCountry: "US",
   });
 
   // Final cleanup: ensure local address relationships are removed/null so the
