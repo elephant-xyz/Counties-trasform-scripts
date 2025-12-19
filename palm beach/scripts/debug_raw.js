@@ -2979,8 +2979,11 @@ function ensureRawAddressFieldPresence(addressFilePath) {
   );
 }
 
-// Clamp raw address payloads down to the minimal raw branch surface so oneOf
-// selects the unnormalized branch and not the normalized schema.
+// Clamp raw address payloads to the full raw branch surface so the oneOf schema
+// always sees every required field (nullable) when we only have an
+// unnormalized address. Keeping the complete surface avoids validator errors
+// about missing latitude/street components while still preferring the raw
+// branch over normalized output.
 function clampRawAddressToMinimalSurface(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
 
@@ -2997,10 +3000,10 @@ function clampRawAddressToMinimalSurface(addressPath, options = {}) {
     hasCompleteNormalizedAddress({ ...payload });
   if (normalizedReady) return;
 
-  const minimal = {};
-  RAW_MINIMAL_OUTPUT_FIELDS.forEach((field) => {
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
     if (field === "unnormalized_address") {
-      minimal.unnormalized_address = rawValue;
+      rawOut.unnormalized_address = rawValue;
       return;
     }
     if (field === "request_identifier") {
@@ -3011,7 +3014,7 @@ function clampRawAddressToMinimalSurface(addressPath, options = {}) {
             options.requestIdentifier,
           ]),
         ) ?? null;
-      minimal.request_identifier = resolved;
+      rawOut.request_identifier = resolved;
       return;
     }
     if (field === "source_http_request") {
@@ -3023,44 +3026,49 @@ function clampRawAddressToMinimalSurface(addressPath, options = {}) {
             options.seedSourceHttpRequest,
           ),
         ) || null;
-      minimal.source_http_request = prepared;
+      rawOut.source_http_request = prepared;
       return;
     }
 
     let value = payload[field];
-    if (field === "county_name" && !value && options.countyFallback) {
-      value = options.countyFallback;
+    if (value === undefined) {
+      if (field === "county_name" && options.countyFallback) {
+        value = options.countyFallback;
+      } else if (field === "state_code" && options.stateFallback) {
+        value = options.stateFallback;
+      } else if (field === "country_code" && options.countryFallback) {
+        value = options.countryFallback;
+      }
     }
-    if (field === "country_code" && !value && options.countryFallback) {
-      value = options.countryFallback;
-    }
+
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(value);
-      value = Number.isFinite(numeric) ? numeric : null;
-    } else if (typeof value === "string") {
-      const trimmed = value.trim();
-      value = trimmed.length ? trimmed : null;
-    } else if (value === undefined) {
-      value = null;
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
     }
-    minimal[field] = value;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rawOut[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    rawOut[field] = value === undefined ? null : value;
   });
 
-  if (!minimal.postal_code) {
-    minimal.plus_four_postal_code = null;
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
   }
-  if ((minimal.latitude == null) !== (minimal.longitude == null)) {
-    minimal.latitude = null;
-    minimal.longitude = null;
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
   }
   if (
-    hasMeaningfulAddressValue(minimal.state_code) &&
-    !hasMeaningfulAddressValue(minimal.country_code)
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
   ) {
-    minimal.country_code = options.countryFallback || "US";
+    rawOut.country_code = options.countryFallback || "US";
   }
 
-  writeJSON(addressPath, applyNullAddressRelationships(minimal));
+  writeJSON(addressPath, applyNullAddressRelationships(rawOut));
 }
 
 // Hard-stop guard: if we only have an unnormalized address, rebuild the raw
