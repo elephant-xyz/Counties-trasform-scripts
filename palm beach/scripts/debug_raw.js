@@ -2979,6 +2979,74 @@ function ensureRawAddressFieldPresence(addressFilePath) {
   );
 }
 
+// Hard-stop guard: if we only have an unnormalized address, rebuild the raw
+// oneOf surface so every schema field exists (nullable) and relationships stay
+// null. This prevents validation from reporting missing required fields on the
+// raw branch.
+function lockRawOneOfSurface(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) return;
+
+  const payload = readJSONIfExists(addressFilePath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...payload });
+  const normalizedComplete =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+  if (!rawValue || normalizedComplete) {
+    return;
+  }
+
+  const rebuilt = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+  RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      rebuilt[field] = rawValue;
+      return;
+    }
+
+    let value = payload[field];
+    if (value === undefined && normalizedSurface) {
+      value = normalizedSurface[field];
+    }
+
+    if (field === "source_http_request") {
+      rebuilt[field] = prepareSourceHttpRequest(value) || null;
+      return;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rebuilt[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rebuilt[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    rebuilt[field] = value === undefined ? null : value;
+  });
+
+  if (!rebuilt.postal_code) {
+    rebuilt.plus_four_postal_code = null;
+  }
+  if ((rebuilt.latitude == null) !== (rebuilt.longitude == null)) {
+    rebuilt.latitude = null;
+    rebuilt.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rebuilt.state_code) &&
+    !hasMeaningfulAddressValue(rebuilt.country_code)
+  ) {
+    rebuilt.country_code = options.defaultCountry || "US";
+  }
+
+  writeJSON(addressFilePath, applyNullAddressRelationships(rebuilt));
+}
+
 // Final guardrail: when the source provides any unnormalized address string,
 // force the raw oneOf branch with the full schema surface populated (nullable)
 // so validation never complains about missing required fields. Only fall back
@@ -34475,6 +34543,7 @@ async function main() {
     stateFallback: inferredStateCode || "FL",
     countryFallback: "US",
   });
+  lockRawOneOfSurface(addressOutputPath, { defaultCountry: "US" });
   enforceAddressRelationshipNulls(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
 
