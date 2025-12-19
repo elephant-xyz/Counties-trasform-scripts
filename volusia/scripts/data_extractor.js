@@ -2352,6 +2352,16 @@ async function main() {
   };
   writeJSON(path.join(dataDir, "address.json"), address);
 
+  // Mailing Address
+  const mailingAddressRaw = extractTopValue("Mailing Address On File:");
+  const mailingAddressOutput = {
+    ...appendSourceInfo(seed),
+    latitude: null,
+    longitude: null,
+    unnormalized_address: mailingAddressRaw,
+  };
+  writeJSON(path.join(dataDir, "mailing_address.json"), mailingAddressOutput);
+
   //Create Person/company files
   let personFilesByKey = {};
   let companyFilesByKey = {};
