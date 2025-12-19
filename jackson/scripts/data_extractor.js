@@ -760,17 +760,6 @@ function textOf($el) {
 }
 
 function loadHTML() {
-  // Try to find HTML file in input directory
-  const inputDir = path.join(process.cwd(), "input");
-  if (fs.existsSync(inputDir)) {
-    const files = fs.readdirSync(inputDir);
-    const htmlFile = files.find(f => f.endsWith('.html'));
-    if (htmlFile) {
-      const html = fs.readFileSync(path.join(inputDir, htmlFile), "utf8");
-      return cheerio.load(html);
-    }
-  }
-  // Fallback to input.html in current directory
   const html = fs.readFileSync("input.html", "utf8");
   return cheerio.load(html);
 }
@@ -1200,20 +1189,6 @@ function writeProperty($, parcelId) {
 
   };
   writeJSON(path.join("data", "property.json"), property);
-
-  // Create parcel.json as the root entity for County data group
-  const parcel = {
-    ...appendSourceInfo(seed),
-    parcel_identifier: parcelId || ""
-  };
-  writeJSON(path.join("data", "parcel.json"), parcel);
-
-  // Create relationship from parcel to property
-  const relParcelProperty = {
-    from: { "/": "./parcel.json" },
-    to: { "/": "./property.json" }
-  };
-  writeJSON(path.join("data", "relationship_parcel_has_property.json"), relParcelProperty);
 }
 
 function writeSalesDeedsFilesAndRelationships($) {
@@ -1222,11 +1197,7 @@ function writeSalesDeedsFilesAndRelationships($) {
   // Remove old deed/file and sales_deed relationships if present to avoid duplicates
   try {
     fs.readdirSync("data").forEach((f) => {
-      if (/^relationship_(deed_file|sales_history_deed|sales_history_file)(?:_\d+)?\.json$/.test(f)) {
-        fs.unlinkSync(path.join("data", f));
-      }
-      // Remove deed files (not supported in Sales_History data group)
-      if (/^deed_\d+\.json$/.test(f)) {
+      if (/^relationship_(deed_file|sales_deed)(?:_\d+)?\.json$/.test(f)) {
         fs.unlinkSync(path.join("data", f));
       }
     });
@@ -1239,17 +1210,16 @@ function writeSalesDeedsFilesAndRelationships($) {
       purchase_price_amount: parseCurrencyToNumber(s.salePrice),
     };
     // console.log("saleobject",saleObj);
-    writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
+    writeJSON(path.join("data", `sales_${idx}.json`), saleObj);
 
-    // DISABLED: Deed class is not supported in Sales_History data group
-    // const deedType = mapInstrumentToDeedType(s.instrument);
-    // const deed = {
-    //   ...appendSourceInfo(seed),
-    //   deed_type: deedType,
-    //   book: s.deedBook || null,
-    //   page: s.deedPage || null,
-    // };
-    // writeJSON(path.join("data", `deed_${idx}.json`), deed);
+    const deedType = mapInstrumentToDeedType(s.instrument);
+    const deed = {
+      ...appendSourceInfo(seed),
+      deed_type: deedType,
+      book: s.deedBook || null,
+      page: s.deedPage || null,
+    };
+    writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     const file = {
       ...appendSourceInfo(seed),
@@ -1261,25 +1231,22 @@ function writeSalesDeedsFilesAndRelationships($) {
     };
     writeJSON(path.join("data", `file_${idx}.json`), file);
 
-    // DISABLED: Deed relationships not supported in Sales_History data group
-    // const relDeedFile = {
-    //   from: { "/": `./deed_${idx}.json` },
-    //   to: { "/": `./file_${idx}.json` },
-    // };
-    // writeJSON(
-    //   path.join("data", `relationship_deed_file_${idx}.json`),
-    //   relDeedFile,
-    // );
-
-    // DISABLED: Deed relationships not supported in Sales_History data group
-    // Instead, link sales_history directly to file
-    const relSalesFile = {
-      from: { "/": `./sales_history_${idx}.json` },
+    const relDeedFile = {
+      from: { "/": `./deed_${idx}.json` },
       to: { "/": `./file_${idx}.json` },
     };
     writeJSON(
-      path.join("data", `relationship_sales_history_file_${idx}.json`),
-      relSalesFile,
+      path.join("data", `relationship_deed_file_${idx}.json`),
+      relDeedFile,
+    );
+
+    const relSalesDeed = {
+      from: { "/": `./sales_${idx}.json` },
+      to: { "/": `./deed_${idx}.json` },
+    };
+    writeJSON(
+      path.join("data", `relationship_sales_deed_${idx}.json`),
+      relSalesDeed,
     );
   });
 }
@@ -1287,9 +1254,8 @@ let people = [];
 let companies = [];
 
 function findPersonIndexByName(first, last) {
-  const tf = formatNameForSchema(first);
-  const tl = formatNameForSchema(last);
-  if (!tf || !tl) return null;
+  const tf = titleCaseName(first);
+  const tl = titleCaseName(last);
   for (let i = 0; i < people.length; i++) {
     if (people[i].first_name === tf && people[i].last_name === tl)
       return i + 1;
@@ -1297,14 +1263,10 @@ function findPersonIndexByName(first, last) {
   return null;
 }
 
-function normalizeCompanyName(name) {
-  return (name || "").trim().toUpperCase().replace(/\s+/g, ' ');
-}
-
 function findCompanyIndexByName(name) {
-  const tn = normalizeCompanyName(name);
+  const tn = (name || "").trim();
   for (let i = 0; i < companies.length; i++) {
-    if (normalizeCompanyName(companies[i].name) === tn) return i + 1;
+    if ((companies[i].name || "").trim() === tn) return i + 1;
   }
   return null;
 }
@@ -1320,238 +1282,35 @@ function titleCaseName(s) {
 
 
 
-function removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx) {
-  try {
-    const dataDir = "data";
-    if (!fs.existsSync(dataDir)) {
-      console.log("Data directory does not exist, skipping cleanup");
-      return;
-    }
-
-    const files = fs.readdirSync(dataDir);
-
-    files.forEach((file) => {
-      const personMatch = file.match(/^person_(\d+)\.json$/);
-      if (personMatch) {
-        const idx = parseInt(personMatch[1], 10);
-        if (!usedPersonIdx.has(idx)) {
-          console.log(`Removing unused person file: ${file}`);
-          fs.unlinkSync(path.join(dataDir, file));
-        }
-      }
-
-      const companyMatch = file.match(/^company_(\d+)\.json$/);
-      if (companyMatch) {
-        const idx = parseInt(companyMatch[1], 10);
-        if (!usedCompanyIdx.has(idx)) {
-          console.log(`Removing unused company file: ${file}`);
-          fs.unlinkSync(path.join(dataDir, file));
-        }
-      }
-    });
-
-    // Refresh the files list after deletions
-    const remainingFiles = fs.readdirSync(dataDir);
-
-    // Also remove relationship files that reference removed person/company files
-    remainingFiles.forEach((file) => {
-      if (file.startsWith('relationship_') && file.endsWith('.json')) {
-        try {
-          const content = fs.readFileSync(path.join(dataDir, file), 'utf8');
-          const rel = JSON.parse(content);
-
-          // Check if relationship references removed person or company files
-          let shouldRemove = false;
-
-          if (rel.from && rel.from['/']) {
-            // Trim whitespace from path before matching
-            const fromPath = String(rel.from['/']).trim();
-            const personFromMatch = fromPath.match(/\.\/person_(\d+)\.json$/);
-            const companyFromMatch = fromPath.match(/\.\/company_(\d+)\.json$/);
-
-            if (personFromMatch) {
-              const idx = parseInt(personFromMatch[1], 10);
-              if (!usedPersonIdx.has(idx)) {
-                console.log(`Removing relationship ${file}: references unused person ${idx} in 'from'`);
-                shouldRemove = true;
-              }
-            }
-            if (companyFromMatch) {
-              const idx = parseInt(companyFromMatch[1], 10);
-              if (!usedCompanyIdx.has(idx)) {
-                console.log(`Removing relationship ${file}: references unused company ${idx} in 'from'`);
-                shouldRemove = true;
-              }
-            }
-          }
-
-          if (rel.to && rel.to['/']) {
-            // Trim whitespace from path before matching
-            const toPath = String(rel.to['/']).trim();
-            const personToMatch = toPath.match(/\.\/person_(\d+)\.json$/);
-            const companyToMatch = toPath.match(/\.\/company_(\d+)\.json$/);
-
-            if (personToMatch) {
-              const idx = parseInt(personToMatch[1], 10);
-              if (!usedPersonIdx.has(idx)) {
-                console.log(`Removing relationship ${file}: references unused person ${idx} in 'to'`);
-                shouldRemove = true;
-              }
-            }
-            if (companyToMatch) {
-              const idx = parseInt(companyToMatch[1], 10);
-              if (!usedCompanyIdx.has(idx)) {
-                console.log(`Removing relationship ${file}: references unused company ${idx} in 'to'`);
-                shouldRemove = true;
-              }
-            }
-          }
-
-          if (shouldRemove) {
-            console.log(`Removing relationship file referencing removed entity: ${file}`);
-            fs.unlinkSync(path.join(dataDir, file));
-          }
-        } catch (e) {
-          console.error(`Error processing relationship file ${file}:`, e.message);
-        }
-      }
-    });
-
-    // Final validation: check for any remaining relationships that reference non-existent files
-    const finalFiles = fs.readdirSync(dataDir);
-    const existingPersonFiles = new Set();
-    const existingCompanyFiles = new Set();
-
-    finalFiles.forEach((file) => {
-      const personMatch = file.match(/^person_(\d+)\.json$/);
-      if (personMatch) {
-        existingPersonFiles.add(parseInt(personMatch[1], 10));
-      }
-      const companyMatch = file.match(/^company_(\d+)\.json$/);
-      if (companyMatch) {
-        existingCompanyFiles.add(parseInt(companyMatch[1], 10));
-      }
-    });
-
-    finalFiles.forEach((file) => {
-      if (file.startsWith('relationship_') && file.endsWith('.json')) {
-        try {
-          const content = fs.readFileSync(path.join(dataDir, file), 'utf8');
-          const rel = JSON.parse(content);
-          let shouldRemove = false;
-
-          // Check if 'from' references a non-existent person/company file
-          if (rel.from && rel.from['/']) {
-            const fromPath = String(rel.from['/']).trim();
-            const personFromMatch = fromPath.match(/\.\/person_(\d+)\.json$/);
-            const companyFromMatch = fromPath.match(/\.\/company_(\d+)\.json$/);
-
-            if (personFromMatch) {
-              const idx = parseInt(personFromMatch[1], 10);
-              if (!existingPersonFiles.has(idx)) {
-                console.log(`Final cleanup: Removing relationship ${file}: person_${idx}.json does not exist (referenced in 'from')`);
-                shouldRemove = true;
-              }
-            }
-            if (companyFromMatch) {
-              const idx = parseInt(companyFromMatch[1], 10);
-              if (!existingCompanyFiles.has(idx)) {
-                console.log(`Final cleanup: Removing relationship ${file}: company_${idx}.json does not exist (referenced in 'from')`);
-                shouldRemove = true;
-              }
-            }
-          }
-
-          // Check if 'to' references a non-existent person/company file
-          if (rel.to && rel.to['/']) {
-            const toPath = String(rel.to['/']).trim();
-            const personToMatch = toPath.match(/\.\/person_(\d+)\.json$/);
-            const companyToMatch = toPath.match(/\.\/company_(\d+)\.json$/);
-
-            if (personToMatch) {
-              const idx = parseInt(personToMatch[1], 10);
-              if (!existingPersonFiles.has(idx)) {
-                console.log(`Final cleanup: Removing relationship ${file}: person_${idx}.json does not exist (referenced in 'to')`);
-                shouldRemove = true;
-              }
-            }
-            if (companyToMatch) {
-              const idx = parseInt(companyToMatch[1], 10);
-              if (!existingCompanyFiles.has(idx)) {
-                console.log(`Final cleanup: Removing relationship ${file}: company_${idx}.json does not exist (referenced in 'to')`);
-                shouldRemove = true;
-              }
-            }
-          }
-
-          if (shouldRemove) {
-            fs.unlinkSync(path.join(dataDir, file));
-          }
-        } catch (e) {
-          console.error(`Final cleanup: Error processing relationship file ${file}:`, e.message);
-        }
-      }
-    });
-
-  } catch (e) {
-    console.error("Error removing unused owner files:", e);
-  }
-}
-
-function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress) {
+function writePersonCompaniesSalesRelationships(parcelId, sales) {
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (!owners) return;
   const key = `property_${parcelId}`;
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
-
-  // Remove records with keys starting with 'unknown_date_' as they cannot be linked to any sale
-  Object.keys(ownersByDate).forEach(dateKey => {
-    if (dateKey.startsWith('unknown_date_')) {
-      console.log("Removing unknown date owner:", dateKey);
-      delete ownersByDate[dateKey];
-    }
-  });
-
-  // First pass: identify which persons will actually be used in relationships
-  const personsToUseMap = new Map();
-
-  // Add persons from valid sale dates ONLY
-  // DO NOT add persons from current owners because mailing_address is not supported
-  // in this data group and those relationships will be deleted in final cleanup
-  sales.forEach((rec) => {
-    const d = parseDateToISO(rec.saleDate);
-    const ownersOnDate = ownersByDate[d] || [];
-    ownersOnDate
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        // Include middle name in key to distinguish people with same first+last names
-        const middle = (o.middle_name || "").trim().toUpperCase();
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${middle}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!personsToUseMap.has(k)) {
-          personsToUseMap.set(k, {
+  const personMap = new Map();
+  Object.values(ownersByDate).forEach((arr) => {
+    (arr || []).forEach((o) => {
+      if (o.type === "person") {
+        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+        if (!personMap.has(k))
+          personMap.set(k, {
             first_name: o.first_name,
             middle_name: o.middle_name || null,
             last_name: o.last_name,
-            prefix_name: o.prefix_name || null,
+            prefix_name: o.prefix_name ||null,
             suffix_name: o.suffix_name || null
           });
-        } else {
-          const existing = personsToUseMap.get(k);
+        else {
+          const existing = personMap.get(k);
           if (!existing.middle_name && o.middle_name)
             existing.middle_name = o.middle_name;
         }
-      });
+      }
+    });
   });
-
-  // REMOVED: Code that added persons from current owners for mailing address
-  // Reason: mailing_address class is not supported in this data group,
-  // and the final cleanup deletes all mailing_address relationships.
-  // Creating persons for mailing_address relationships would leave them orphaned.
-
-  // Now create person files only for persons that will be used
-  people = Array.from(personsToUseMap.values()).map((p) => ({
+  people = Array.from(personMap.values()).map((p) => ({
   ...appendSourceInfo(seed),
   birth_date: null,
   first_name: p.first_name ? formatNameForSchema(p.first_name) : null,
@@ -1563,92 +1322,45 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   veteran_status: null,
   }));
   const validPeople = validateAndFilterPeople(people);
-
-  // Build a map from person key (FIRSTNAME|MIDDLENAME|LASTNAME) to person index
-  // This ensures we can find the person index reliably when creating relationships
-  const personKeyToIndex = new Map();
-  validPeople.forEach((p, idx) => {
-    if (p.first_name && p.last_name) {
-      const middle = (p.middle_name || "").trim().toUpperCase();
-      const key = `${p.first_name.trim().toUpperCase()}|${middle}|${p.last_name.trim().toUpperCase()}`;
-      personKeyToIndex.set(key, idx + 1);
-    }
-  });
-
-  // Helper function to get person index by first, middle, and last name using the map
-  const getPersonIndexByKey = (firstName, middleName, lastName) => {
-    if (!firstName || !lastName) return null;
-    // Format names the same way they were formatted when building personKeyToIndex
-    const formattedFirst = formatNameForSchema(firstName);
-    const formattedLast = formatNameForSchema(lastName);
-    if (!formattedFirst || !formattedLast) return null;
-    // Format middle name if provided
-    const formattedMiddle = middleName ? formatMiddleNameForSchema(middleName) : null;
-    const middle = (formattedMiddle || "").trim().toUpperCase();
-    const key = `${formattedFirst.trim().toUpperCase()}|${middle}|${formattedLast.trim().toUpperCase()}`;
-    return personKeyToIndex.get(key) || null;
-  };
-
   validPeople.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-  // Update people to be validPeople for backward compatibility
-  people = validPeople;
-
-  // Track which companies will be used in relationships
-  const usedCompanyNames = new Set();
-  const usedPersonIdx = new Set();
-
-  // Identify companies used in sales relationships ONLY
-  // DO NOT add companies from current owners for mailing address
-  sales.forEach((rec) => {
-    const d = parseDateToISO(rec.saleDate);
-    const ownersOnDate = ownersByDate[d] || [];
-    ownersOnDate
-      .filter((o) => o.type === "company")
-      .forEach((o) => {
-        const normalized = normalizeCompanyName(o.name);
-        if (normalized) {
-          usedCompanyNames.add(normalized);
-        }
-      });
+  const companyNames = new Set();
+  Object.values(ownersByDate).forEach((arr) => {
+    (arr || []).forEach((o) => {
+      if (o.type === "company" && (o.name || "").trim())
+        companyNames.add((o.name || "").trim());
+    });
   });
-
-  // REMOVED: Code that added companies from current owners for mailing address
-  // Reason: mailing_address class is not supported in this data group
-
-  // Only create company files for companies that will be used
-  companies = Array.from(usedCompanyNames).map((n) => ({
+  companies = Array.from(companyNames).map((n) => ({ 
     ...appendSourceInfo(seed),
     name: n,
   }));
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
-
-  // Create sales relationships
-  const usedCompanyIdx = new Set();
+  // Relationships: link sale to owners present on that date (both persons and companies)
+  let relPersonCounter = 0;
+  let relCompanyCounter = 0;
   sales.forEach((rec, idx) => {
     const d = parseDateToISO(rec.saleDate);
     const ownersOnDate = ownersByDate[d] || [];
     ownersOnDate
       .filter((o) => o.type === "person")
       .forEach((o) => {
-        const pIdx = getPersonIndexByKey(o.first_name, o.middle_name, o.last_name);
+        const pIdx = findPersonIndexByName(o.first_name, o.last_name);
         if (pIdx) {
-          usedPersonIdx.add(pIdx);
+          relPersonCounter++;
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_history_${idx + 1}_has_person_${pIdx}.json`,
+              `relationship_sales_person_${relPersonCounter}.json`,
             ),
             {
-              from: { "/": `./sales_history_${idx + 1}.json` },
               to: { "/": `./person_${pIdx}.json` },
+              from: { "/": `./sales_${idx + 1}.json` },
             },
           );
-        } else {
-          console.warn(`Warning: Could not find person index for: ${o.first_name} ${o.middle_name || ''} ${o.last_name}`);
         }
       });
     ownersOnDate
@@ -1656,34 +1368,20 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       .forEach((o) => {
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx) {
-          usedCompanyIdx.add(cIdx);
+          relCompanyCounter++;
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_history_${idx + 1}_has_company_${cIdx}.json`,
+              `relationship_sales_company_${relCompanyCounter}.json`,
             ),
             {
-              from: { "/": `./sales_history_${idx + 1}.json` },
               to: { "/": `./company_${cIdx}.json` },
+              from: { "/": `./sales_${idx + 1}.json` },
             },
           );
-        } else {
-          console.warn(`Warning: Could not find company index for: ${o.name}`);
         }
       });
   });
-
-  // DISABLED: Mailing address relationships not supported in this data group
-  // The hasOwnerMailingAddress flag is set to false (line 2460) because
-  // mailing_address class is not part of this data group.
-  // Creating these relationships would result in them being deleted in final cleanup,
-  // which would leave person/company files orphaned without any relationships.
-  // Code removed to prevent accidental creation of orphaned entity files.
-
-  // Remove unused person and company files
-  console.log(`Created ${companies.length} company files, ${usedCompanyIdx.size} are referenced in relationships`);
-  console.log(`Created ${people.length} person files, ${usedPersonIdx.size} are referenced in relationships`);
-  removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx);
 }
 
 function writeTaxes($, parcelId) {
@@ -1793,13 +1491,6 @@ function writeStructure(parcelId) {
   };
   
   writeJSON(path.join("data", "structure.json"), structure);
-
-  // Create relationship linking property to structure
-  const relationship = {
-    from: { "/": "./property.json" },
-    to: { "/": "./structure.json" }
-  };
-  writeJSON(path.join("data", "relationship_property_has_structure.json"), relationship);
 }
 
 
@@ -1906,7 +1597,7 @@ function writeLayout(parcelId) {
   });
 }
 
-const seed = readJSON(path.join("input", "property_seed.json")) || readJSON("property_seed.json");
+const seed = readJSON("property_seed.json");
 const appendSourceInfo = (seed) => ({
   source_http_request: {
     method: "GET",
@@ -1926,31 +1617,12 @@ function createStructureFiles(seed,parcelIdentifier) {
   try {
     layoutsData = readJSON(path.join("owners", "layout_data.json"));
   } catch (e) {}
-
+  
   if (structuresData && parcelIdentifier) {
+    // console.log("INSIDE")
     const key = `property_${parcelIdentifier}`;
     const structures = structuresData[key]?.structures || [];
-    const layouts = layoutsData && layoutsData[key]?.layouts ? layoutsData[key].layouts : [];
-    const buildingLayouts = layouts.filter(layout => layout.space_type === "Building");
-
     structures.forEach((struct, idx) => {
-      // Validate interior_wall_surface_material_secondary against allowed enum values
-      const validSecondaryValues = [
-        "Wainscoting", "Chair Rail", "Crown Molding", "Baseboards", "Wood Trim",
-        "Stone Accent", "Tile Accent", "Metal Accent", "Glass Insert",
-        "Decorative Panels", "Feature Wall Material"
-      ];
-      const secondaryValue = struct?.interior_wall_surface_material_secondary ?? null;
-      // Ensure the value is a non-empty string and in the valid list, otherwise set to null
-      // Trim the value first, then check if it's in the valid list
-      let validatedSecondary = null;
-      if (secondaryValue && typeof secondaryValue === 'string') {
-        const trimmed = secondaryValue.trim();
-        if (trimmed !== '' && validSecondaryValues.includes(trimmed)) {
-          validatedSecondary = trimmed;
-        }
-      }
-
       const structureOut = {
         ...appendSourceInfo(seed),
         architectural_style_type: struct?.architectural_style_type ?? null,
@@ -1965,7 +1637,7 @@ function createStructureFiles(seed,parcelIdentifier) {
         flooring_condition: struct?.flooring_condition ?? null,
         interior_wall_structure_material: struct?.interior_wall_structure_material ?? null,
         interior_wall_surface_material_primary: struct?.interior_wall_surface_material_primary ?? null,
-        interior_wall_surface_material_secondary: validatedSecondary,
+        interior_wall_surface_material_secondary: struct?.interior_wall_surface_material_secondary ?? null,
         interior_wall_finish_primary: struct?.interior_wall_finish_primary ?? null,
         interior_wall_finish_secondary: struct?.interior_wall_finish_secondary ?? null,
         interior_wall_condition: struct?.interior_wall_condition ?? null,
@@ -2006,55 +1678,41 @@ function createStructureFiles(seed,parcelIdentifier) {
         foundation_repair_date: struct?.foundation_repair_date ?? null,
         window_installation_date: struct?.window_installation_date ?? null
       };
-      const structureIndex = struct.structure_index || idx + 1;
-      writeJSON(path.join("data", `structure_${structureIndex}.json`), structureOut);
-
-      // Create relationship: link to layout if found, otherwise link to property
+      writeJSON(path.join("data", `structure_${struct.structure_index || idx + 1}.json`), structureOut);
+      
+      // Create relationship between building layout and structure
       const buildingNumber = struct.building_number || idx + 1;
-      let linkedToLayout = false;
-
-      // If no building layouts exist, or if there's 1 structure but multiple buildings, link to property
-      if (buildingLayouts.length === 0 || (structures.length === 1 && buildingLayouts.length > 1)) {
-        const relationship = {
-          from: { "/": "./property.json" },
-          to: { "/": `./structure_${structureIndex}.json` }
-        };
-        writeJSON(
-          path.join("data", `relationship_property_has_structure_${structureIndex}.json`),
-          relationship
+      const structureIndex = struct.structure_index || idx + 1;
+      
+      // Find the correct building layout file index
+      let buildingLayoutIndex = buildingNumber;
+      // console.log("BUILDING_NUMBER",buildingNumber)
+      if (layoutsData && parcelIdentifier) {
+        // console.log(layoutsData)
+        const key = `property_${parcelIdentifier}`;
+        const layouts = layoutsData[key]?.layouts || [];
+        // console.log(layouts)
+        const buildingLayout = layouts.find((layout, layoutIdx) => 
+          layout.space_type === "Building" && layout.building_number === buildingNumber
         );
-      } else {
-        // Try to find matching building layout by building_number
-        const buildingLayout = buildingLayouts.find(layout => layout.building_number === buildingNumber);
-
+        // console.log("BUILDING_LAYOUT", buildingLayout)
         if (buildingLayout) {
-          // Found matching layout - create layout -> structure relationship
-          const buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
-          const relationship = {
-            from: { "/": `./layout_${buildingLayoutIndex}.json` },
-            to: { "/": `./structure_${structureIndex}.json` }
-          };
-          writeJSON(
-            path.join("data", `relationship_layout_${buildingLayoutIndex}_has_structure_${structureIndex}.json`),
-            relationship
-          );
-          linkedToLayout = true;
-        }
-
-        // If no matching layout found, link to property as fallback
-        if (!linkedToLayout) {
-          const relationship = {
-            from: { "/": "./property.json" },
-            to: { "/": `./structure_${structureIndex}.json` }
-          };
-          writeJSON(
-            path.join("data", `relationship_property_has_structure_${structureIndex}.json`),
-            relationship
-          );
+          buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
         }
       }
+      
+      const relationship = {
+        from: { "/": `./layout_${buildingLayoutIndex}.json` },
+        to: { "/": `./structure_${structureIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
+        relationship
+      );
     });
   }
+
+
 }
 
 function createUtilitiesFiles(seed,parcelIdentifier){
@@ -2066,13 +1724,11 @@ function createUtilitiesFiles(seed,parcelIdentifier){
   try {
     layoutsData = readJSON(path.join("owners", "layout_data.json"));
   } catch (e) {}
-
+  
+  
   if (utilitiesData && parcelIdentifier) {
     const key = `property_${parcelIdentifier}`;
     const utilities = utilitiesData[key]?.utilities || [];
-    const layouts = layoutsData && layoutsData[key]?.layouts ? layoutsData[key].layouts : [];
-    const buildingLayouts = layouts.filter(layout => layout.space_type === "Building");
-
     utilities.forEach((util, idx) => {
       const utilityOut = {
         ...appendSourceInfo(seed),
@@ -2096,55 +1752,36 @@ function createUtilitiesFiles(seed,parcelIdentifier){
         solar_inverter_visible: util?.solar_inverter_visible ? true : false,
         hvac_unit_issues: util?.hvac_unit_issues ?? null
       };
-      const utilityIndex = util.utility_index || idx + 1;
-      writeJSON(path.join("data", `utility_${utilityIndex}.json`), utilityOut);
-
-      // Create relationship: link to layout if found, otherwise link to property
+      writeJSON(path.join("data", `utility_${util.utility_index || idx + 1}.json`), utilityOut);
+      
+      // Create relationship between building layout and utility
       const buildingNumber = util.building_number || idx + 1;
-      let linkedToLayout = false;
-
-      // If no building layouts exist, or if there's 1 utility but multiple buildings, link to property
-      if (buildingLayouts.length === 0 || (utilities.length === 1 && buildingLayouts.length > 1)) {
-        const relationship = {
-          from: { "/": "./property.json" },
-          to: { "/": `./utility_${utilityIndex}.json` }
-        };
-        writeJSON(
-          path.join("data", `relationship_property_has_utility_${utilityIndex}.json`),
-          relationship
+      const utilityIndex = util.utility_index || idx + 1;
+      
+      // Find the correct building layout file index
+      let buildingLayoutIndex = buildingNumber;
+      if (layoutsData && parcelIdentifier) {
+        const key = `property_${parcelIdentifier}`;
+        const layouts = layoutsData[key]?.layouts || [];
+        const buildingLayout = layouts.find((layout, layoutIdx) => 
+          layout.space_type === "Building" && layout.building_number === buildingNumber
         );
-      } else {
-        // Try to find matching building layout by building_number
-        const buildingLayout = buildingLayouts.find(layout => layout.building_number === buildingNumber);
-
         if (buildingLayout) {
-          // Found matching layout - create layout -> utility relationship
-          const buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
-          const relationship = {
-            from: { "/": `./layout_${buildingLayoutIndex}.json` },
-            to: { "/": `./utility_${utilityIndex}.json` }
-          };
-          writeJSON(
-            path.join("data", `relationship_layout_${buildingLayoutIndex}_has_utility_${utilityIndex}.json`),
-            relationship
-          );
-          linkedToLayout = true;
-        }
-
-        // If no matching layout found, link to property as fallback
-        if (!linkedToLayout) {
-          const relationship = {
-            from: { "/": "./property.json" },
-            to: { "/": `./utility_${utilityIndex}.json` }
-          };
-          writeJSON(
-            path.join("data", `relationship_property_has_utility_${utilityIndex}.json`),
-            relationship
-          );
+          buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
         }
       }
+      
+      const relationship = {
+        from: { "/": `./layout_${buildingLayoutIndex}.json` },
+        to: { "/": `./utility_${utilityIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
+        relationship
+      );
     });
   }
+
 }
 
 
@@ -2436,47 +2073,10 @@ function attemptWriteAddress(unnorm, secTwpRng) {
 
 function main() {
   ensureDir("data");
-
-  // CLEANUP: Remove all old data files to ensure clean slate
-  // This prevents leftover files from previous runs (e.g., person_17.json from a different input)
-  try {
-    const dataDir = "data";
-    if (fs.existsSync(dataDir)) {
-      const files = fs.readdirSync(dataDir);
-      files.forEach((file) => {
-        // Remove all generated data files and relationships
-        // This ensures that any leftover files from previous runs are cleaned up
-        if (
-          // Remove person, company files
-          /^person_\d+\.json$/.test(file) ||
-          /^company_\d+\.json$/.test(file) ||
-          // Remove sales_history, file, structure, utility, layout files
-          /^sales_history_\d+\.json$/.test(file) ||
-          /^file_\d+\.json$/.test(file) ||
-          /^structure(_\d+)?\.json$/.test(file) ||
-          /^utility(_\d+)?\.json$/.test(file) ||
-          /^layout_\d+\.json$/.test(file) ||
-          // Remove relationship files
-          /^relationship_.*\.json$/.test(file) ||
-          // Remove unsupported files
-          file === "mailing_address.json" ||
-          /^tax_\d+\.json$/.test(file) ||
-          // Remove property file (will be recreated)
-          file === "property.json"
-        ) {
-          console.log(`Initial cleanup: Removing ${file}`);
-          fs.unlinkSync(path.join(dataDir, file));
-        }
-      });
-    }
-  } catch (e) {
-    console.error("Error in initial cleanup:", e);
-  }
-
   const $ = loadHTML();
 
-  const propertySeed = readJSON(path.join("input", "property_seed.json")) || readJSON("property_seed.json");
-  const unnormalized = readJSON(path.join("input", "unnormalized_address.json")) || readJSON("unnormalized_address.json");
+  const propertySeed = readJSON("property_seed.json");
+  const unnormalized = readJSON("unnormalized_address.json");
   const appendSourceInfo = (propertySeed) => ({
     source_http_request: {
       method: "GET",
@@ -2496,53 +2096,83 @@ function main() {
   // console.log("Sales:", sales);
   writeSalesDeedsFilesAndRelationships($);
 
-  // DISABLED: Tax class is not supported in Sales_History data group
-  // writeTaxes($, parcelId);
-
-  // DISABLED: Mailing Address is not part of the Sales_History data group
-  // const mailingAddressRaw = extractCurrentOwnerAddress($)
-  // const mailingAddressOutput = {
-  //   ...appendSourceInfo(propertySeed),
-  //   latitude: null,
-  //   longitude: null,
-  //   unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' '),
-  // };
-  // writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-
-  // Mailing address is not in Property_Improvement, but we still track current owners for person relationships
-  // Set to false since mailing_address class is not in Property_Improvement
-  const hasOwnerMailingAddress = false;
+  writeTaxes($, parcelId);
 
   if (parcelId) {
-    writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress);
+    writePersonCompaniesSalesRelationships(parcelId, sales);
+        
+    // writeOwnersCurrentAndRelationships(parcelId);
+    // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
+    // writeUtility(parcelId);
+    // writeLayout(parcelId);
+    // writeStructure(parcelId);
+    
+  //------Structure (owners/structures_data.json)---------------
+  createStructureFiles(seed,parcelId);
 
-    // Clean up old structure.json file if it exists (we now use structure_1.json, structure_2.json, etc.)
-    const oldStructureFile = path.join("data", "structure.json");
-    const oldStructureRelFile = path.join("data", "relationship_property_has_structure.json");
-    if (fs.existsSync(oldStructureFile)) {
-      console.log("Removing old structure.json file");
-      fs.unlinkSync(oldStructureFile);
-    }
-    if (fs.existsSync(oldStructureRelFile)) {
-      console.log("Removing old relationship_property_has_structure.json file");
-      fs.unlinkSync(oldStructureRelFile);
-    }
+  // ---------- Utilities (owners/utilities_data.json) ----------
+  createUtilitiesFiles(seed,parcelId);
 
-    // Structure, Utility, and Layout classes are supported in Property_Improvement data group
-    // Using createStructureFiles instead of writeStructure to handle array of structures
-    createStructureFiles(seed, parcelId);
+  // ---------- Layouts (owners/layout_data.json) ----------
 
-    // Create utilities files with relationships
-    createUtilitiesFiles(seed, parcelId);
+  createLayoutFiles(seed,parcelId);
 
-    // Create layout files with relationships
-    createLayoutFiles(seed, parcelId);
   }
 
-  // DISABLED: Address class is not supported in Sales_History data group
-  // const secTwpRng = extractSecTwpRng($);
-  // console.log(secTwpRng)
-  // attemptWriteAddress(unnormalized, secTwpRng);  
+  // Address last
+  const secTwpRng = extractSecTwpRng($);
+  console.log(secTwpRng)
+  attemptWriteAddress(unnormalized, secTwpRng);
+
+
+  //Mailing Address
+  const mailingAddressRaw = extractCurrentOwnerAddress($)
+  // console.log("mailing address:", mailingAddressRaw);
+  const mailingAddressOutput = {
+    ...appendSourceInfo(propertySeed),
+    latitude: null,
+    longitude: null,
+    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' '),
+  };
+  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+
+  // Create mailing address relationships with current owners
+  const owners = readJSON(path.join("owners", "owner_data.json"));
+  if (owners) {
+    const key = `property_${parcelId}`;
+    const record = owners[key];
+    if (record && record.owners_by_date && record.owners_by_date['current']) {
+      const currentOwners = record.owners_by_date['current'];
+      let relCounter = 0;
+      currentOwners.forEach((owner) => {
+        if (owner.type === "person") {
+          const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
+          if (pIdx) {
+            relCounter++;
+            writeJSON(
+              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
+              {
+                from: { "/": `./person_${pIdx}.json` },
+                to: { "/": "./mailing_address.json" },
+              }
+            );
+          }
+        } else if (owner.type === "company") {
+          const cIdx = findCompanyIndexByName(owner.name);
+          if (cIdx) {
+            relCounter++;
+            writeJSON(
+              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
+              {
+                from: { "/": `./company_${cIdx}.json` },
+                to: { "/": "./mailing_address.json" }
+              }
+            );
+          }
+        }
+      });
+    }
+  }  
 
   // Create relationships only if target files exist
   // const dataDir = "data";
@@ -2564,31 +2194,6 @@ function main() {
   //   };
   //   writeJSON(path.join("data", "relationship_property_has_utility.json"), relPropertyUtility);
   // }
-
-  // FINAL CLEANUP: Remove unsupported files for Property_Improvement data group
-  // Tax and mailing_address are not supported in Property_Improvement
-  // Person and company ARE supported, so keep them
-  try {
-    const dataDir = "data";
-    if (fs.existsSync(dataDir)) {
-      const files = fs.readdirSync(dataDir);
-      files.forEach((file) => {
-        // Remove tax and mailing_address files (not in Property_Improvement)
-        if (file === "mailing_address.json" ||
-            /^tax_\d+\.json$/.test(file)) {
-          console.log(`Final cleanup: Removing unsupported file: ${file}`);
-          fs.unlinkSync(path.join(dataDir, file));
-        }
-        // Remove mailing_address relationship files
-        if (/^relationship_.*mailing_address.*\.json$/.test(file)) {
-          console.log(`Final cleanup: Removing unsupported relationship file: ${file}`);
-          fs.unlinkSync(path.join(dataDir, file));
-        }
-      });
-    }
-  } catch (e) {
-    console.error("Error in final cleanup:", e);
-  }
 }
 
 if (require.main === module) {

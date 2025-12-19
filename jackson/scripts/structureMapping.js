@@ -1,3 +1,4 @@
+
 // Structure mapping script
 // Reads input.html, parses building and summary data using cheerio, and writes owners/structure_data.json
 
@@ -105,33 +106,6 @@ function mapInteriorSurface(tokens) {
   return out;
 }
 
-function mapInteriorSurfaceSecondary(tokens) {
-  const out = [];
-  tokens.forEach((tok) => {
-    const t = tok.toUpperCase().trim();
-    if (t.includes("WAINSCOT")) out.push("Wainscoting");
-    if (t.includes("CHAIR") && t.includes("RAIL")) out.push("Chair Rail");
-    if (t.includes("CROWN") && t.includes("MOLD")) out.push("Crown Molding");
-    if (t.includes("BASEBOARD")) out.push("Baseboards");
-    if (t.includes("WOOD") && (t.includes("TRIM") || t.includes("ACCENT"))) out.push("Wood Trim");
-    if (t.includes("STONE") && t.includes("ACCENT")) out.push("Stone Accent");
-    if (t.includes("TILE") && t.includes("ACCENT")) out.push("Tile Accent");
-    if (t.includes("METAL") && t.includes("ACCENT")) out.push("Metal Accent");
-    if (t.includes("GLASS") && t.includes("INSERT")) out.push("Glass Insert");
-    if (t.includes("DECORATIVE") && t.includes("PANEL")) out.push("Decorative Panels");
-    if (t.includes("FEATURE") && t.includes("WALL")) out.push("Feature Wall Material");
-    // Fallback mappings for common terms that should map to accents
-    if (!out.length) {
-      if (t.includes("WOOD")) out.push("Wood Trim");
-      if (t.includes("STONE")) out.push("Stone Accent");
-      if (t.includes("TILE")) out.push("Tile Accent");
-      if (t.includes("METAL")) out.push("Metal Accent");
-      if (t.includes("GLASS")) out.push("Glass Insert");
-    }
-  });
-  return out;
-}
-
 function mapFlooring(tokens) {
   const out = [];
   tokens.forEach((tok) => {
@@ -153,21 +127,6 @@ function mapFlooring(tokens) {
     if (t.includes("V C TILE")) out.push("Sheet Vinyl");
   });
   return out;
-}
-
-function mapFlooringSecondary(token) {
-  // Valid values for flooring_material_secondary enum
-  const t = token.toUpperCase().trim();
-  if (t.includes("HARDWOOD") && t.includes("SOLID")) return "Solid Hardwood";
-  if (t.includes("HARDWOOD") && t.includes("ENGINEERED")) return "Engineered Hardwood";
-  if (t.includes("LAMINATE")) return "Laminate";
-  if (t.includes("LVP") || (t.includes("LUXURY") && t.includes("VINYL"))) return "Luxury Vinyl Plank";
-  if (t.includes("CERAMIC")) return "Ceramic Tile";
-  if (t.includes("CARPET")) return "Carpet";
-  if (t.includes("AREA") && t.includes("RUG")) return "Area Rugs";
-  if (t.includes("TRANSITION")) return "Transition Strips";
-  // If no valid mapping found, return null
-  return null;
 }
 
 function parseNumber(val) {
@@ -355,34 +314,7 @@ function buildStructureFromBuilding(building, parcelId, buildingNumber, structur
   const intMaterials = mapInteriorSurface(intWallTokens);
   if (intMaterials.length) {
     structure.interior_wall_surface_material_primary = intMaterials[0];
-  }
-  // Use separate mapping for secondary materials (accent/trim)
-  if (intWallTokens.length > 1) {
-    const secondaryTokens = intWallTokens.slice(1);
-    const secondaryMaterials = mapInteriorSurfaceSecondary(secondaryTokens);
-    if (secondaryMaterials.length > 0) {
-      // Validate that the value is in the allowed enum list for secondary
-      const validSecondaryValues = [
-        "Wainscoting", "Chair Rail", "Crown Molding", "Baseboards", "Wood Trim",
-        "Stone Accent", "Tile Accent", "Metal Accent", "Glass Insert",
-        "Decorative Panels", "Feature Wall Material"
-      ];
-      const value = secondaryMaterials[0];
-      // Only set if value is a non-empty string and in the valid list
-      // Trim the value first, then check if it's in the valid list
-      if (value && typeof value === 'string' && value !== '') {
-        const trimmed = value.trim();
-        if (trimmed !== '' && validSecondaryValues.includes(trimmed)) {
-          structure.interior_wall_surface_material_secondary = trimmed;
-        } else {
-          // Invalid value - set to null explicitly
-          structure.interior_wall_surface_material_secondary = null;
-        }
-      } else {
-        // No valid value - set to null explicitly
-        structure.interior_wall_surface_material_secondary = null;
-      }
-    }
+    if (intMaterials.length > 1) structure.interior_wall_surface_material_secondary = intMaterials[1];
   }
 
   const floorTokens = building["Floor Cover"]
@@ -391,13 +323,7 @@ function buildStructureFromBuilding(building, parcelId, buildingNumber, structur
   const floorMaterials = mapFlooring(floorTokens);
   if (floorMaterials.length) {
     structure.flooring_material_primary = floorMaterials[0];
-    // Use separate mapping for secondary flooring material (has different enum values)
-    if (floorTokens.length > 1) {
-      const secondaryValue = mapFlooringSecondary(floorTokens[1]);
-      if (secondaryValue) {
-        structure.flooring_material_secondary = secondaryValue;
-      }
-    }
+    if (floorMaterials.length > 1) structure.flooring_material_secondary = floorMaterials[1];
   }
 
   const roofTokens = [];
@@ -436,18 +362,7 @@ function buildStructuresFromBuildings(buildings, parcelId) {
 }
 
 function main() {
-  function findHTMLFile() {
-    const inputDir = path.join(process.cwd(), "input");
-    if (fs.existsSync(inputDir)) {
-      const files = fs.readdirSync(inputDir);
-      const htmlFile = files.find(f => f.endsWith('.html'));
-      if (htmlFile) {
-        return path.join(inputDir, htmlFile);
-      }
-    }
-    return path.resolve("input.html");
-  }
-  const inputPath = findHTMLFile();
+  const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
   if (!parcelId) {

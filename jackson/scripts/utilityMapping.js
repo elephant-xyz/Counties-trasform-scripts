@@ -256,18 +256,7 @@ function buildUtilities($, parcelId, buildings) {
 }
 
 function main() {
-  function findHTMLFile() {
-    const inputDir = path.join(process.cwd(), "input");
-    if (fs.existsSync(inputDir)) {
-      const files = fs.readdirSync(inputDir);
-      const htmlFile = files.find(f => f.endsWith('.html'));
-      if (htmlFile) {
-        return path.join(inputDir, htmlFile);
-      }
-    }
-    return path.resolve("input.html");
-  }
-  const inputPath = findHTMLFile();
+  const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
   if (!parcelId) throw new Error("Parcel ID not found");

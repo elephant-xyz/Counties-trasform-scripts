@@ -3,18 +3,7 @@ const path = require("path");
 const cheerio = require("cheerio");
 
 // Read HTML input
-function findHTMLFile() {
-  const inputDir = path.join(process.cwd(), "input");
-  if (fs.existsSync(inputDir)) {
-    const files = fs.readdirSync(inputDir);
-    const htmlFile = files.find(f => f.endsWith('.html'));
-    if (htmlFile) {
-      return path.join(inputDir, htmlFile);
-    }
-  }
-  return path.join(process.cwd(), "input.html");
-}
-const htmlPath = findHTMLFile();
+const htmlPath = path.join(process.cwd(), "input.html");
 const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 
@@ -60,10 +49,6 @@ function cleanRawName(raw) {
     /\b%\s*INTEREST\b/gi,
     /\b\d{1,3}%\b/gi,
     /\b\d{1,3}%\s*INTEREST\b/gi,
-    /--[JT]*W\/?ROS\b/gi,
-    /\b[JT]*W\/?ROS\b/gi,
-    /\bJT\s+W\s*\/?ROS\b/gi,
-    /\bW\/ROS\b/gi,
   ];
   noisePatterns.forEach((re) => {
     s = s.replace(re, " ");
@@ -308,12 +293,6 @@ function isCompanyName(name) {
 function splitCompositeNames(name) {
   const cleaned = cleanRawName(name);
   if (!cleaned) return [];
-
-  // If the entire string is a company name (has company keywords), don't split it
-  if (isCompanyName(cleaned)) {
-    return [cleaned];
-  }
-
   const parts = cleaned
     .split(/\s*&\s*|\s+and\s+/i)
     .map((p) => p.trim())
@@ -388,86 +367,13 @@ function getParcelId($) {
 
 function extractCurrentOwners($) {
   const owners = [];
-  const rawNames = [];
-
-  // First collect all raw owner names
   $(CURRENT_OWNER_SELECTOR).find('a, span').each((i, el) => {
     const ownerText = $(el).text().trim();
     if (ownerText && !ownerText.includes('Primary Owner') && !/\d+\s+\w+\s+ST\s+N\s+#\d+/.test(ownerText)) {
       const t = txt(ownerText);
-      // Remove address portions from owner name
-      // Addresses typically include numbers and common address abbreviations
-      let cleanedName = t.replace(/\d+\s+[A-Z\s]+(?:ST|AVE|RD|DR|LN|CT|WAY|BLVD|PL|TER|CIR|PKWY)\s+[A-Z\s,\d]+$/i, '').trim();
-      if (cleanedName) {
-        // Remove trailing "&", "AND", and any following text
-        cleanedName = cleanedName.replace(/\s*(&|AND)\s*.*$/i,'').trim();
-        if (cleanedName) {
-          rawNames.push(cleanedName);
-        }
-      }
+      owners.push(t);
     }
   });
-
-  // Extract sales data to check against
-  const salesNames = [];
-  $(SALES_TABLE_SELECTOR).each((i, tr) => {
-    const $tr = $(tr);
-    const tds = $tr.find("td");
-    if (tds.length >= 8) {
-      const grantee = txt(tds.eq(7).text());
-      if (grantee) salesNames.push(grantee.toUpperCase());
-    }
-  });
-  const salesNamesStr = salesNames.join(' ');
-
-  // Process each raw name
-  for (const name of rawNames) {
-    let finalName = name;
-    const tokens = name.split(/\s+/);
-
-    // For 3-token names, check if reordering helps match sales data
-    if (tokens.length === 3) {
-      const [t1, t2, t3] = tokens;
-      const original = `${t1} ${t2} ${t3}`;
-      const reordered = `${t2} ${t3} ${t1}`; // Assume LAST FIRST MIDDLE → FIRST MIDDLE LAST
-
-      // Check if original version appears in sales data (already in correct format)
-      if (salesNamesStr.includes(original.toUpperCase())) {
-        finalName = original;
-      } else if (salesNamesStr.includes(reordered.toUpperCase())) {
-        finalName = reordered;
-      } else {
-        // Check if name looks like LAST FIRST MIDDLE by checking if t1 is commonly a last name pattern
-        // If all tokens are capitalized and t2 looks like a first name, reorder
-        // Otherwise keep original (likely already FIRST MIDDLE LAST)
-        const commonFirstNames = ['MICHAEL', 'JOHN', 'JAMES', 'ROBERT', 'WILLIAM', 'DAVID', 'RICHARD', 'CHARLES', 'THOMAS', 'DONALD'];
-        if (commonFirstNames.includes(t2.toUpperCase())) {
-          // t2 is likely a first name, so original is LAST FIRST MIDDLE
-          finalName = reordered;
-        } else {
-          // Keep original format
-          finalName = original;
-        }
-      }
-    } else if (tokens.length === 2) {
-      const [t1, t2] = tokens;
-      const original = `${t1} ${t2}`;
-      const reordered = `${t2} ${t1}`;
-
-      // Check which version appears in sales data
-      if (salesNamesStr.includes(original.toUpperCase())) {
-        finalName = original;
-      } else if (salesNamesStr.includes(reordered.toUpperCase())) {
-        finalName = reordered;
-      } else {
-        // Default to reordering for 2-token names (common pattern: LAST FIRST)
-        finalName = reordered;
-      }
-    }
-
-    owners.push(finalName);
-  }
-
   return owners;
 }
 
