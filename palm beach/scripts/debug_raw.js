@@ -36876,6 +36876,95 @@ async function main() {
     countryFallback: "US",
   });
 
+  // Final clamp: when we have any unnormalized address string, force the raw
+  // oneOf branch and hydrate the full address schema surface so validators
+  // don't complain about missing normalized fields.
+  if (fs.existsSync(addressOutputPath)) {
+    const snapshot = readJSONIfExists(addressOutputPath) || {};
+    const normalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...snapshot });
+    const normalizedReady =
+      normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+    const rawBranchCandidate = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        snapshot.unnormalized_address,
+        ...finalRawCandidates,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+
+    if (rawBranchCandidate && !normalizedReady) {
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (field === "unnormalized_address") {
+          rawOut[field] = rawBranchCandidate;
+          return;
+        }
+        if (field === "request_identifier") {
+          rawOut[field] =
+            safeNullIfEmpty(
+              resolveFirstNonEmptyString([
+                snapshot.request_identifier,
+                resolvedRequestIdentifier,
+                trimmedRequestIdentifier,
+                parcelId,
+                seed && seed.request_identifier,
+                unAddr && unAddr.request_identifier,
+              ]),
+            ) ?? null;
+          return;
+        }
+        if (field === "source_http_request") {
+          rawOut[field] =
+            prepareSourceHttpRequest(
+              resolveSourceHttpRequest(
+                snapshot.source_http_request,
+                resolvedSourceHttp,
+                sourceHttpCandidate,
+                unAddr && unAddr.source_http_request,
+                seed && seed.source_http_request,
+              ),
+            ) || null;
+          return;
+        }
+
+        let value =
+          snapshot[field] !== undefined
+            ? snapshot[field]
+            : normalizedSurface && normalizedSurface[field];
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+          return;
+        }
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          rawOut[field] = trimmed.length ? trimmed : null;
+          return;
+        }
+        rawOut[field] = value === undefined ? null : value;
+      });
+
+      if (!rawOut.postal_code) {
+        rawOut.plus_four_postal_code = null;
+      }
+      if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+        rawOut.latitude = null;
+        rawOut.longitude = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rawOut.state_code) &&
+        !hasMeaningfulAddressValue(rawOut.country_code)
+      ) {
+        rawOut.country_code = "US";
+      }
+
+      writeJSON(addressOutputPath, applyNullAddressRelationships(rawOut));
+    }
+  }
+
   enforcePropertyRelationshipNulls(propertyFilePath);
   enforceAddressRelationshipNulls(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
