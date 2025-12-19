@@ -3993,11 +3993,13 @@ function forceRawAddressPayloadFromSource(addressPath, options = {}) {
     extraRawCandidates = [],
   } = options || {};
 
-  if (!addressPath || !fs.existsSync(addressPath)) {
+  if (!addressPath) {
     return;
   }
 
-  const payload = readJSONIfExists(addressPath) || {};
+  const payload = fs.existsSync(addressPath)
+    ? readJSONIfExists(addressPath) || {}
+    : {};
   const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
   const seedSource = readJSONIfExists(seedPath) || null;
 
@@ -34522,6 +34524,18 @@ async function main() {
     path.join(relationshipsDir, "address_has_fact_sheet.json"),
     path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
   ].forEach((p) => removeFileIfExists(p));
+
+  // Rebuild a raw address payload directly from the unnormalized source when available
+  // so the raw oneOf branch always has every required field present (nullable).
+  forceRawAddressPayloadFromSource(addressOutputPath, {
+    unnormalizedPath: "unnormalized_address.json",
+    seedPath: "property_seed.json",
+    defaultCountyName: formattedCountyName || countyName || "Palm Beach",
+    defaultStateCode: inferredStateCode || "FL",
+    defaultCountryCode: "US",
+    extraRawCandidates: rawCandidates,
+  });
+
   enforceRawPreferredOneOf(addressOutputPath, {
     requestIdentifier:
       resolvedRequestIdentifier ?? trimmedRequestIdentifier ?? parcelId ?? null,
