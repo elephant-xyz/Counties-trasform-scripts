@@ -1133,6 +1133,7 @@ function writeProperty($, parcelId) {
     subdivision: null, // Not available in this HTML
     zoning: null, // Not available in this HTML
   };
+  if (!property.build_status) delete property.build_status;
   writeJSON(path.join("data", "property.json"), property);
   return {
     propertyAttributes,
