@@ -32,6 +32,7 @@ function formatMiddleNameForSchema(name) {
 function cleanRawName(raw) {
   let s = (raw || "").replace(/\s+/g, " ").trim();
   if (!s) return "";
+  s = s.replace(/\s*\+\s*/g, " ").replace(/\s+/g, " ").trim();
   const noisePatterns = [
     /\bET\s*AL\b/gi,
     /\bETAL\b/gi,
@@ -170,6 +171,8 @@ function classifyOwner(raw) {
       first_name: first,
       last_name: last,
       middle_name: middle ? middle : null,
+      prefix_name: null,
+      suffix_name: null,
     };
     return { valid: true, owner: person };
   }
@@ -205,12 +208,9 @@ function getParcelId($) {
 
 function extractCurrentOwners($) {
   const owners = [];
-  $(CURRENT_OWNER_SELECTOR).find('a').each((i, el) => {
-    const ownerText = $(el).text().trim();
-    if (ownerText) {
-      const t = txt(ownerText);
-      owners.push(t);
-    }
+  $('span[id*="sprOwnerName"][id*="lnkUpmSearchLinkSuppressed_lblSearch"]').each((i, el) => {
+    const ownerText = $(el).text().trim().replace(/\s*\+\s*/g, ' ').replace(/\s+/g, ' ').trim();
+    if (ownerText) owners.push(ownerText);
   });
   return owners;
 }
@@ -231,8 +231,8 @@ function extractSalesOwnersByDate($) {
     const dd = dm[2].padStart(2, "0");
     const yyyy = dm[3];
     const dateStr = `${yyyy}-${mm}-${dd}`;
-    const grantee = txt(tds.eq(7).text());
-    const grantor = txt(tds.eq(6).text());
+    const grantee = txt(tds.eq(7).text()).replace(/\s*\+\s*/g, ' ').replace(/\s+/g, ' ').trim();
+    const grantor = txt(tds.eq(6).text()).replace(/\s*\+\s*/g, ' ').replace(/\s+/g, ' ').trim();
     if (grantee) {
       if (!map[dateStr]) map[dateStr] = [];
       map[dateStr].push(grantee);

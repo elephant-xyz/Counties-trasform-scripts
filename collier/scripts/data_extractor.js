@@ -62,317 +62,426 @@ function parseDateToISO(mdyy) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function normalizeWhitespace(str) {
+  return (str || "")
+    .replace(/\s+/g, " ")
+    .replace(/[\u00A0\s]+/g, " ")
+    .trim();
+}
+
+function cleanInvalidCharsFromName(raw) {
+  if (!raw) return "";
+  let parsedName = normalizeWhitespace(raw)
+    .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
+    .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .trim();
+  while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(1);
+  }
+  while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(0, parsedName.length - 1);
+  }
+  return parsedName;
+}
+
 function capitalizeProperName(name) {
   if (!name) return "";
 
-  // Trim and handle empty strings
-  const trimmed = name.trim();
-  if (!trimmed) return "";
+  // Clean and normalize whitespace
+  let cleaned = name.trim().replace(/\s+/g, ' ');
 
-  // Split on spaces, hyphens, apostrophes, but preserve the delimiters
-  const parts = trimmed.split(/(\s+|\-|'|,|\.)/);
+  // Remove trailing periods
+  cleaned = cleaned.replace(/\.+$/, '');
 
-  const capitalized = parts.map((part, index) => {
-    // If it's a delimiter, keep it as is
-    if (/^(\s+|\-|'|,|\.)$/.test(part)) return part;
+  // Remove commas followed by spaces and what follows (usually suffixes like ", Jr." or ", III")
+  // These don't fit the strict pattern which doesn't allow consecutive separators
+  cleaned = cleaned.replace(/,\s+.*$/, '');
 
-    // Skip empty parts
-    if (!part) return part;
+  // Remove any characters that are not letters, spaces, or allowed separators
+  cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, '');
 
-    // Capitalize: first letter uppercase, rest lowercase
-    // Handle special cases like O'Brien, McDonald
-    if (part.length === 1) {
-      return part.toUpperCase();
-    }
+  // Remove any remaining commas and periods that aren't part of valid name patterns
+  cleaned = cleaned.replace(/,/g, '');
 
-    // Check if previous part was an apostrophe or hyphen
-    const prevPart = index > 0 ? parts[index - 1] : null;
-    if (prevPart === "'" || prevPart === "-") {
-      // Capitalize after apostrophe or hyphen
+  // Remove standalone periods (but keep them in abbreviations like "St.John" -> "St.John")
+  cleaned = cleaned.replace(/\.\s+/g, ' ');
+  cleaned = cleaned.replace(/\s+\./g, '');
+
+  // Clean up malformed separator-space patterns
+  // Examples: "CARI- HEYWOOD" -> "CARI-HEYWOOD", "O' BRIEN" -> "O'BRIEN"
+  cleaned = cleaned.replace(/-\s+/g, '-').replace(/\s+-/g, '-');
+  cleaned = cleaned.replace(/'\s+/g, "'").replace(/\s+'/g, "'");
+
+  if (!cleaned || cleaned.length === 0) return "";
+
+  // Split by spaces and format each word part
+  const result = cleaned.split(' ').map(part => {
+    if (!part || part.length === 0) return '';
+
+    // For parts with special characters (like O'Brien, Mary-Jane, St.John)
+    if (/[\-'.]/.test(part)) {
+      // Split by separators while keeping them
+      const segments = part.split(/([\-'.])/).filter(s => s.length > 0);
+      let formatted = '';
+
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+
+        // If it's a separator, keep it as is
+        if (/[\-'.]/.test(segment)) {
+          formatted += segment;
+        } else if (segment.length > 0) {
+          // Format as: First letter uppercase, rest lowercase
+          formatted += segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+        }
+      }
+      return formatted;
+    } else {
+      // Normal word: capitalize first letter, lowercase rest
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     }
+  }).filter(p => p.length > 0).join(' ');
 
-    // Handle special prefixes (Mc, Mac, O')
-    if (part.toLowerCase().startsWith("mc") && part.length > 2) {
-      return "Mc" + part.charAt(2).toUpperCase() + part.slice(3).toLowerCase();
+  // Validate result matches the STRICT required pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // - Must start with uppercase letter
+  // - Followed by zero or more lowercase letters
+  // - Then optionally: (separator + one letter (any case) + lowercase letters)*
+  if (!result || result.length === 0 || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
+    return "";
+  }
+
+  return result;
+}
+
+function isValidFirstOrLastName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  return /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(trimmed);
+}
+
+function isValidMiddleName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  return /^[A-Z][a-zA-Z\s\-',.]*$/.test(trimmed);
+}
+
+function resolveUseCode(map, useCodeText) {
+  if (!useCodeText) return null;
+  const match = useCodeText.match(/\d+/);
+  if (!match) return null;
+  let code = parseInt(match[0], 10);
+  if (!Number.isFinite(code)) return null;
+
+  const seen = new Set();
+  while (code >= 0 && !seen.has(code)) {
+    if (Object.prototype.hasOwnProperty.call(map, code)) {
+      return map[code];
     }
-    if (part.toLowerCase().startsWith("mac") && part.length > 3) {
-      return "Mac" + part.charAt(3).toUpperCase() + part.slice(4).toLowerCase();
+    seen.add(code);
+    if (code < 10) {
+      break;
     }
+    code = Math.floor(code / 10);
+  }
 
-    // Standard capitalization
-    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-  });
+  return Object.prototype.hasOwnProperty.call(map, code)
+    ? map[code]
+    : null;
+}
 
-  return capitalized.join("");
+function resolveUseCode(map, useCodeText) {
+  if (!useCodeText) return null;
+  const match = useCodeText.match(/\d+/);
+  if (!match) return null;
+  let code = parseInt(match[0], 10);
+  if (!Number.isFinite(code)) return null;
+
+  const seen = new Set();
+  while (code >= 0 && !seen.has(code)) {
+    if (Object.prototype.hasOwnProperty.call(map, code)) {
+      return map[code];
+    }
+    seen.add(code);
+    if (code < 10) {
+      break;
+    }
+    code = Math.floor(code / 10);
+  }
+
+  return Object.prototype.hasOwnProperty.call(map, code)
+    ? map[code]
+    : null;
 }
 
 function extractPropertyUsageType(useCodeText) {
   if (!useCodeText) return null;
-  const code = useCodeText.split("-")[0].trim();
   const map = {
     // Residential (0-9)
-    0: "Residential",             // 00 - VACANT RESIDENTIAL
-    1: "Residential",             // 01 - SINGLE FAMILY RESIDENTIAL
-    2: "Residential",             // 02 - MOBILE HOMES
-    3: "Residential",             // 03 - MULTI-FAMILY 10 UNITS OR MORE
-    4: "Residential",             // ALL CONDOMINIUMS
-    5: "Residential",             // 05 - COOPERATIVES
-    6: "Retirement",              // 06 - RETIREMENT HOMES
-    7: "Residential",             // 07 - MISCELLANEOUS RESIDENTIAL
-    8: "Residential",             // 08 - MULTI-FAMILY LESS THAN 10 UNIT
-    9: "Residential",             // 09 - MISCELLANEOUS
+    0: "Residential", // 00 - VACANT RESIDENTIAL
+    1: "Residential", // 01 - SINGLE FAMILY RESIDENTIAL
+    2: "Residential", // 02 - MOBILE HOMES
+    3: "Residential", // 03 - MULTI-FAMILY 10 UNITS OR MORE
+    4: "Residential", // ALL CONDOMINIUMS
+    5: "Residential", // 05 - COOPERATIVES
+    6: "Retirement", // 06 - RETIREMENT HOMES
+    7: "Residential", // 07 - MISCELLANEOUS RESIDENTIAL
+    8: "Residential", // 08 - MULTI-FAMILY LESS THAN 10 UNIT
+    9: "Residential", // 09 - MISCELLANEOUS
 
     // Condominiums (400-408)
-    400: "Residential",           // 400 - VACANT
-    401: "Residential",           // 401 - SINGLE FAMILY CONDOMINIUMS
-    402: "Residential",           // 402 - TIMESHARE CONDOMINIUMS
-    403: "Residential",           // 403 - HOMEOWNERS CONDOMINIUMS
-    404: "Hotel",                 // 404 - HOTEL CONDOMINIUMS
-    405: "Residential",           // 405 - BOAT SLIPS/BOAT RACKS CONDOMINIUMS
-    406: "Residential",           // 406 - MOBILE HOME CONDOMINIUMS
-    407: "Commercial",            // 407 - COMMERCIAL CONDOMINIUMS
-    408: "Residential",           // 408 - APT CONVERSION
+    400: "Residential", // 400 - VACANT
+    401: "Residential", // 401 - SINGLE FAMILY CONDOMINIUMS
+    402: "Residential", // 402 - TIMESHARE CONDOMINIUMS
+    403: "Residential", // 403 - HOMEOWNERS CONDOMINIUMS
+    404: "Hotel", // 404 - HOTEL CONDOMINIUMS
+    405: "Residential", // 405 - BOAT SLIPS/BOAT RACKS CONDOMINIUMS
+    406: "Residential", // 406 - MOBILE HOME CONDOMINIUMS
+    407: "Commercial", // 407 - COMMERCIAL CONDOMINIUMS
+    408: "Residential", // 408 - APT CONVERSION
 
     // Commercial (10-39)
-    10: "Commercial",             // 10 - VACANT COMMERCIAL
-    11: "RetailStore",            // 11 - STORES, ONE STORY
-    12: "Commercial",             // 12 - MIXED USE (STORE AND RESIDENT)
-    13: "DepartmentStore",        // 13 - DEPARTMENT STORES
-    14: "Supermarket",            // 14 - SUPERMARKETS
+    10: "Commercial", // 10 - VACANT COMMERCIAL
+    11: "RetailStore", // 11 - STORES, ONE STORY
+    12: "Commercial", // 12 - MIXED USE (STORE AND RESIDENT)
+    13: "DepartmentStore", // 13 - DEPARTMENT STORES
+    14: "Supermarket", // 14 - SUPERMARKETS
     15: "ShoppingCenterRegional", // 15 - REGIONAL SHOPPING CENTERS
-    16: "ShoppingCenterCommunity",// 16 - COMMUNITY SHOPPING CENTERS
-    17: "OfficeBuilding",         // 17 - OFFICE BLDG, NON-PROF, ONE STORY
-    18: "OfficeBuilding",         // 18 - OFFICE BLDG, NON-PROF, MULT STORY
-    19: "MedicalOffice",          // 19 - PROFESSIONAL SERVICE BUILDINGS
+    16: "ShoppingCenterCommunity", // 16 - COMMUNITY SHOPPING CENTERS
+    17: "OfficeBuilding", // 17 - OFFICE BLDG, NON-PROF, ONE STORY
+    18: "OfficeBuilding", // 18 - OFFICE BLDG, NON-PROF, MULT STORY
+    19: "MedicalOffice", // 19 - PROFESSIONAL SERVICE BUILDINGS
     20: "TransportationTerminal", // 20 - AIRPORTS, BUS TERM, PIERS, MARINAS
-    21: "Restaurant",             // 21 - RESTAURANTS, CAFETERIAS
-    22: "Restaurant",             // 22 - DRIVE-IN RESTAURANTS
-    23: "FinancialInstitution",   // 23 - FINANCIAL INSTITUTIONS
-    24: "FinancialInstitution",   // 24 - INSURANCE COMPANY OFFICES
-    25: "Commercial",             // 25 - REPAIR SHOPS, LAUNDRIES, LAUNDROMATS
-    26: "ServiceStation",         // 26 - SERVICE STATIONS
-    27: "AutoSalesRepair",        // 27 - EQUIPMENT SALES, REPAIR, BODY SHOPS
-    28: "MobileHomePark",         // 28 - PARKING LOTS, MOBILE HOME PARKS
-    29: "WholesaleOutlet",        // 29 - WHOLESALE OUTLETS, PRODUCE HOUSES
-    30: "Commercial",             // 30 - FLORIST, GREENHOUSES
-    31: "Theater",                // 31 - DRIVE-IN THEATERS, OPEN STADIUMS
-    32: "Theater",                // 32 - ENCLOSED THEATERS, AUDITORIUMS
-    33: "Entertainment",          // 33 - NIGHTCLUBS, LOUNGES, BARS
-    34: "Entertainment",          // 34 - BOWLING ALLEYS, SKATING RINKS, POOL HALL
-    35: "Entertainment",          // 35 - TOURIST ATTRACTIONS
-    36: "Recreational",           // 36 - CAMPS
-    37: "RaceTrack",              // 37 - RACE TRACKS
-    38: "GolfCourse",             // 38 - GOLF COURSES, DRIVING RANGES
-    39: "Hotel",                  // 39 - HOTELS, MOTELS
+    21: "Restaurant", // 21 - RESTAURANTS, CAFETERIAS
+    22: "Restaurant", // 22 - DRIVE-IN RESTAURANTS
+    23: "FinancialInstitution", // 23 - FINANCIAL INSTITUTIONS
+    24: "FinancialInstitution", // 24 - INSURANCE COMPANY OFFICES
+    25: "Commercial", // 25 - REPAIR SHOPS, LAUNDRIES, LAUNDROMATS
+    26: "ServiceStation", // 26 - SERVICE STATIONS
+    27: "AutoSalesRepair", // 27 - EQUIPMENT SALES, REPAIR, BODY SHOPS
+    28: "MobileHomePark", // 28 - PARKING LOTS, MOBILE HOME PARKS
+    29: "WholesaleOutlet", // 29 - WHOLESALE OUTLETS, PRODUCE HOUSES
+    30: "Commercial", // 30 - FLORIST, GREENHOUSES
+    31: "Theater", // 31 - DRIVE-IN THEATERS, OPEN STADIUMS
+    32: "Theater", // 32 - ENCLOSED THEATERS, AUDITORIUMS
+    33: "Entertainment", // 33 - NIGHTCLUBS, LOUNGES, BARS
+    34: "Entertainment", // 34 - BOWLING ALLEYS, SKATING RINKS, POOL HALL
+    35: "Entertainment", // 35 - TOURIST ATTRACTIONS
+    36: "Recreational", // 36 - CAMPS
+    37: "RaceTrack", // 37 - RACE TRACKS
+    38: "GolfCourse", // 38 - GOLF COURSES, DRIVING RANGES
+    39: "Hotel", // 39 - HOTELS, MOTELS
 
     // Industrial (40-49)
-    40: "Industrial",             // 40 - VACANT INDUSTRIAL
-    41: "LightManufacturing",     // 41 - LIGHT MANUFACTURING, SMALL EQUIPMENT
-    42: "HeavyManufacturing",     // 42 - HEAVY INDUSTRIAL, HEAVY EQUIPMENT
-    43: "LumberYard",             // 43 - LUMBER YARDS, SAWMILLS
-    44: "PackingPlant",           // 44 - PACKING PLANTS, FRUIT & VEGETABLE PACKIN
-    45: "Cannery",                // 45 - CANNERIES, BOTTLERS AND BREWERS, WINERIES
-    46: "Industrial",             // 46 - OTHER FOOD PROCESSING, CANDY FACTORIES
-    47: "MineralProcessing",      // 47 - MINERAL PROCESSING, PHOSPHATE PROCESSING
-    48: "Warehouse",              // 48 - WAREHOUSING, DISTRIBUTION TERMINALS, TRU
-    49: "OpenStorage",            // 49 - OPEN STORAGE, NEW AND USED BUILDING SUPP
+    40: "Industrial", // 40 - VACANT INDUSTRIAL
+    41: "LightManufacturing", // 41 - LIGHT MANUFACTURING, SMALL EQUIPMENT
+    42: "HeavyManufacturing", // 42 - HEAVY INDUSTRIAL, HEAVY EQUIPMENT
+    43: "LumberYard", // 43 - LUMBER YARDS, SAWMILLS
+    44: "PackingPlant", // 44 - PACKING PLANTS, FRUIT & VEGETABLE PACKIN
+    45: "Cannery", // 45 - CANNERIES, BOTTLERS AND BREWERS, WINERIES
+    46: "Industrial", // 46 - OTHER FOOD PROCESSING, CANDY FACTORIES
+    47: "MineralProcessing", // 47 - MINERAL PROCESSING, PHOSPHATE PROCESSING
+    48: "Warehouse", // 48 - WAREHOUSING, DISTRIBUTION TERMINALS, TRU
+    49: "OpenStorage", // 49 - OPEN STORAGE, NEW AND USED BUILDING SUPP
 
     // Agricultural (50-69)
-    50: "Agricultural",           // 50 - AG IMPROVED AGRICULTURAL
-    51: "CroplandClass2",         // 51 - AG CROPLAND SOIL CAPABILITY CLASS I
-    52: "CroplandClass2",         // 52 - AG CROPLAND SOIL CAPABILITY CLASS II
-    53: "CroplandClass3",         // 53 - AG CROPLAND SOIL CAPABILITY CLASS III
-    54: "TimberLand",             // 54 - AG TIMBERLAND - SITE INDEX 90 & ABOVE
-    55: "TimberLand",             // 55 - AG TIMBERLAND - SITE INDEX 89-89
-    56: "TimberLand",             // 56 - AG TIMBERLAND - SITE INDEX 70-79
-    57: "TimberLand",             // 57 - AG TIMBERLAND - SITE INDEX 60-69
-    58: "TimberLand",             // 58 - AG TIMBERLAND - SITE INDEX 50-59
-    59: "TimberLand",             // 59 - AG TIMBERLAND - NOT CLASSIFIED BY SITE INDEX
-    60: "GrazingLand",            // 60 - AG GRAZING LAND SOIL CAPABILITY CLASS I
-    61: "GrazingLand",            // 61 - AG GRAZING LAND SOIL CAPABILITY CLASS II
-    62: "GrazingLand",            // 62 - AG GRAZING LAND SOIL CAPABILITY CLASS III
-    63: "GrazingLand",            // 63 - AG GRAZING LAND SOIL CAPABILITY CLASS IV
-    64: "GrazingLand",            // 64 - AG GRAZING LAND SOIL CAPABILITY CLASS V
-    65: "GrazingLand",            // 65 - AG GRAZING LAND SOIL CAPABILITY CLASS VI
-    66: "OrchardGroves",          // 66 - AG ORCHARD GROVES, CITRUS, ETC.
-    67: "Poultry",                // 67 - AG POULTRY, BEES, TROPICAL FISH, RABBITS
-    68: "Agricultural",           // 68 - AG DAIRIES, FEED LOTS
-    69: "Ornamentals",            // 69 - AG ORNAMENTALS, MISC AGRICULTURAL
+    50: "Agricultural", // 50 - AG IMPROVED AGRICULTURAL
+    51: "CroplandClass2", // 51 - AG CROPLAND SOIL CAPABILITY CLASS I
+    52: "CroplandClass2", // 52 - AG CROPLAND SOIL CAPABILITY CLASS II
+    53: "CroplandClass3", // 53 - AG CROPLAND SOIL CAPABILITY CLASS III
+    54: "TimberLand", // 54 - AG TIMBERLAND - SITE INDEX 90 & ABOVE
+    55: "TimberLand", // 55 - AG TIMBERLAND - SITE INDEX 89-89
+    56: "TimberLand", // 56 - AG TIMBERLAND - SITE INDEX 70-79
+    57: "TimberLand", // 57 - AG TIMBERLAND - SITE INDEX 60-69
+    58: "TimberLand", // 58 - AG TIMBERLAND - SITE INDEX 50-59
+    59: "TimberLand", // 59 - AG TIMBERLAND - NOT CLASSIFIED BY SITE INDEX
+    60: "GrazingLand", // 60 - AG GRAZING LAND SOIL CAPABILITY CLASS I
+    61: "GrazingLand", // 61 - AG GRAZING LAND SOIL CAPABILITY CLASS II
+    62: "GrazingLand", // 62 - AG GRAZING LAND SOIL CAPABILITY CLASS III
+    63: "GrazingLand", // 63 - AG GRAZING LAND SOIL CAPABILITY CLASS IV
+    64: "GrazingLand", // 64 - AG GRAZING LAND SOIL CAPABILITY CLASS V
+    65: "GrazingLand", // 65 - AG GRAZING LAND SOIL CAPABILITY CLASS VI
+    66: "OrchardGroves", // 66 - AG ORCHARD GROVES, CITRUS, ETC.
+    67: "Poultry", // 67 - AG POULTRY, BEES, TROPICAL FISH, RABBITS
+    68: "Agricultural", // 68 - AG DAIRIES, FEED LOTS
+    69: "Ornamentals", // 69 - AG ORNAMENTALS, MISC AGRICULTURAL
 
     // Institutional (70-79)
-    70: "Unknown",                // 70 - VACANT INSTITUTIONAL
-    71: "Church",                 // 71 - CHURCHES
-    72: "PrivateSchool",          // 72 - PRIVATE SCHOOLS AND COLLEGES
-    73: "PrivateHospital",        // 73 - PRIVATELY OWNED HOSPITALS
-    74: "HomesForAged",           // 74 - HOMES FOR THE AGED
-    75: "NonProfitCharity",       // 75 - ORPHANAGES, OTHER NON-PROFIT
-    76: "MortuaryCemetery",       // 76 - MORTUARIES, CEMETERIES, CREMATORIUMS
-    77: "ClubsLodges",            // 77 - CLUBS, LODGES, UNION HALLS
+    70: "Unknown", // 70 - VACANT INSTITUTIONAL
+    71: "Church", // 71 - CHURCHES
+    72: "PrivateSchool", // 72 - PRIVATE SCHOOLS AND COLLEGES
+    73: "PrivateHospital", // 73 - PRIVATELY OWNED HOSPITALS
+    74: "HomesForAged", // 74 - HOMES FOR THE AGED
+    75: "NonProfitCharity", // 75 - ORPHANAGES, OTHER NON-PROFIT
+    76: "MortuaryCemetery", // 76 - MORTUARIES, CEMETERIES, CREMATORIUMS
+    77: "ClubsLodges", // 77 - CLUBS, LODGES, UNION HALLS
     78: "SanitariumConvalescentHome", // 78 - SANITARIUMS, CONVALESCENT AND REST HOMES
-    79: "CulturalOrganization",   // 79 - CULTURAL ORGANIZATIONS, FACILITIES
+    79: "CulturalOrganization", // 79 - CULTURAL ORGANIZATIONS, FACILITIES
 
     // Government (80-89)
-    80: "GovernmentProperty",     // 80 - UNDEFINED
-    81: "Military",               // 81 - MILITARY
-    82: "ForestParkRecreation",   // 82 - FOREST, PARKS, RECREATIONAL AREAS
-    83: "PublicSchool",           // 83 - PUBLIC COUNTY SCHOOLS
-    84: "PublicSchool",           // 84 - COLLEGES
-    85: "PublicHospital",         // 85 - HOSPITALS
-    86: "GovernmentProperty",     // 86 - COUNTIES INCLUDING NON-MUNICIPAL GOV.
-    87: "GovernmentProperty",     // 87 - State, OTHER THAN MILITARY, FORESTS, PAR
-    88: "GovernmentProperty",     // 88 - FEDERAL, OTHER THAN MILITARY, FORESTS
-    89: "GovernmentProperty",     // 89 - MUNICIPAL, OTHER THAN PARKS, RECREATIONA
+    80: "GovernmentProperty", // 80 - UNDEFINED
+    81: "Military", // 81 - MILITARY
+    82: "ForestParkRecreation", // 82 - FOREST, PARKS, RECREATIONAL AREAS
+    83: "PublicSchool", // 83 - PUBLIC COUNTY SCHOOLS
+    84: "PublicSchool", // 84 - COLLEGES
+    85: "PublicHospital", // 85 - HOSPITALS
+    86: "GovernmentProperty", // 86 - COUNTIES INCLUDING NON-MUNICIPAL GOV.
+    87: "GovernmentProperty", // 87 - State, OTHER THAN MILITARY, FORESTS, PAR
+    88: "GovernmentProperty", // 88 - FEDERAL, OTHER THAN MILITARY, FORESTS
+    89: "GovernmentProperty", // 89 - MUNICIPAL, OTHER THAN PARKS, RECREATIONA
 
     // Miscellaneous (90-99)
-    90: "Commercial",             // 90 - LEASEHOLD INTERESTS
-    91: "Utility",                // 91 - UTILITY, GAS, ELECTRIC, TELEPHONE, LOCAL
-    92: "Industrial",             // 92 - MINING LANDS, PETROLEUM LANDS, OR GAS LA
-    93: "Unknown",                // 93 - SUBSURFACE RIGHTS
-    94: "Railroad",               // 94 - RIGHT-OF-WAY, STREETS, ROADS, IRRIGATION
-    95: "RiversLakes",            // 95 - RIVERS AND LAKES, SUBMERGED LANDS
-    96: "SewageDisposal",         // 96 - SEWAGE DISPOSAL, SOLID WAST, BORROW PITS
-    97: "ForestParkRecreation",   // 97 - OUTDOOR RECREATIONAL OR PARKLAND SUBJECT
-    98: "Utility",                // 98 - CENTRALLY ASSESSED
-    99: "Agricultural",           // 99 - ACREAGE NOT CLASSIFIED AGRICULTURAL
+    90: "Commercial", // 90 - LEASEHOLD INTERESTS
+    91: "Utility", // 91 - UTILITY, GAS, ELECTRIC, TELEPHONE, LOCAL
+    92: "Industrial", // 92 - MINING LANDS, PETROLEUM LANDS, OR GAS LA
+    93: "Unknown", // 93 - SUBSURFACE RIGHTS
+    94: "Railroad", // 94 - RIGHT-OF-WAY, STREETS, ROADS, IRRIGATION
+    95: "RiversLakes", // 95 - RIVERS AND LAKES, SUBMERGED LANDS
+    96: "SewageDisposal", // 96 - SEWAGE DISPOSAL, SOLID WAST, BORROW PITS
+    97: "ForestParkRecreation", // 97 - OUTDOOR RECREATIONAL OR PARKLAND SUBJECT
+    98: "Utility", // 98 - CENTRALLY ASSESSED
+    99: "Agricultural", // 99 - ACREAGE NOT CLASSIFIED AGRICULTURAL
   };
-  return map[code] || null;
+  return resolveUseCode(map, useCodeText);
 }
 
 function extractPropertyType(useCodeText) {
   if (!useCodeText) return null;
-  const code = useCodeText.split("-")[0].trim();
   const map = {
     // Residential (0-9)
-    0: "VacantLand",              // 00 - VACANT RESIDENTIAL
-    1: "SingleFamily",            // 01 - SINGLE FAMILY RESIDENTIAL
-    2: "MobileHome",              // 02 - MOBILE HOMES
-    3: "MultiFamilyMoreThan10",   // 03 - MULTI-FAMILY 10 UNITS OR MORE
-    4: "Condominium",             // ALL CONDOMINIUMS
-    5: "Cooperative",             // 05 - COOPERATIVES
-    6: "Retirement",              // 06 - RETIREMENT HOMES
-    7: "MiscellaneousResidential",// 07 - MISCELLANEOUS RESIDENTIAL
-    8: "MultiFamilyLessThan10",   // 08 - MULTI-FAMILY LESS THAN 10 UNIT
-    9: "MiscellaneousResidential",// 09 - MISCELLANEOUS
+    0: "VacantLand", // 00 - VACANT RESIDENTIAL
+    1: "SingleFamily", // 01 - SINGLE FAMILY RESIDENTIAL
+    2: "MobileHome", // 02 - MOBILE HOMES
+    3: "MultiFamilyMoreThan10", // 03 - MULTI-FAMILY 10 UNITS OR MORE
+    4: "Condominium", // ALL CONDOMINIUMS
+    5: "Cooperative", // 05 - COOPERATIVES
+    6: "Retirement", // 06 - RETIREMENT HOMES
+    7: "MiscellaneousResidential", // 07 - MISCELLANEOUS RESIDENTIAL
+    8: "MultiFamilyLessThan10", // 08 - MULTI-FAMILY LESS THAN 10 UNIT
+    9: "MiscellaneousResidential", // 09 - MISCELLANEOUS
 
     // Condominiums (400-408)
-    400: "VacantLand",            // 400 - VACANT (implied from context)
-    401: "Condominium",           // 401 - SINGLE FAMILY CONDOMINIUMS
-    402: "Timeshare",             // 402 - TIMESHARE CONDOMINIUMS
-    403: "Condominium",           // 403 - HOMEOWNERS CONDOMINIUMS
-    404: "Condominium",           // 404 - HOTEL CONDOMINIUMS
-    405: "Condominium",           // 405 - BOAT SLIPS/BOAT RACKS CONDOMINIUMS
-    406: "MobileHome",            // 406 - MOBILE HOME CONDOMINIUMS
-    407: "Condominium",           // 407 - COMMERCIAL CONDOMINIUMS
-    408: "Apartment",             // 408 - APT CONVERSION
+    400: "VacantLand", // 400 - VACANT (implied from context)
+    401: "Condominium", // 401 - SINGLE FAMILY CONDOMINIUMS
+    402: "Timeshare", // 402 - TIMESHARE CONDOMINIUMS
+    403: "Condominium", // 403 - HOMEOWNERS CONDOMINIUMS
+    404: "Condominium", // 404 - HOTEL CONDOMINIUMS
+    405: "Condominium", // 405 - BOAT SLIPS/BOAT RACKS CONDOMINIUMS
+    406: "MobileHome", // 406 - MOBILE HOME CONDOMINIUMS
+    407: "Condominium", // 407 - COMMERCIAL CONDOMINIUMS
+    408: "Apartment", // 408 - APT CONVERSION
 
     // Commercial (10-39)
-    10: "VacantLand",             // 10 - VACANT COMMERCIAL
-    11: "Building",               // 11 - STORES, ONE STORY
-    12: "Building",               // 12 - MIXED USE (STORE AND RESIDENT)
-    13: "Building",               // 13 - DEPARTMENT STORES
-    14: "Building",               // 14 - SUPERMARKETS
-    15: "Building",               // 15 - REGIONAL SHOPPING CENTERS
-    16: "Building",               // 16 - COMMUNITY SHOPPING CENTERS
-    17: "Building",               // 17 - OFFICE BLDG, NON-PROF, ONE STORY
-    18: "Building",               // 18 - OFFICE BLDG, NON-PROF, MULT STORY
-    19: "Building",               // 19 - PROFESSIONAL SERVICE BUILDINGS
-    20: "Building",               // 20 - AIRPORTS, BUS TERM, PIERS, MARINAS
-    21: "Building",               // 21 - RESTAURANTS, CAFETERIAS
-    22: "Building",               // 22 - DRIVE-IN RESTAURANTS
-    23: "Building",               // 23 - FINANCIAL INSTITUTIONS
-    24: "Building",               // 24 - INSURANCE COMPANY OFFICES
-    25: "Building",               // 25 - REPAIR SHOPS, LAUNDRIES, LAUNDROMATS
-    26: "Building",               // 26 - SERVICE STATIONS
-    27: "Building",               // 27 - EQUIPMENT SALES, REPAIR, BODY SHOPS
-    28: "LandParcel",             // 28 - PARKING LOTS, MOBILE HOME PARKS
-    29: "Building",               // 29 - WHOLESALE OUTLETS, PRODUCE HOUSES
-    30: "Building",               // 30 - FLORIST, GREENHOUSES
-    31: "LandParcel",             // 31 - DRIVE-IN THEATERS, OPEN STADIUMS
-    32: "Building",               // 32 - ENCLOSED THEATERS, AUDITORIUMS
-    33: "Building",               // 33 - NIGHTCLUBS, LOUNGES, BARS
-    34: "Building",               // 34 - BOWLING ALLEYS, SKATING RINKS, POOL HALL
-    35: "Building",               // 35 - TOURIST ATTRACTIONS
-    36: "LandParcel",             // 36 - CAMPS
-    37: "LandParcel",             // 37 - RACE TRACKS
-    38: "LandParcel",             // 38 - GOLF COURSES, DRIVING RANGES
-    39: "Building",               // 39 - HOTELS, MOTELS
+    10: "VacantLand", // 10 - VACANT COMMERCIAL
+    11: "Building", // 11 - STORES, ONE STORY
+    12: "Building", // 12 - MIXED USE (STORE AND RESIDENT)
+    13: "Building", // 13 - DEPARTMENT STORES
+    14: "Building", // 14 - SUPERMARKETS
+    15: "Building", // 15 - REGIONAL SHOPPING CENTERS
+    16: "Building", // 16 - COMMUNITY SHOPPING CENTERS
+    17: "Building", // 17 - OFFICE BLDG, NON-PROF, ONE STORY
+    18: "Building", // 18 - OFFICE BLDG, NON-PROF, MULT STORY
+    19: "Building", // 19 - PROFESSIONAL SERVICE BUILDINGS
+    20: "Building", // 20 - AIRPORTS, BUS TERM, PIERS, MARINAS
+    21: "Building", // 21 - RESTAURANTS, CAFETERIAS
+    22: "Building", // 22 - DRIVE-IN RESTAURANTS
+    23: "Building", // 23 - FINANCIAL INSTITUTIONS
+    24: "Building", // 24 - INSURANCE COMPANY OFFICES
+    25: "Building", // 25 - REPAIR SHOPS, LAUNDRIES, LAUNDROMATS
+    26: "Building", // 26 - SERVICE STATIONS
+    27: "Building", // 27 - EQUIPMENT SALES, REPAIR, BODY SHOPS
+    28: "LandParcel", // 28 - PARKING LOTS, MOBILE HOME PARKS
+    29: "Building", // 29 - WHOLESALE OUTLETS, PRODUCE HOUSES
+    30: "Building", // 30 - FLORIST, GREENHOUSES
+    31: "LandParcel", // 31 - DRIVE-IN THEATERS, OPEN STADIUMS
+    32: "Building", // 32 - ENCLOSED THEATERS, AUDITORIUMS
+    33: "Building", // 33 - NIGHTCLUBS, LOUNGES, BARS
+    34: "Building", // 34 - BOWLING ALLEYS, SKATING RINKS, POOL HALL
+    35: "Building", // 35 - TOURIST ATTRACTIONS
+    36: "LandParcel", // 36 - CAMPS
+    37: "LandParcel", // 37 - RACE TRACKS
+    38: "LandParcel", // 38 - GOLF COURSES, DRIVING RANGES
+    39: "Building", // 39 - HOTELS, MOTELS
 
     // Industrial (40-49)
-    40: "VacantLand",             // 40 - VACANT INDUSTRIAL
-    41: "Building",               // 41 - LIGHT MANUFACTURING, SMALL EQUIPMENT
-    42: "Building",               // 42 - HEAVY INDUSTRIAL, HEAVY EQUIPMENT
-    43: "Building",               // 43 - LUMBER YARDS, SAWMILLS
-    44: "Building",               // 44 - PACKING PLANTS, FRUIT & VEGETABLE PACKIN
-    45: "Building",               // 45 - CANNERIES, BOTTLERS AND BREWERS, WINERIES
-    46: "Building",               // 46 - OTHER FOOD PROCESSING, CANDY FACTORIES
-    47: "Building",               // 47 - MINERAL PROCESSING, PHOSPHATE PROCESSING
-    48: "Building",               // 48 - WAREHOUSING, DISTRIBUTION TERMINALS, TRU
-    49: "LandParcel",             // 49 - OPEN STORAGE, NEW AND USED BUILDING SUPP
+    40: "VacantLand", // 40 - VACANT INDUSTRIAL
+    41: "Building", // 41 - LIGHT MANUFACTURING, SMALL EQUIPMENT
+    42: "Building", // 42 - HEAVY INDUSTRIAL, HEAVY EQUIPMENT
+    43: "Building", // 43 - LUMBER YARDS, SAWMILLS
+    44: "Building", // 44 - PACKING PLANTS, FRUIT & VEGETABLE PACKIN
+    45: "Building", // 45 - CANNERIES, BOTTLERS AND BREWERS, WINERIES
+    46: "Building", // 46 - OTHER FOOD PROCESSING, CANDY FACTORIES
+    47: "Building", // 47 - MINERAL PROCESSING, PHOSPHATE PROCESSING
+    48: "Building", // 48 - WAREHOUSING, DISTRIBUTION TERMINALS, TRU
+    49: "LandParcel", // 49 - OPEN STORAGE, NEW AND USED BUILDING SUPP
 
     // Agricultural (50-69)
-    50: "LandParcel",             // 50 - AG IMPROVED AGRICULTURAL
-    51: "LandParcel",             // 51 - AG CROPLAND SOIL CAPABILITY CLASS I
-    52: "LandParcel",             // 52 - AG CROPLAND SOIL CAPABILITY CLASS II
-    53: "LandParcel",             // 53 - AG CROPLAND SOIL CAPABILITY CLASS III
-    54: "LandParcel",             // 54 - AG TIMBERLAND - SITE INDEX 90 & ABOVE
-    55: "LandParcel",             // 55 - AG TIMBERLAND - SITE INDEX 89-89
-    56: "LandParcel",             // 56 - AG TIMBERLAND - SITE INDEX 70-79
-    57: "LandParcel",             // 57 - AG TIMBERLAND - SITE INDEX 60-69
-    58: "LandParcel",             // 58 - AG TIMBERLAND - SITE INDEX 50-59
-    59: "LandParcel",             // 59 - AG TIMBERLAND - NOT CLASSIFIED BY SITE INDEX
-    60: "LandParcel",             // 60 - AG GRAZING LAND SOIL CAPABILITY CLASS I
-    61: "LandParcel",             // 61 - AG GRAZING LAND SOIL CAPABILITY CLASS II
-    62: "LandParcel",             // 62 - AG GRAZING LAND SOIL CAPABILITY CLASS III
-    63: "LandParcel",             // 63 - AG GRAZING LAND SOIL CAPABILITY CLASS IV
-    64: "LandParcel",             // 64 - AG GRAZING LAND SOIL CAPABILITY CLASS V
-    65: "LandParcel",             // 65 - AG GRAZING LAND SOIL CAPABILITY CLASS VI
-    66: "LandParcel",             // 66 - AG ORCHARD GROVES, CITRUS, ETC.
-    67: "LandParcel",             // 67 - AG POULTRY, BEES, TROPICAL FISH, RABBITS
-    68: "LandParcel",             // 68 - AG DAIRIES, FEED LOTS
-    69: "LandParcel",             // 69 - AG ORNAMENTALS, MISC AGRICULTURAL
+    50: "LandParcel", // 50 - AG IMPROVED AGRICULTURAL
+    51: "LandParcel", // 51 - AG CROPLAND SOIL CAPABILITY CLASS I
+    52: "LandParcel", // 52 - AG CROPLAND SOIL CAPABILITY CLASS II
+    53: "LandParcel", // 53 - AG CROPLAND SOIL CAPABILITY CLASS III
+    54: "LandParcel", // 54 - AG TIMBERLAND - SITE INDEX 90 & ABOVE
+    55: "LandParcel", // 55 - AG TIMBERLAND - SITE INDEX 89-89
+    56: "LandParcel", // 56 - AG TIMBERLAND - SITE INDEX 70-79
+    57: "LandParcel", // 57 - AG TIMBERLAND - SITE INDEX 60-69
+    58: "LandParcel", // 58 - AG TIMBERLAND - SITE INDEX 50-59
+    59: "LandParcel", // 59 - AG TIMBERLAND - NOT CLASSIFIED BY SITE INDEX
+    60: "LandParcel", // 60 - AG GRAZING LAND SOIL CAPABILITY CLASS I
+    61: "LandParcel", // 61 - AG GRAZING LAND SOIL CAPABILITY CLASS II
+    62: "LandParcel", // 62 - AG GRAZING LAND SOIL CAPABILITY CLASS III
+    63: "LandParcel", // 63 - AG GRAZING LAND SOIL CAPABILITY CLASS IV
+    64: "LandParcel", // 64 - AG GRAZING LAND SOIL CAPABILITY CLASS V
+    65: "LandParcel", // 65 - AG GRAZING LAND SOIL CAPABILITY CLASS VI
+    66: "LandParcel", // 66 - AG ORCHARD GROVES, CITRUS, ETC.
+    67: "LandParcel", // 67 - AG POULTRY, BEES, TROPICAL FISH, RABBITS
+    68: "LandParcel", // 68 - AG DAIRIES, FEED LOTS
+    69: "LandParcel", // 69 - AG ORNAMENTALS, MISC AGRICULTURAL
 
     // Institutional (70-79)
-    70: "VacantLand",             // 70 - VACANT INSTITUTIONAL
-    71: "Building",               // 71 - CHURCHES
-    72: "Building",               // 72 - PRIVATE SCHOOLS AND COLLEGES
-    73: "Building",               // 73 - PRIVATELY OWNED HOSPITALS
-    74: "Building",               // 74 - HOMES FOR THE AGED
-    75: "Building",               // 75 - ORPHANAGES, OTHER NON-PROFIT
-    76: "Building",               // 76 - MORTUARIES, CEMETERIES, CREMATORIUMS
-    77: "Building",               // 77 - CLUBS, LODGES, UNION HALLS
-    78: "Building",               // 78 - SANITARIUMS, CONVALESCENT AND REST HOMES
-    79: "Building",               // 79 - CULTURAL ORGANIZATIONS, FACILITIES
+    70: "VacantLand", // 70 - VACANT INSTITUTIONAL
+    71: "Building", // 71 - CHURCHES
+    72: "Building", // 72 - PRIVATE SCHOOLS AND COLLEGES
+    73: "Building", // 73 - PRIVATELY OWNED HOSPITALS
+    74: "Building", // 74 - HOMES FOR THE AGED
+    75: "Building", // 75 - ORPHANAGES, OTHER NON-PROFIT
+    76: "Building", // 76 - MORTUARIES, CEMETERIES, CREMATORIUMS
+    77: "Building", // 77 - CLUBS, LODGES, UNION HALLS
+    78: "Building", // 78 - SANITARIUMS, CONVALESCENT AND REST HOMES
+    79: "Building", // 79 - CULTURAL ORGANIZATIONS, FACILITIES
 
     // Government (80-89)
-    80: "Building",               // 80 - UNDEFINED
-    81: "Building",               // 81 - MILITARY
-    82: "LandParcel",             // 82 - FOREST, PARKS, RECREATIONAL AREAS
-    83: "Building",               // 83 - PUBLIC COUNTY SCHOOLS
-    84: "Building",               // 84 - COLLEGES
-    85: "Building",               // 85 - HOSPITALS
-    86: "Building",               // 86 - COUNTIES INCLUDING NON-MUNICIPAL GOV.
-    87: "Building",               // 87 - State, OTHER THAN MILITARY, FORESTS, PAR
-    88: "Building",               // 88 - FEDERAL, OTHER THAN MILITARY, FORESTS
-    89: "Building",               // 89 - MUNICIPAL, OTHER THAN PARKS, RECREATIONA
+    80: "Building", // 80 - UNDEFINED
+    81: "Building", // 81 - MILITARY
+    82: "LandParcel", // 82 - FOREST, PARKS, RECREATIONAL AREAS
+    83: "Building", // 83 - PUBLIC COUNTY SCHOOLS
+    84: "Building", // 84 - COLLEGES
+    85: "Building", // 85 - HOSPITALS
+    86: "Building", // 86 - COUNTIES INCLUDING NON-MUNICIPAL GOV.
+    87: "Building", // 87 - State, OTHER THAN MILITARY, FORESTS, PAR
+    88: "Building", // 88 - FEDERAL, OTHER THAN MILITARY, FORESTS
+    89: "Building", // 89 - MUNICIPAL, OTHER THAN PARKS, RECREATIONA
 
     // Miscellaneous (90-99)
-    90: "Building",               // 90 - LEASEHOLD INTERESTS
-    91: "Building",               // 91 - UTILITY, GAS, ELECTRIC, TELEPHONE, LOCAL
-    92: "LandParcel",             // 92 - MINING LANDS, PETROLEUM LANDS, OR GAS LA
-    93: "LandParcel",             // 93 - SUBSURFACE RIGHTS
-    94: "LandParcel",             // 94 - RIGHT-OF-WAY, STREETS, ROADS, IRRIGATION
-    95: "LandParcel",             // 95 - RIVERS AND LAKES, SUBMERGED LANDS
-    96: "LandParcel",             // 96 - SEWAGE DISPOSAL, SOLID WAST, BORROW PITS
-    97: "LandParcel",             // 97 - OUTDOOR RECREATIONAL OR PARKLAND SUBJECT
-    98: "Building",               // 98 - CENTRALLY ASSESSED
-    99: "LandParcel",             // 99 - ACREAGE NOT CLASSIFIED AGRICULTURAL
+    90: "Building", // 90 - LEASEHOLD INTERESTS
+    91: "Building", // 91 - UTILITY, GAS, ELECTRIC, TELEPHONE, LOCAL
+    92: "LandParcel", // 92 - MINING LANDS, PETROLEUM LANDS, OR GAS LA
+    93: "LandParcel", // 93 - SUBSURFACE RIGHTS
+    94: "LandParcel", // 94 - RIGHT-OF-WAY, STREETS, ROADS, IRRIGATION
+    95: "LandParcel", // 95 - RIVERS AND LAKES, SUBMERGED LANDS
+    96: "LandParcel", // 96 - SEWAGE DISPOSAL, SOLID WAST, BORROW PITS
+    97: "LandParcel", // 97 - OUTDOOR RECREATIONAL OR PARKLAND SUBJECT
+    98: "Building", // 98 - CENTRALLY ASSESSED
+    99: "LandParcel", // 99 - ACREAGE NOT CLASSIFIED AGRICULTURAL
   };
-  const val = map[code];
+  const val = resolveUseCode(map, useCodeText);
   if (!val) {
     const err = {
       type: "error",
-      message: `Unknown enum value ${code}.`,
+      message: `Unknown enum value ${useCodeText}.`,
       path: "property.property_type",
     };
     throw new Error(JSON.stringify(err));
@@ -380,9 +489,21 @@ function extractPropertyType(useCodeText) {
   return val;
 }
 
-
 function splitStreet(streetPart) {
-  const dirs = new Set(["N", "S", "E", "W", "NE", "NW", "SE", "SW", "NORTH", "SOUTH", "EAST", "WEST"]);
+  const dirs = new Set([
+    "N",
+    "S",
+    "E",
+    "W",
+    "NE",
+    "NW",
+    "SE",
+    "SW",
+    "NORTH",
+    "SOUTH",
+    "EAST",
+    "WEST",
+  ]);
   let tokens = streetPart
     .split(/\s+/)
     .map((t) => t.trim())
@@ -396,10 +517,10 @@ function splitStreet(streetPart) {
     const dirUpper = tokens[0].toUpperCase();
     // Normalize to single letter
     const dirMap = {
-      "NORTH": "N",
-      "SOUTH": "S",
-      "EAST": "E",
-      "WEST": "W",
+      NORTH: "N",
+      SOUTH: "S",
+      EAST: "E",
+      WEST: "W",
     };
     preDir = dirMap[dirUpper] || dirUpper;
     tokens = tokens.slice(1); // remove pre-directional from tokens
@@ -409,10 +530,10 @@ function splitStreet(streetPart) {
   if (tokens.length > 1 && dirs.has(tokens[tokens.length - 1].toUpperCase())) {
     const dirUpper = tokens[tokens.length - 1].toUpperCase();
     const dirMap = {
-      "NORTH": "N",
-      "SOUTH": "S",
-      "EAST": "E",
-      "WEST": "W",
+      NORTH: "N",
+      SOUTH: "S",
+      EAST: "E",
+      WEST: "W",
     };
     postDir = dirMap[dirUpper] || dirUpper;
     tokens.pop(); // remove post-directional
@@ -464,100 +585,28 @@ function splitStreet(streetPart) {
 
 function parseAddress(
   fullAddress,
-  legalText,
-  section,
-  township,
-  range,
   countyNameFromSeed,
-  municipality,
+  countryCode,
+  sourceHttpRequest,
+  requestIdentifier,
 ) {
-  // Example fullAddress: 280 S COLLIER BLVD # 2306, MARCO ISLAND 34145
-  let streetNumber = null,
-    streetName = null,
-    postDir = null,
-    preDir = null,
-    suffixType = null,
-    city = null,
-    state = null,
-    zip = null,
-    unitId = null;
-
-  if (fullAddress) {
-    const addr = fullAddress.replace(/\s+,/g, ",").trim();
-
-    // First, extract unit identifier if present (# 2306, APT 2306, UNIT 2306, etc.)
-    let streetPartRaw = addr;
-    const unitMatch = addr.match(/(#|APT|UNIT|STE|SUITE)\s*([A-Z0-9-]+)/i);
-    if (unitMatch) {
-      unitId = unitMatch[2];
-      // Remove unit from address for further parsing
-      streetPartRaw = addr.replace(/(#|APT|UNIT|STE|SUITE)\s*[A-Z0-9-]+/i, "").trim();
+  let cleaned = null;
+  if (typeof fullAddress === "string") {
+    cleaned = fullAddress.replace(/\s+/g, " ").replace(/\s+,/g, ",").trim();
+    if (cleaned.startsWith(",")) {
+      cleaned = cleaned.slice(1).trim();
     }
-
-    // Prefer pattern: <num> <street words> [<postDir>], <CITY>, <STATE> <ZIP>
-    let m = streetPartRaw.match(
-      /^(\d+)\s+([^,]+),\s*([A-Z\s]+),\s*([A-Z]{2})\s*(\d{5})(?:-\d{4})?$/,
-    );
-    if (m) {
-      streetNumber = m[1];
-      const streetPart = m[2].trim();
-      city = m[3].trim().toUpperCase();
-      state = m[4];
-      zip = m[5];
-      const parsed = splitStreet(streetPart);
-      streetName = parsed.streetName;
-      preDir = parsed.preDir;
-      postDir = parsed.postDir;
-      suffixType = parsed.suffix;
-    } else {
-      // Fallback pattern without explicit state: <num> <street words> [<postDir>], <CITY> <ZIP>
-      m = streetPartRaw.match(/^(\d+)\s+([^,]+),\s*([A-Z\s]+)\s*(\d{5})(?:-\d{4})?$/);
-      if (m) {
-        streetNumber = m[1];
-        const streetPart = m[2].trim();
-        city = m[3].trim().toUpperCase();
-        zip = m[4];
-        const parsed = splitStreet(streetPart);
-        streetName = parsed.streetName;
-        preDir = parsed.preDir;
-        postDir = parsed.postDir;
-        suffixType = parsed.suffix;
-      }
+    if (!cleaned.length) {
+      cleaned = null;
     }
-  }
-
-  // From legal, get block and lot
-  let block = null,
-    lot = null;
-  if (legalText) {
-    const b = legalText.match(/BLOCK\s+([A-Z0-9]+)/i);
-    if (b) block = b[1].toUpperCase();
-    const l = legalText.match(/LOT\s+(\w+)/i);
-    if (l) lot = l[1];
   }
 
   return {
-    block: block || null,
-    city_name: city || null,
-    country_code: null, // do not fabricate
+    unnormalized_address: cleaned,
+    source_http_request: sourceHttpRequest || null,
+    request_identifier: requestIdentifier || null,
     county_name: countyNameFromSeed || null,
-    latitude: null,
-    longitude: null,
-    lot: lot || null,
-    municipality_name: municipality || null,
-    plus_four_postal_code: null,
-    postal_code: zip || null,
-    range: range || null,
-    route_number: null,
-    section: section || null,
-    state_code: state || "FL",
-    street_name: streetName || null,
-    street_number: streetNumber || null,
-    street_post_directional_text: postDir || null,
-    street_pre_directional_text: preDir || null,
-    street_suffix_type: suffixType || null,
-    township: township || null,
-    unit_identifier: unitId || null,
+    country_code: countryCode || null,
   };
 }
 
@@ -580,6 +629,23 @@ function main() {
 
   const dataDir = path.join(".", "data");
   ensureDir(dataDir);
+
+  // Cleanup old company and person files from previous runs
+  try {
+    const existingFiles = fs.readdirSync(dataDir);
+    existingFiles.forEach((f) => {
+      if (
+        /^company_\d+\.json$/i.test(f) ||
+        /^person_\d+\.json$/i.test(f) ||
+        /^relationship_sales_history_\d+_buyer_company_\d+\.json$/i.test(f) ||
+        /^relationship_sales_history_\d+_buyer_person_\d+\.json$/i.test(f)
+      ) {
+        try {
+          fs.unlinkSync(path.join(dataDir, f));
+        } catch (_) {}
+      }
+    });
+  } catch (_) {}
 
   const folio = seed.request_identifier || seed.parcel_id;
 
@@ -604,19 +670,14 @@ function main() {
 
   // Property JSON
   const property = {
-    livable_floor_area: null,
     parcel_identifier: parcelId,
     property_legal_description_text: legalText,
     property_structure_built_year: null,
     property_type: null,
     property_usage_type: null,
-    area_under_air: null,
     historic_designation: undefined,
     number_of_units: null,
-    number_of_units_type: null,
-    property_effective_built_year: null,
     subdivision: subdivision || null,
-    total_area: null,
     zoning: null,
   };
 
@@ -666,7 +727,9 @@ function main() {
     const buildingNum = buildingNumMatch[1];
 
     // Check if this matches any residential pattern
-    const isResidential = residentialTypes.some(pattern => pattern.test(buildingClass));
+    const isResidential = residentialTypes.some((pattern) =>
+      pattern.test(buildingClass),
+    );
 
     if (isResidential) {
       hasAnyResidentialBuildings = true;
@@ -701,14 +764,6 @@ function main() {
   });
 
   if (yearBuilt) property.property_structure_built_year = yearBuilt;
-  // Only set area if >= 10 sq ft (values < 10 are unrealistic and fail validation)
-  if (hasAnyResidentialBuildings && totalBaseArea >= 10) {
-    property.livable_floor_area = String(totalBaseArea);
-    property.area_under_air = String(totalBaseArea);
-  }
-  if (hasAnyResidentialBuildings && totalAdjArea >= 10) {
-    property.total_area = String(totalAdjArea);
-  }
 
   // Write property.json
   fs.writeFileSync(
@@ -721,14 +776,25 @@ function main() {
     unaddr.county_jurisdiction === "Collier"
       ? "Collier"
       : unaddr.county_jurisdiction || null;
+  const sourceHttpRequest =
+    seed.source_http_request ||
+    (unaddr && unaddr.source_http_request) ||
+    null;
+  const requestIdentifier =
+    seed.request_identifier ||
+    seed.parcel_id ||
+    (unaddr && unaddr.request_identifier) ||
+    null;
+  const countryCode =
+    (unaddr && unaddr.country_code) ||
+    (seed && seed.country_code) ||
+    null;
   const addressObj = parseAddress(
     fullAddress,
-    legalText,
-    section,
-    township,
-    range,
     countyName,
-    municipality,
+    countryCode,
+    sourceHttpRequest,
+    requestIdentifier,
   );
   fs.writeFileSync(
     path.join(dataDir, "address.json"),
@@ -773,8 +839,8 @@ function main() {
     );
 
     const relDf = {
-      to: { "/": `./deed_${idx + 1}.json` },
-      from: { "/": `./file_${idx + 1}.json` },
+      from: { "/": `./deed_${idx + 1}.json` },
+      to: { "/": `./file_${idx + 1}.json` },
     };
     fs.writeFileSync(
       path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
@@ -783,9 +849,7 @@ function main() {
   });
 
   // Create sales files for all valid sales (including $0 amounts)
-  const validSales = saleRows.filter(
-    (r) => r.amount != null && r.iso,
-  );
+  const validSales = saleRows.filter((r) => r.amount != null && r.iso);
   validSales.sort((a, b) => a.iso.localeCompare(b.iso));
   validSales.forEach((s, idx) => {
     const saleObj = {
@@ -793,7 +857,7 @@ function main() {
       purchase_price_amount: s.amount || 0, // Use 0 if amount is 0
     };
     fs.writeFileSync(
-      path.join(dataDir, `sales_${idx + 1}.json`),
+      path.join(dataDir, `sales_history_${idx + 1}.json`),
       JSON.stringify(saleObj, null, 2),
     );
   });
@@ -806,11 +870,11 @@ function main() {
     if (orig !== -1) {
       const deedIdx = orig + 1;
       const rel = {
-        to: { "/": `./sales_${idx + 1}.json` },
-        from: { "/": `./deed_${deedIdx}.json` },
+        from: { "/": `./sales_history_${idx + 1}.json` },
+        to: { "/": `./deed_${deedIdx}.json` },
       };
       fs.writeFileSync(
-        path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
+        path.join(dataDir, `relationship_sales_history_${idx + 1}_has_deed.json`),
         JSON.stringify(rel, null, 2),
       );
     }
@@ -825,11 +889,16 @@ function main() {
     Array.isArray(ownerEntry.owners_by_date.current)
   ) {
     const curr = ownerEntry.owners_by_date.current;
-    if (curr.length > 0) {
+    if (curr.length > 0 && validSales.length > 0) {
+      // Only create company/person files if there are valid sales to link them to
       // Cleanup any legacy duplicate relationship files
       const files = fs
         .readdirSync(dataDir)
-        .filter((f) => f.startsWith("relationship_sales_company"));
+        .filter(
+          (f) =>
+            f.startsWith("relationship_sales_history") &&
+            (f.includes("_buyer_company_") || f.includes("_buyer_person_")),
+        );
       for (const f of files) {
         try {
           fs.unlinkSync(path.join(dataDir, f));
@@ -853,15 +922,36 @@ function main() {
           companyFiles.push(filename);
           companyIdx++;
         } else if (owner.type === "person") {
+          const firstName = capitalizeProperName(owner.first_name) || "";
+          const lastName = capitalizeProperName(owner.last_name) || "";
+
+          // Validate names match required pattern before creating person record
+          if (!isValidFirstOrLastName(firstName) || !isValidFirstOrLastName(lastName)) {
+            // Skip creating person record if names don't match pattern
+            return;
+          }
+
+          // Validate and set middle_name - only include if it matches the required pattern
+          let middleName = null;
+          if (owner.middle_name) {
+            const capitalizedMiddle = capitalizeProperName(owner.middle_name);
+            if (capitalizedMiddle && isValidMiddleName(capitalizedMiddle)) {
+              middleName = capitalizedMiddle;
+            }
+          }
+
           const person = {
             birth_date: owner.birth_date || null,
-            first_name: capitalizeProperName(owner.first_name) || "",
-            last_name: capitalizeProperName(owner.last_name) || "",
-            middle_name: owner.middle_name ? capitalizeProperName(owner.middle_name) : null,
+            first_name: firstName,
+            last_name: lastName,
+            middle_name: middleName,
             prefix_name: owner.prefix_name || null,
             suffix_name: owner.suffix_name || null,
             us_citizenship_status: owner.us_citizenship_status || null,
-            veteran_status: owner.veteran_status != null ? owner.veteran_status : null,
+            veteran_status:
+              owner.veteran_status != null ? owner.veteran_status : null,
+            source_http_request: sourceHttpRequest,
+            request_identifier: requestIdentifier,
           };
           const filename = `person_${personIdx}.json`;
           fs.writeFileSync(
@@ -873,39 +963,125 @@ function main() {
         }
       });
 
-      // Create relationships for valid sales
-      if (validSales.length > 0) {
-        validSales.forEach((s, si) => {
-          // Link to all person files
-          personFiles.forEach((personFile, pi) => {
-            const rel = {
-              to: { "/": `./${personFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_person_${pi + 1}_${si + 1}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-          });
+      // Track which owner indices are actually used
+      const usedPersonIndices = new Set();
+      const usedCompanyIndices = new Set();
 
-          // Link to all company files
-          companyFiles.forEach((companyFile, ci) => {
-            const rel = {
-              to: { "/": `./${companyFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-          });
+      // Create relationships for valid sales
+      validSales.forEach((s, si) => {
+        // Link to all person files
+        personFiles.forEach((personFile, pi) => {
+          const rel = {
+            from: { "/": `./sales_history_${si + 1}.json` },
+            to: { "/": `./${personFile}` },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_sales_history_${si + 1}_buyer_person_${pi + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+          usedPersonIndices.add(pi + 1);
         });
+
+        // Link to all company files
+        companyFiles.forEach((companyFile, ci) => {
+          const rel = {
+            from: { "/": `./sales_history_${si + 1}.json` },
+            to: { "/": `./${companyFile}` },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_sales_history_${si + 1}_buyer_company_${ci + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+          usedCompanyIndices.add(ci + 1);
+        });
+      });
+
+      // Remove unused owner files - scan actual relationship files to determine which entities are referenced
+      try {
+        const files = fs.readdirSync(dataDir);
+
+        // Build sets of which person/company indices are actually referenced by ANY relationship file
+        const personsReferencedByRelationships = new Set();
+        const companiesReferencedByRelationships = new Set();
+
+        // First pass: scan all relationship files to find what entities they reference
+        for (const f of files) {
+          if (f.startsWith("relationship_") && f.endsWith(".json")) {
+            try {
+              const relContent = JSON.parse(fs.readFileSync(path.join(dataDir, f), "utf8"));
+
+              // Extract person/company references from "from" and "to" fields
+              const fromRef = relContent.from && relContent.from["/"] ? relContent.from["/"] : null;
+              const toRef = relContent.to && relContent.to["/"] ? relContent.to["/"] : null;
+
+              [fromRef, toRef].forEach(ref => {
+                if (ref) {
+                  // Handle both ./person_N.json and person_N.json formats
+                  const personMatch = ref.match(/person_(\d+)\.json/);
+                  const companyMatch = ref.match(/company_(\d+)\.json/);
+
+                  if (personMatch) {
+                    personsReferencedByRelationships.add(parseInt(personMatch[1]));
+                  } else if (companyMatch) {
+                    companiesReferencedByRelationships.add(parseInt(companyMatch[1]));
+                  }
+                }
+              });
+            } catch (parseError) {
+              // Continue with next file even if one fails
+            }
+          }
+        }
+
+        // Second pass: delete person/company files that are NOT referenced by any relationship
+        for (const f of files) {
+          try {
+            const personMatch = f.match(/^person_(\d+)\.json$/);
+            const companyMatch = f.match(/^company_(\d+)\.json$/);
+
+            if (personMatch) {
+              const idx = parseInt(personMatch[1]);
+              if (!personsReferencedByRelationships.has(idx)) {
+                const filePath = path.join(dataDir, f);
+                if (fs.existsSync(filePath)) {
+                  fs.unlinkSync(filePath);
+                }
+              }
+            } else if (companyMatch) {
+              const idx = parseInt(companyMatch[1]);
+              if (!companiesReferencedByRelationships.has(idx)) {
+                const filePath = path.join(dataDir, f);
+                if (fs.existsSync(filePath)) {
+                  fs.unlinkSync(filePath);
+                }
+              }
+            }
+          } catch (fileError) {
+            // Continue with next file even if one fails
+          }
+        }
+      } catch (e) {
+        // If cleanup fails, fall back to the simple logic
+        for (let i = 1; i <= personFiles.length; i++) {
+          if (!usedPersonIndices.has(i)) {
+            try {
+              fs.unlinkSync(path.join(dataDir, `person_${i}.json`));
+            } catch (_) {}
+          }
+        }
+        for (let i = 1; i <= companyFiles.length; i++) {
+          if (!usedCompanyIndices.has(i)) {
+            try {
+              fs.unlinkSync(path.join(dataDir, `company_${i}.json`));
+            } catch (_) {}
+          }
+        }
       }
     }
   }
@@ -914,8 +1090,18 @@ function main() {
   const utilsEntry = utils[ownerKey];
   if (utilsEntry) {
     fs.writeFileSync(
-      path.join(dataDir, "utility.json"),
+      path.join(dataDir, "utility_1.json"),
       JSON.stringify(utilsEntry, null, 2),
+    );
+
+    // Create relationship between property and utility
+    const relPropertyUtility = {
+      from: { "/": "./property.json" },
+      to: { "/": "./utility.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_utility.json"),
+      JSON.stringify(relPropertyUtility, null, 2),
     );
   }
 
@@ -931,7 +1117,7 @@ function main() {
         }
 
         // Ensure is_finished is a boolean
-        if (typeof lay.is_finished !== 'boolean') {
+        if (typeof lay.is_finished !== "boolean") {
           // Default: exterior spaces are not finished, interior spaces are finished
           lay.is_finished = lay.is_exterior === false;
         }
@@ -1020,6 +1206,7 @@ function main() {
         spa_installation_date: null,
         spa_type: null,
         space_index: idx, // Use the layout index as space_index
+        space_type_index: "1",
         space_type: spaceType,
         story_type: null,
         total_area_sq_ft: null,
@@ -1033,7 +1220,11 @@ function main() {
     };
 
     // POOL
-    if (buildingClass.includes("POOL") && !buildingClass.includes("FENCE") && !buildingClass.includes("HOUSE")) {
+    if (
+      buildingClass.includes("POOL") &&
+      !buildingClass.includes("FENCE") &&
+      !buildingClass.includes("HOUSE")
+    ) {
       const customFields = {
         pool_installation_date: yr ? `${yr}-01-01` : null,
       };
@@ -1048,11 +1239,20 @@ function main() {
         customFields.pool_equipment = "Fountain";
       }
 
-      layoutObj = createLayoutObj("Outdoor Pool", true, layoutIdx, customFields);
+      layoutObj = createLayoutObj(
+        "Outdoor Pool",
+        true,
+        layoutIdx,
+        customFields,
+      );
     }
 
     // SPA / HOT TUB
-    else if (buildingClass.includes("SPA") || buildingClass.includes("JACUZZI") || buildingClass.includes("HOT TUB")) {
+    else if (
+      buildingClass.includes("SPA") ||
+      buildingClass.includes("JACUZZI") ||
+      buildingClass.includes("HOT TUB")
+    ) {
       layoutObj = createLayoutObj("Hot Tub / Spa Area", true, layoutIdx, {
         spa_installation_date: yr ? `${yr}-01-01` : null,
       });
@@ -1071,13 +1271,17 @@ function main() {
       (buildingClass.includes("TILE") && !buildingClass.includes("ROOF")) ||
       buildingClass.includes("BRICK") ||
       buildingClass.includes("KEYSTONE") ||
-      (buildingClass.includes("CONCRETE") && buildingClass.includes("SCULPTURED"))
+      (buildingClass.includes("CONCRETE") &&
+        buildingClass.includes("SCULPTURED"))
     ) {
       layoutObj = createLayoutObj("Deck", true, layoutIdx, {});
     }
 
     // FOUNTAIN (only if not already added to pool equipment)
-    else if (buildingClass.includes("FOUNTAIN") && poolFenceExists.length === 0) {
+    else if (
+      buildingClass.includes("FOUNTAIN") &&
+      poolFenceExists.length === 0
+    ) {
       layoutObj = createLayoutObj("Courtyard", true, layoutIdx, {});
     }
 
@@ -1197,9 +1401,70 @@ function main() {
 
   // Always write structure.json with all required fields
   fs.writeFileSync(
-    path.join(dataDir, "structure.json"),
+    path.join(dataDir, "structure_1.json"),
     JSON.stringify(structureObj, null, 2),
   );
+
+  // Create relationship from layout_1 to structure_1 (if layout_1 exists), otherwise from property
+  if (layoutIdx > 1) {
+    // layoutIdx was incremented after creating layout_1, so if it's > 1, layout_1 exists
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_layout_1_has_structure_1.json"),
+      JSON.stringify(
+        {
+          from: { "/": "./layout_1.json" },
+          to: { "/": "./structure_1.json" },
+        },
+        null,
+        2,
+      ),
+    );
+
+    // Also create relationship from layout_1 to utility_1 (if utility exists)
+    const utility1Path = path.join(dataDir, "utility_1.json");
+    if (fs.existsSync(utility1Path)) {
+      fs.writeFileSync(
+        path.join(dataDir, "relationship_layout_1_has_utility_1.json"),
+        JSON.stringify(
+          {
+            from: { "/": "./layout_1.json" },
+            to: { "/": "./utility_1.json" },
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  } else {
+    // No layouts exist, connect structure directly to property
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_structure_1.json"),
+      JSON.stringify(
+        {
+          from: { "/": "./property.json" },
+          to: { "/": "./structure_1.json" },
+        },
+        null,
+        2,
+      ),
+    );
+
+    // Also connect utility directly to property if it exists
+    const utility1Path = path.join(dataDir, "utility_1.json");
+    if (fs.existsSync(utility1Path)) {
+      fs.writeFileSync(
+        path.join(dataDir, "relationship_property_has_utility_1.json"),
+        JSON.stringify(
+          {
+            from: { "/": "./property.json" },
+            to: { "/": "./utility_1.json" },
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  }
 
   // Tax from Summary and History
   // From Summary (preliminary/current)
