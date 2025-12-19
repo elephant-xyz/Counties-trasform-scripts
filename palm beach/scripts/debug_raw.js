@@ -3074,6 +3074,117 @@ function clampRawAddressToMinimalSurface(addressPath, options = {}) {
   writeJSON(addressPath, applyNullAddressRelationships(rawOut));
 }
 
+// Rebuild a raw oneOf surface for address.json so every required field exists
+// (nullable) when we only have an unnormalized string from the source. This
+// keeps validation from flagging missing normalized properties while still
+// preferring the raw branch.
+function rebuildRawAddressSurface(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    countyFallback = null,
+    stateFallback = null,
+    countryFallback = "US",
+  } = options || {};
+
+  const current = readJSONIfExists(addressPath) || {};
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || {};
+  const seedSource = readJSONIfExists(seedPath) || {};
+
+  const rawCandidate = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      current.unnormalized_address,
+      current.full_address,
+      unnormalizedSource.unnormalized_address,
+      unnormalizedSource.full_address,
+      seedSource.unnormalized_address,
+      seedSource.full_address,
+    ]),
+  );
+  if (!rawCandidate) return;
+
+  const resolveFromSources = (field) => {
+    const sources = [current, unnormalizedSource, seedSource];
+    for (const source of sources) {
+      if (
+        source &&
+        typeof source === "object" &&
+        Object.prototype.hasOwnProperty.call(source, field)
+      ) {
+        return source[field];
+      }
+    }
+    return undefined;
+  };
+
+  const resolvedRequestId = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      current.request_identifier,
+      unnormalizedSource.request_identifier,
+      seedSource.request_identifier,
+    ]),
+  );
+  const resolvedSourceHttp = resolveSourceHttpRequest(
+    current.source_http_request,
+    unnormalizedSource.source_http_request,
+    seedSource.source_http_request,
+  );
+
+  const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+  RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      rawOut[field] = rawCandidate.trim();
+      return;
+    }
+    if (field === "request_identifier") {
+      rawOut[field] =
+        resolvedRequestId === undefined ? null : resolvedRequestId;
+      return;
+    }
+    if (field === "source_http_request") {
+      rawOut[field] = prepareSourceHttpRequest(resolvedSourceHttp) || null;
+      return;
+    }
+
+    let value = resolveFromSources(field);
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rawOut[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    rawOut[field] = value === undefined ? null : value;
+  });
+
+  if (!hasMeaningfulAddressValue(rawOut.county_name) && countyFallback) {
+    rawOut.county_name = titleCaseCounty(countyFallback);
+  }
+  if (!hasMeaningfulAddressValue(rawOut.state_code) && stateFallback) {
+    rawOut.state_code = stateFallback.toUpperCase();
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = (countryFallback || "US").toUpperCase();
+  }
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+
+  writeJSON(addressPath, applyNullAddressRelationships(rawOut));
+}
+
 // Hard-stop guard: if we only have an unnormalized address, rebuild the raw
 // oneOf surface so every schema field exists (nullable) and relationships stay
 // null. This prevents validation from reporting missing required fields on the
@@ -34653,6 +34764,13 @@ async function main() {
     countryFallback: "US",
   });
   lockRawOneOfSurface(addressOutputPath, { defaultCountry: "US" });
+  rebuildRawAddressSurface(addressOutputPath, {
+    unnormalizedPath: "unnormalized_address.json",
+    seedPath: "property_seed.json",
+    countyFallback: formattedCountyName || countyName || "Palm Beach",
+    stateFallback: inferredStateCode || "FL",
+    countryFallback: "US",
+  });
 
   // Final hard clamp per schema oneOf: prefer the raw branch whenever we have an
   // unnormalized address string from the source, and keep the full schema surface
