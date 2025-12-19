@@ -35592,6 +35592,74 @@ async function main() {
     nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
   }
 
+  // Final safeguard: if any unnormalized address exists from the source, force
+  // the raw oneOf branch with the full schema surface (all nullable) so
+  // validation never expects normalized fields. Relationship URs stay null for
+  // downstream population.
+  if (fs.existsSync(addressOutputPath)) {
+    const snapshot = readJSONIfExists(addressOutputPath) || {};
+    const rawCandidate = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        snapshot.unnormalized_address,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+    if (rawCandidate) {
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        rawOut[field] = null;
+      });
+      rawOut.unnormalized_address = rawCandidate;
+      rawOut.request_identifier =
+        safeNullIfEmpty(snapshot.request_identifier) ||
+        safeNullIfEmpty(resolvedRequestIdentifier) ||
+        trimmedRequestIdentifier ||
+        parcelId ||
+        null;
+      rawOut.source_http_request =
+        prepareSourceHttpRequest(
+          resolveSourceHttpRequest(
+            snapshot.source_http_request,
+            resolvedSourceHttp,
+            sourceHttpCandidate,
+            seed && seed.source_http_request,
+            unAddr && unAddr.source_http_request,
+          ),
+        ) || null;
+      rawOut.county_name =
+        safeNullIfEmpty(snapshot.county_name) ||
+        safeNullIfEmpty(formattedCountyName) ||
+        safeNullIfEmpty(countyName) ||
+        null;
+      rawOut.state_code =
+        safeNullIfEmpty(snapshot.state_code) || inferredStateCode || "FL";
+      rawOut.country_code = rawOut.state_code ? "US" : null;
+      const parsedPostal = parsePostalFromAddressString(rawCandidate);
+      rawOut.postal_code =
+        parsedPostal.postal_code ||
+        safeNullIfEmpty(snapshot.postal_code) ||
+        null;
+      rawOut.plus_four_postal_code = rawOut.postal_code
+        ? parsedPostal.plus_four_postal_code ||
+          safeNullIfEmpty(snapshot.plus_four_postal_code) ||
+          null
+        : null;
+      const latNum = parseCoordinate(snapshot.latitude);
+      const lonNum = parseCoordinate(snapshot.longitude);
+      rawOut.latitude = Number.isFinite(latNum) ? latNum : null;
+      rawOut.longitude = Number.isFinite(lonNum) ? lonNum : null;
+      if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+        rawOut.latitude = null;
+        rawOut.longitude = null;
+      }
+      writeJSON(addressOutputPath, applyNullAddressRelationships(rawOut));
+    }
+    removeAddressRelationshipFiles(dataDir);
+    removeAddressRelationshipFiles(relationshipsDir);
+    nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
+  }
+
   // Normalize the postal fields one last time from the raw string so we don't
   // emit bogus plus-four values (for example, picking up the street number).
   if (fs.existsSync(addressOutputPath)) {
