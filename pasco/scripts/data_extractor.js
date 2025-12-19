@@ -1788,7 +1788,6 @@ function main() {
     build_status,
     property_structure_built_year: yearBuilt || null,
     number_of_units_type,
-    livable_floor_area: livableSqft ? String(livableSqft) : null,
     property_legal_description_text: legalDesc || null,
     subdivision: subdivision || null,
     zoning: zoning || null,
@@ -2125,16 +2124,10 @@ function main() {
     null;
   const address = {
     unnormalized_address: fallbackUnnormalized,
-    latitude:
-      addrSeed && typeof addrSeed.latitude === "number"
-        ? addrSeed.latitude
-        : null,
-    longitude:
-      addrSeed && typeof addrSeed.longitude === "number"
-        ? addrSeed.longitude
-        : null,
-    county_name: county || null,
+    source_http_request: sharedSourceHttpRequest,
     request_identifier: sharedRequestIdentifier,
+    county_name: county || null,
+    country_code: sharedCountryCode,
   };
   writeJSON("address.json", address);
 

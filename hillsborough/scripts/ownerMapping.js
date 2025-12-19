@@ -6,6 +6,26 @@ function toTitleCase(str) {
   return str.toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
 }
 
+function cleanInvalidCharsFromName(name) {
+  if (!name || typeof name !== "string") return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+
+  // Remove any characters that are not letters, spaces, hyphens, apostrophes, commas, or periods
+  let cleaned = trimmed.replace(/[^a-zA-Z\s\-',.]/g, "");
+  cleaned = cleaned.replace(/\s+/g, " ").trim();
+
+  if (!cleaned) return null;
+
+  // Ensure it starts with a letter
+  if (!/^[a-zA-Z]/.test(cleaned)) return null;
+
+  // Capitalize first letter
+  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+
+  return cleaned;
+}
+
 function collectValuesByKeyPattern(obj, regex, results = []) {
   if (obj && typeof obj === "object") {
     if (Array.isArray(obj)) {
@@ -43,7 +63,7 @@ function flattenToStrings(values) {
 }
 
 const COMPANY_RE =
-  /\b(inc\.?|incorporated|llc\.?|l\.l\.c\.?|ltd\.?|limited|corp\.?|corporation|co\.?\b|company|companies|trust\b|trustee|trusts|tr\b|foundation|foundations|fdn\.?|alliance|solutions|services|svc\.?|svcs\.?|assn\.?|association|associations|partners\b|partnership|ptnrs\.?|holdings\b|hldgs\.?|group\b|groups|grp\.?|bank\b|banking|bnk\.?|church\b|churches|ministries\b|ministry|min\.?|management\b|mgmt\.?|properties\b|property|prop\.?|props\.?|enterprises?|enterprise|ent\.?|investments?|investment|inv\.?|invs\.?|advisors?|advisor|adv\.?|consultants?|consultant|cons\.?|contractors?|contractor|contr\.?|developers?|developer|dev\.?|devs\.?|builders?|builder|bldr\.?|realty|real\s+estate|estates?|estate|est\.?|ventures?|venture|vent\.?|systems?|system|sys\.?|technologies|technology|tech\.?|networks?|network|net\.?|communications?|communication|comm\.?|comms\.?|industries|industry|ind\.?|inds\.?|manufacturing|mfg\.?|operations|ops\.?|capital|capitals|cap\.?|caps\.?|financial|finance|fin\.?|insurance|ins\.?|legal|law|medical|healthcare|health|care|retail|rtl\.?|wholesale|whsl\.?|trading|trdg\.?|imports?|exports?|logistics|transport|shipping|shpg\.?|construction|const\.?|constr\.?|engineering|eng\.?|engr\.?|architects?|architecture|arch\.?|design|dsgn\.?|marketing|mktg\.?|advertising|adv\.?|advt\.?|media|publishing|pub\.?|entertainment|ent\.?|hospitality|hosp\.?|restaurants?|restaurant|rest\.?|hotels?|hotel|resorts?|resort|clubs?|club|organizations?|organization|orgs?|org\.?|nonprofits?|nonprofit|npo\.?|charities|charity|schools?|school|sch\.?|universities|university|univ\.?|colleges?|college|coll\.?|institutes?|institute|inst\.?|academies|academy|acad\.?|centers?|center|ctr\.?|ctrs\.?|facilities|facility|fac\.?|clinics?|clinic|hospitals?|hospital|hosp\.?|laboratories|laboratory|labs?|lab\.?)\b/i;
+  /\b(inc\.?|incorporated|llc\.?|l\.l\.c\.?|lp\.?|l\.p\.?|ltd\.?|limited|corp\.?|corporation|co\.?\b|company|companies|trust\b|trustee|trusts|tr\b|foundation|foundations|fdn\.?|alliance|solutions|services|svc\.?|svcs\.?|assn\.?|association|associations|partners\b|partnership|ptnrs\.?|holdings\b|hldgs\.?|group\b|groups|grp\.?|bank\b|banking|bnk\.?|church\b|churches|ministries\b|ministry|min\.?|management\b|mgmt\.?|properties\b|property|prop\.?|props\.?|enterprises?|enterprise|ent\.?|investments?|investment|inv\.?|invs\.?|advisors?|advisor|adv\.?|consultants?|consultant|cons\.?|contractors?|contractor|contr\.?|developers?|developer|dev\.?|devs\.?|builders?|builder|bldr\.?|realty|real\s+estate|estates?|estate|est\.?|ventures?|venture|vent\.?|systems?|system|sys\.?|technologies|technology|tech\.?|networks?|network|net\.?|communications?|communication|comm\.?|comms\.?|industries|industry|ind\.?|inds\.?|manufacturing|mfg\.?|operations|ops\.?|capital|capitals|cap\.?|caps\.?|financial|finance|fin\.?|insurance|ins\.?|legal|law|medical|healthcare|health|care|retail|rtl\.?|wholesale|whsl\.?|trading|trdg\.?|imports?|exports?|logistics|transport|shipping|shpg\.?|construction|const\.?|constr\.?|engineering|eng\.?|engr\.?|architects?|architecture|arch\.?|design|dsgn\.?|marketing|mktg\.?|advertising|adv\.?|advt\.?|media|publishing|pub\.?|entertainment|ent\.?|hospitality|hosp\.?|restaurants?|restaurant|rest\.?|hotels?|hotel|resorts?|resort|clubs?|club|organizations?|organization|orgs?|org\.?|nonprofits?|nonprofit|npo\.?|charities|charity|schools?|school|sch\.?|universities|university|univ\.?|colleges?|college|coll\.?|institutes?|institute|inst\.?|academies|academy|acad\.?|centers?|center|ctr\.?|ctrs\.?|facilities|facility|fac\.?|clinics?|clinic|hospitals?|hospital|hosp\.?|laboratories|laboratory|labs?|lab\.?)\b/i;
 
 const PREFIX_MAPPING = {
   "mr": "Mr.", "mr.": "Mr.", "mrs": "Mrs.", "mrs.": "Mrs.", "ms": "Ms.", "ms.": "Ms.",
@@ -133,6 +153,20 @@ function parsePerson(name, pin) {
 
   if (!first.trim() || !last.trim()) return null;
 
+  // Clean and validate first, last, and middle names
+  const cleanedFirst = cleanInvalidCharsFromName(first.trim());
+  const cleanedLast = cleanInvalidCharsFromName(last.trim());
+
+  if (!cleanedFirst || !cleanedLast) return null;
+
+  let cleanedMiddle = null;
+  if (middle.trim()) {
+    const cleaned = cleanInvalidCharsFromName(middle.trim());
+    if (cleaned) {
+      cleanedMiddle = toTitleCase(cleaned);
+    }
+  }
+
   return {
     type: "person",
     source_http_request: {
@@ -141,9 +175,9 @@ function parsePerson(name, pin) {
     },
     request_identifier: pin || null,
     birth_date: null,
-    first_name: toTitleCase(first.trim()),
-    last_name: toTitleCase(last.trim()),
-    middle_name: middle.trim() ? toTitleCase(middle.trim()) : null,
+    first_name: toTitleCase(cleanedFirst),
+    last_name: toTitleCase(cleanedLast),
+    middle_name: cleanedMiddle,
     prefix_name,
     suffix_name,
     us_citizenship_status: null,

@@ -1096,6 +1096,10 @@ function main() {
   if (!parcelId) throw new Error("Missing parcel identifier");
   if (!property_type) property_type = DEFAULT_PROPERTY_TYPE;
   if (!property_usage_type) property_usage_type = DEFAULT_PROPERTY_USAGE_TYPE;
+  if (!build_status) {
+    // Default to a valid enum so schema validation never receives null.
+    build_status = property_type === "LandParcel" ? "VacantLand" : "Improved";
+  }
   writeJson(path.join(dataDir, "property.json"), {
     parcel_identifier: parcelId,
     property_type,
@@ -1884,7 +1888,7 @@ function main() {
       mailingAddressValue = mailingSpan.text().replace(/\s+/g, " ").trim();
     }
   }
-  if (mailingAddressValue) {
+  if (mailingAddressValue && mailingOwnerRefs.length > 0) {
     writeJson(path.join(dataDir, "mailing_address.json"), {
       unnormalized_address: mailingAddressValue,
       latitude: null,
