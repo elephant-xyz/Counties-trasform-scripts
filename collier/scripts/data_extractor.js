@@ -1067,7 +1067,7 @@ function main() {
   let utilityCreated = false;
   if (utilsEntry) {
     fs.writeFileSync(
-      path.join(dataDir, "utility.json"),
+      path.join(dataDir, "utility_1.json"),
       JSON.stringify(utilsEntry, null, 2),
     );
     utilityCreated = true;
@@ -1405,7 +1405,7 @@ function main() {
 
   // Always write structure.json with all required fields
   fs.writeFileSync(
-    path.join(dataDir, "structure.json"),
+    path.join(dataDir, "structure_1.json"),
     JSON.stringify(structureObj, null, 2),
   );
 
@@ -1434,6 +1434,22 @@ function main() {
         2,
       ),
     );
+
+    // Also connect utility directly to property if it exists
+    const utility1Path = path.join(dataDir, "utility_1.json");
+    if (fs.existsSync(utility1Path)) {
+      fs.writeFileSync(
+        path.join(dataDir, "relationship_property_has_utility_1.json"),
+        JSON.stringify(
+          {
+            from: { "/": "./property.json" },
+            to: { "/": "./utility_1.json" },
+          },
+          null,
+          2,
+        ),
+      );
+    }
   }
 
   // Tax from Summary and History
