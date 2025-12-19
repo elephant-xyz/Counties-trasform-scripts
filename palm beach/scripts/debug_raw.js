@@ -1929,8 +1929,8 @@ function sanitizeAddressPayloadForWrite(payload) {
   // Always prefer the raw branch when the source gives us an unnormalized
   // string; only emit a normalized variant when we truly lack a raw address.
   if (trimmedUnnormalized.length) {
-    const rawOut = {};
-    RAW_MINIMAL_OUTPUT_FIELDS.forEach((field) => {
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
       if (field === "unnormalized_address") {
         rawOut[field] = trimmedUnnormalized;
         return;
@@ -1947,8 +1947,11 @@ function sanitizeAddressPayloadForWrite(payload) {
         return;
       }
       if (field === "county_name") {
-        rawOut[field] =
-          safeNullIfEmpty(payload.county_name || payload.county_jurisdiction) || null;
+        const countyCandidate =
+          payload.county_name === undefined || payload.county_name === null
+            ? payload.county_jurisdiction
+            : payload.county_name;
+        rawOut[field] = safeNullIfEmpty(countyCandidate) || null;
         return;
       }
       let value = payload[field];
