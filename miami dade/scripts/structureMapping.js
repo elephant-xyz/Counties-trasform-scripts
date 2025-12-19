@@ -5,32 +5,39 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function ensureInput() {
-  const inputPath = path.resolve("input.json");
-  if (!fs.existsSync(inputPath)) {
-    const fallback = {
-      PropertyInfo: {
-      },
-    };
-    fs.writeFileSync(inputPath, JSON.stringify(fallback, null, 2), "utf8");
-  }
-  return inputPath;
-}
-
 function loadInput() {
-  const inputPath = ensureInput();
-  const raw = fs.readFileSync(inputPath, "utf8");
-  // Handle case where content might be HTML-wrapped JSON
-  let data;
+  const jsonFilePath = path.join(process.cwd(), 'input.json');
+  const htmlFilePath = path.join(process.cwd(), 'input.html');
+
   try {
-    data = JSON.parse(raw);
-  } catch (e) {
-    // Attempt to parse JSON embedded in HTML using cheerio
-    const $ = cheerio.load(raw);
-    const text = $("body").text().trim();
-    data = JSON.parse(text);
+    // 1. Try to read input.json synchronously
+    const jsonData = fs.readFileSync(jsonFilePath, 'utf8');
+    return JSON.parse(jsonData);
+  } catch (jsonError) {
+    // If input.json doesn't exist or is unreadable, try input.html
+    if (jsonError.code === 'ENOENT' || jsonError instanceof SyntaxError) {
+      console.warn(`Could not read or parse input.json: ${jsonError.message}. Attempting to read from input.html.`);
+      try {
+        // 2. Read input.html synchronously
+        const htmlData = fs.readFileSync(htmlFilePath, 'utf8');
+
+        // Parse the HTML using Cheerio
+        const $ = cheerio.load(htmlData);
+        const preTagContent = $('pre').text(); // Get the text content of the <pre> tag
+
+        if (preTagContent) {
+          return JSON.parse(preTagContent);
+        } else {
+          throw new Error('No <pre> tag found or <pre> tag is empty in input.html');
+        }
+      } catch (htmlError) {
+        throw new Error(`Failed to read or parse JSON from input.html: ${htmlError.message}`);
+      }
+    } else {
+      // Re-throw other errors from input.json
+      throw new Error(`An unexpected error occurred while processing input.json: ${jsonError.message}`);
+    }
   }
-  return data;
 }
 
 function mapStructure(data) {
@@ -90,12 +97,6 @@ function mapStructure(data) {
     unfinished_upper_story_area: null,
     number_of_stories: stories,
   };
-
-  // If it's explicitly single family, we may infer Detached cautiously
-  const dor = (pi.DORDescription || "").toLowerCase();
-  if (dor.includes("single family")) {
-    structure.attachment_type = "Detached";
-  }
 
   return structure;
 }

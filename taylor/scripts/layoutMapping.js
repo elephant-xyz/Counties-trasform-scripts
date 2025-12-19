@@ -1,5 +1,5 @@
 // Layout mapping script
-// Reads input.html, parses buildings bedroom/bath counts and generates layout entries per room type
+// Reads input.html, parses buildings and generates building/floor/room layout entries
 
 const fs = require("fs");
 const path = require("path");
@@ -95,13 +95,24 @@ function toInt(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function defaultLayout(space_type, idx) {
+function parseBuiltYear(val) {
+  const year = toInt(val);
+  return String(year).length === 4 && year > 0 ? year : null;
+}
+
+function baseLayout({
+  space_type,
+  space_type_index,
+  building_number,
+  built_year,
+}) {
   return {
     space_type,
-    space_index: idx,
+    space_type_index,
+    building_number,
+    built_year,
     flooring_material_type: null,
     size_square_feet: null,
-    floor_level: null,
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
@@ -135,22 +146,54 @@ function defaultLayout(space_type, idx) {
   };
 }
 
+function getBuildingPlan(building) {
+  const floors = toInt(building["Floors"]) || 0;
+  const roomsPerFloor = toInt(building["Avg. Rooms Per Floor"]) || 0;
+  return { floors, roomsPerFloor };
+}
+
 function buildLayoutsFromBuildings(buildings) {
-  // Sum across all buildings
-  let totalBeds = 0;
-  let totalBaths = 0;
-  buildings.forEach((b) => {
-    totalBeds += toInt(b["Bedrooms"]);
-    totalBaths += toInt(b["Bathrooms"]);
-  });
   const layouts = [];
-  let idx = 1;
-  for (let i = 0; i < totalBeds; i++) {
-    layouts.push(defaultLayout("Bedroom", idx++));
-  }
-  for (let i = 0; i < totalBaths; i++) {
-    layouts.push(defaultLayout("Full Bathroom", idx++));
-  }
+
+  buildings.forEach((building, idx) => {
+    const buildingNumber = idx + 1;
+    const builtYear = parseBuiltYear(building["Actual Year Built"]);
+    const { floors, roomsPerFloor } = getBuildingPlan(building);
+
+    layouts.push(
+      baseLayout({
+        space_type: "Building",
+        space_type_index: `${buildingNumber}`,
+        building_number: buildingNumber,
+        built_year: builtYear,
+      }),
+    );
+
+    for (let floor = 1; floor <= floors; floor++) {
+      const floorIndex = `${buildingNumber}.${floor}`;
+      layouts.push(
+        baseLayout({
+          space_type: "Floor",
+          space_type_index: floorIndex,
+          building_number: buildingNumber,
+          built_year: builtYear,
+        }),
+      );
+
+      for (let room = 1; room <= roomsPerFloor; room++) {
+        const roomIndex = `${floorIndex}.${room}`;
+        layouts.push(
+          baseLayout({
+            space_type: `Common Room`,
+            space_type_index: roomIndex,
+            building_number: buildingNumber,
+            built_year: builtYear,
+          }),
+        );
+      }
+    }
+  });
+
   return layouts;
 }
 
@@ -160,15 +203,15 @@ function main() {
   const parcelId = getParcelId($);
 
   const propertySeed = readJSON("property_seed.json");
-  if (propertySeed.request_identifier != parcelId) {
+
+  if (!parcelId) throw new Error("Parcel ID not found");
+  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
     throw {
       type: "error",
-      message: `Request identifier and parcel id don't match.`,
+      message: "Request identifier and parcel id don't match.",
       path: "property.request_identifier",
     };
-  }
-  
-  if (!parcelId) throw new Error("Parcel ID not found");
+  }  
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings);
 

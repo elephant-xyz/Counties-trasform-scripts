@@ -1,255 +1,272 @@
 // Structure mapping script
-// Reads input.html, parses building and summary data using cheerio, and writes owners/structure_data.json
+// Extracts building materials and accessory feature hints for downstream structure generation
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
+
+const PARCEL_SELECTOR =
+  "#ctlBodyPane_ctl07_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue span";
 
 function readHtml(filepath) {
   const html = fs.readFileSync(filepath, "utf8");
   return cheerio.load(html);
 }
 
-// Updated CSS Selectors
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl07_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue span";
-// The HTML provided does not have a section explicitly titled "Buildings".
-// The closest information related to a structure is under "Valuation" and "Extra Features".
-// We will adapt `collectBuildings` to extract relevant data from these sections.
-// For now, keeping BUILDING_SECTION_TITLE as a placeholder, but it won't be used directly
-// to find a section with that exact title in the provided HTML.
-
-function textTrim(s) {
-  return (s || "").replace(/\s+/g, " ").trim();
+function textTrim(value) {
+  return (value || "").replace(/\s+/g, " ").trim();
 }
 
-function getParcelId($) {
-  let parcelIdText = $(PARCEL_SELECTOR).text().trim();
-  if (parcelIdText) {
-    return parcelIdText;
-  }
+function asNumber(value) {
+  if (value == null) return null;
+  const cleaned = String(value).replace(/[^0-9.]/g, "");
+  if (!cleaned) return null;
+  const num = Number(cleaned);
+  return Number.isFinite(num) ? num : null;
+}
+
+function normalizeExteriorWall(value) {
+  const raw = (value || "").toUpperCase();
+  if (!raw) return null;
+  if (raw.includes("BRICK")) return "Brick";
+  if (raw.includes("STONE"))
+    return raw.includes("MANUF") ? "Manufactured Stone" : "Natural Stone";
+  if (raw.includes("STUCCO")) return "Stucco";
+  if (raw.includes("VINYL")) return "Vinyl Siding";
+  if (raw.includes("WOOD")) return "Wood Siding";
+  if (raw.includes("FIBER")) return "Fiber Cement Siding";
+  if (raw.includes("METAL")) return "Metal Siding";
+  if (raw.includes("BLOCK")) return "Concrete Block";
+  if (raw.includes("EIFS")) return "EIFS";
+  if (raw.includes("LOG")) return "Log";
+  if (raw.includes("ADOBE")) return "Adobe";
+  if (raw.includes("PRECAST")) return "Precast Concrete";
+  if (raw.includes("CURTAIN")) return "Curtain Wall";
   return null;
 }
 
-function collectBuildings($) {
+function normalizeFloorCover(value) {
+  const raw = (value || "").toUpperCase();
+  if (!raw) return null;
+  if (raw.includes("HARDWOOD")) return "Solid Hardwood";
+  if (raw.includes("VINYL")) {
+    if (raw.includes("PLANK") || raw.includes("PLAN"))
+      return "Luxury Vinyl Plank";
+    return "Sheet Vinyl";
+  }
+  if (raw.includes("LAMINATE")) return "Laminate";
+  if (raw.includes("PORCELAIN")) return "Porcelain Tile";
+  if (raw.includes("CERAMIC") || raw.includes("TILE")) return "Ceramic Tile";
+  if (raw.includes("STONE")) return "Natural Stone Tile";
+  if (raw.includes("CARPET")) return "Carpet";
+  if (raw.includes("RUG")) return "Area Rugs";
+  if (raw.includes("CONCRETE")) return "Polished Concrete";
+  if (raw.includes("BAMBOO")) return "Bamboo";
+  if (raw.includes("CORK")) return "Cork";
+  if (raw.includes("LINOLEUM")) return "Linoleum";
+  if (raw.includes("TERRAZZO")) return "Terrazzo";
+  if (raw.includes("EPOXY")) return "Epoxy Coating";
+  return null;
+}
+
+function normalizeInteriorWall(value) {
+  const raw = (value || "").toUpperCase();
+  if (!raw) return null;
+  if (raw.includes("DRYWALL") || raw.includes("GYPSUM")) return "Drywall";
+  if (raw.includes("PLASTER")) return "Plaster";
+  if (raw.includes("WOOD")) return "Wood Paneling";
+  if (raw.includes("BRICK")) return "Exposed Brick";
+  if (raw.includes("BLOCK")) return "Exposed Block";
+  if (raw.includes("WAINSCOT")) return "Wainscoting";
+  if (raw.includes("SHIPLAP")) return "Shiplap";
+  if (raw.includes("BOARD") && raw.includes("BATTEN"))
+    return "Board and Batten";
+  if (raw.includes("TILE")) return "Tile";
+  if (raw.includes("STONE")) return "Stone Veneer";
+  if (raw.includes("METAL")) return "Metal Panels";
+  if (raw.includes("GLASS")) return "Glass Panels";
+  if (raw.includes("CONCRETE")) return "Concrete";
+  return null;
+}
+
+function normalizeRoofCover(value) {
+  const raw = (value || "").toUpperCase();
+  if (!raw) return null;
+  if (raw.includes("ARCHITECT")) return "Architectural Asphalt Shingle";
+  if (raw.includes("3-TAB") || raw.includes("3 TAB"))
+    return "3-Tab Asphalt Shingle";
+  if (raw.includes("METAL") && raw.includes("SEAM")) return "Metal Standing Seam";
+  if (raw.includes("METAL")) return "Metal Corrugated";
+  if (raw.includes("CLAY")) return "Clay Tile";
+  if (raw.includes("CONCRETE")) return "Concrete Tile";
+  if (raw.includes("SYNTH") && raw.includes("SLATE")) return "Synthetic Slate";
+  if (raw.includes("SLATE")) return "Natural Slate";
+  if (raw.includes("WOOD") && raw.includes("SHAKE")) return "Wood Shake";
+  if (raw.includes("WOOD") && raw.includes("SHINGLE")) return "Wood Shingle";
+  if (raw.includes("TPO")) return "TPO Membrane";
+  if (raw.includes("EPDM")) return "EPDM Membrane";
+  if (raw.includes("MODIFIED")) return "Modified Bitumen";
+  if (raw.includes("BUILT")) return "Built-Up Roof";
+  if (raw.includes("GREEN")) return "Green Roof System";
+  if (raw.includes("SOLAR")) return "Solar Integrated Tiles";
+  return null;
+}
+
+function normalizePrimaryFraming(value) {
+  const raw = (value || "").toUpperCase();
+  if (!raw) return null;
+  if (raw.includes("WOOD")) return "Wood Frame";
+  if (raw.includes("STEEL")) return "Steel Frame";
+  if (raw.includes("CONCRETE") && raw.includes("BLOCK")) return "Concrete Block";
+  if (raw.includes("POURED") || (raw.includes("CONCRETE") && !raw.includes("BLOCK"))) return "Poured Concrete";
+  if (raw.includes("MASON")) return "Masonry";
+  if (raw.includes("ENGINEER")) return "Engineered Lumber";
+  if (raw.includes("POST") && raw.includes("BEAM")) return "Post and Beam";
+  if (raw.includes("LOG")) return "Log Construction";
+  return null;
+}
+
+function getParcelId($) {
+  const parcel = textTrim($(PARCEL_SELECTOR).text());
+  return parcel || null;
+}
+
+function extractBuildingAttributes($, $section) {
+  const raw = {};
+  $section.find("tr").each((_, tr) => {
+    const $tr = $(tr);
+    const label =
+      textTrim($tr.find("th strong").text()) || textTrim($tr.find("th").text());
+    const value =
+      textTrim($tr.find("td span").text()) || textTrim($tr.find("td").text());
+    if (label) raw[label.toLowerCase()] = value || null;
+  });
+  return raw;
+}
+
+function parseBuildings($) {
   const buildings = [];
+  const rows = $(
+    "#ctlBodyPane_ctl11_mSection .module-content > .block-row",
+  ).toArray();
 
-  // Extract data from the "Valuation" section
-  const valuationSection = $("#ctlBodyPane_ctl09_mSection");
-  if (valuationSection.length) {
-    const valuationTable = valuationSection.find("#ctlBodyPane_ctl09_ctl01_grdValuation tbody");
-    const buildingData = {};
-    valuationTable.find("tr").each((_, tr) => {
-      const label = textTrim($(tr).find("th").first().text());
-      const value = textTrim($(tr).find("td.value-column").first().text()); // Get the first value column (2025 Working Values)
-      if (label && value) {
-        buildingData[label] = value;
-      }
-    });
-    if (Object.keys(buildingData).length > 0) {
-      // This is not a "building" in the traditional sense, but aggregated valuation data.
-      // We'll treat it as a single "building" entry for the purpose of structure mapping.
-      buildings.push(buildingData);
-    }
-  }
+  rows.forEach((row) => {
+    const $row = $(row);
+    const left = $row.find(
+      "[id$='dynamicBuildingDataLeftColumn_divSummary']",
+    );
+    const right = $row.find(
+      "[id$='dynamicBuildingDataRightColumn_divSummary']",
+    );
+    if (!left.length && !right.length) return;
 
-  // Extract data from the "Extra Features" section
-  const extraFeaturesSection = $("#ctlBodyPane_ctl12_mSection");
-  if (extraFeaturesSection.length) {
-    const extraFeaturesTable = extraFeaturesSection.find("#ctlBodyPane_ctl12_ctl01_grdSales_grdFlat tbody");
-    extraFeaturesTable.find("tr").each((_, tr) => {
-      const featureData = {};
-      const cells = $(tr).find("th, td");
-      featureData["Code"] = textTrim(cells.eq(0).text());
-      featureData["Description"] = textTrim(cells.eq(1).text());
-      featureData["Length x Width"] = textTrim(cells.eq(2).text());
-      featureData["Area"] = textTrim(cells.eq(3).text());
-      featureData["Year Built"] = textTrim(cells.eq(4).text());
-      featureData["Value"] = textTrim(cells.eq(5).text());
-      if (Object.keys(featureData).length > 0) {
-        // Add extra features as separate "building" components if needed,
-        // or merge into the main building data if it makes sense.
-        // For now, we'll just add them as separate entries to demonstrate extraction.
-        // A more sophisticated approach would merge these into a single structure.
-        buildings.push(featureData);
-      }
-    });
-  }
+    const raw = {};
+    if (left.length) Object.assign(raw, extractBuildingAttributes($, left));
+    if (right.length) Object.assign(raw, extractBuildingAttributes($, right));
+    if (Object.keys(raw).length === 0) return;
+
+    const building = {
+      structure_index: buildings.length + 1,
+      building_index: buildings.length + 1,
+      raw,
+    };
+
+    const exteriorRaw = raw["exterior walls"] || null;
+    const interiorRaw = raw["interior walls"] || null;
+    const floorRaw = raw["floor cover"] || null;
+    const roofRaw = raw["roof cover"] || null;
+    building.exterior_wall_material_primary = normalizeExteriorWall(
+      exteriorRaw,
+    );
+    building.interior_wall_surface_material_primary = normalizeInteriorWall(
+      interiorRaw,
+    );
+    building.flooring_material_primary = normalizeFloorCover(floorRaw);
+    building.roof_covering_material = normalizeRoofCover(roofRaw);
+    building.primary_framing_material = normalizePrimaryFraming(raw["frame type"]);
+    building.number_of_stories = asNumber(raw["stories"]) || null;
+    building.finished_base_area =
+      asNumber(raw["heated area"]) || asNumber(raw["total area"]);
+    building.actual_year_built = asNumber(raw["actual year built"]);
+    building.effective_year_built = asNumber(raw["effective year built"]);
+
+    buildings.push(building);
+  });
 
   return buildings;
 }
 
-
-function mapExteriorMaterials(tokens) {
-  const out = [];
-  tokens.forEach((tok) => {
-    const t = tok.toUpperCase().trim();
-    if (!t) return;
-    if (t.includes("BRK") || t.includes("BRICK")) out.push("Brick");
-    if (t.includes("CEDAR") || t.includes("WOOD")) out.push("Wood Siding");
-    if (t.includes("STUC")) out.push("Stucco");
-    if (t.includes("VINYL")) out.push("Vinyl Siding");
-    if (t.includes("BLOCK") || t.includes("CONCRETE")) out.push("Concrete Block");
+function parseExtraFeatures($) {
+  const features = [];
+  const table = $("#ctlBodyPane_ctl12_ctl01_grdSales_grdFlat tbody");
+  table.find("tr").each((_, tr) => {
+    const cells = $(tr).find("th, td");
+    if (!cells.length) return;
+    const description = textTrim(cells.eq(1).text()) || null;
+    if (!description) return;
+    const feature = {
+      code: textTrim(cells.eq(0).text()) || null,
+      description,
+      area_sq_ft: asNumber(cells.eq(3).text()),
+      year_built: asNumber(cells.eq(4).text()),
+      value: asNumber(cells.eq(5).text()),
+    };
+    features.push(feature);
   });
-  return out;
+  return features;
 }
 
-function mapInteriorSurface(tokens) {
-  const out = [];
-  tokens.forEach((tok) => {
-    const t = tok.toUpperCase().trim();
-    if (t.includes("BRK") || t.includes("BRICK")) out.push("Brick");
-    if (t.includes("CEDAR") || t.includes("WOOD")) out.push("Wood Frame");
-    if (t.includes("STEEL")) out.push("Steel Frame");
-    if (t.includes("BLOCK") || t.includes("CONCRETE")) out.push("Concrete Block");
-  });
-  return out;
+function featureLooksLikeStructure(description) {
+  const text = (description || "").toUpperCase();
+  return [
+    "SHED",
+    "BARN",
+    "CARPORT",
+    "GARAGE",
+    "WORKSHOP",
+    "CABIN",
+    "GAZEBO",
+    "BUNK",
+  ].some((keyword) => text.includes(keyword));
 }
 
-function mapFlooring(tokens) {
-  const out = [];
-  tokens.forEach((tok) => {
-    const t = tok.toUpperCase().trim();
-    if (t.includes("CARPET")) out.push("Carpet");
-    if (t.includes("VINYL")) out.push("Sheet Vinyl");
-    if (t.includes("CERAMIC")) out.push("Ceramic Tile");
-    if (t.includes("LVP")) out.push("Luxury Vinyl Plank");
-    if (t.includes("LAMINATE")) out.push("Laminate");
-    if (t.includes("STONE")) out.push("Natural Stone Tile");
-  });
-  return out;
-}
+function buildStructureData($) {
+  const structures = [];
+  const buildings = parseBuildings($);
+  const extraFeatures = parseExtraFeatures($);
 
-function parseNumber(val) {
-  if (val == null) return null;
-  const n = Number(String(val).replace(/[,]/g, "").trim());
-  return Number.isFinite(n) ? n : null;
-}
-
-function buildStructureRecord($, buildings) {
-  // Defaults per schema requirements (all present, many null)
-  const rec = {
-    architectural_style_type: null,
-    attachment_type: null,
-    ceiling_condition: null,
-    ceiling_height_average: null,
-    ceiling_insulation_type: null,
-    ceiling_structure_material: null,
-    ceiling_surface_material: null,
-    exterior_door_installation_date: null,
-    exterior_door_material: null,
-    exterior_wall_condition: null,
-    exterior_wall_condition_primary: null,
-    exterior_wall_condition_secondary: null,
-    exterior_wall_insulation_type: null,
-    exterior_wall_insulation_type_primary: null,
-    exterior_wall_insulation_type_secondary: null,
-    exterior_wall_material_primary: null,
-    exterior_wall_material_secondary: null,
-    finished_base_area: null,
-    finished_basement_area: null,
-    finished_upper_story_area: null,
-    flooring_condition: null,
-    flooring_material_primary: null,
-    flooring_material_secondary: null,
-    foundation_condition: null,
-    foundation_material: null,
-    foundation_repair_date: null,
-    foundation_type: null,
-    foundation_waterproofing: null,
-    gutters_condition: null,
-    gutters_material: null,
-    interior_door_material: null,
-    interior_wall_condition: null,
-    interior_wall_finish_primary: null,
-    interior_wall_finish_secondary: null,
-    interior_wall_structure_material: null,
-    interior_wall_structure_material_primary: null,
-    interior_wall_structure_material_secondary: null,
-    interior_wall_surface_material_primary: null,
-    interior_wall_surface_material_secondary: null,
-    number_of_stories: null,
-    primary_framing_material: null,
-    roof_age_years: null,
-    roof_condition: null,
-    roof_covering_material: null,
-    roof_date: null,
-    roof_design_type: null,
-    roof_material_type: null,
-    roof_structure_material: null,
-    roof_underlayment_type: null,
-    secondary_framing_material: null,
-    siding_installation_date: null,
-    structural_damage_indicators: null,
-    subfloor_material: null,
-    unfinished_base_area: null,
-    unfinished_basement_area: null,
-    unfinished_upper_story_area: null,
-    window_frame_material: null,
-    window_glazing_type: null,
-    window_installation_date: null,
-    window_operation_type: null,
-    window_screen_material: null,
-  };
-
-  // Aggregate from buildings (which now includes valuation and extra features)
-  const extTokens = [];
-  const intWallTokens = [];
-  const floorTokens = [];
-  const roofTokens = [];
-  const frameTokens = [];
-  const stories = [];
-  let totalFinishedBaseArea = 0;
-
-  buildings.forEach((b) => {
-    // For the provided HTML, we don't have direct "Exterior Walls", "Interior Walls", "Floor Cover", "Roof Cover", "Frame Type", "Stories" fields.
-    // We need to infer or leave null based on available data.
-
-    // Example: If "Valuation" section has "Building Value", we can use it.
-    // If "Extra Features" has "Year Built", we can use it.
-    if (b["Building Value"]) {
-      // This is a value, not a material or type.
-      // We can potentially use it to infer existence of a building.
-    }
-
-    if (b["Year Built"]) {
-      // This could be the year built for an extra feature, not necessarily the main building.
-      // For a single structure, we might assume it's the main building's year.
-      // For now, we don't have a direct mapping for roof_date or siding_installation_date from this.
-    }
-
-    if (b["Description"]) {
-      const desc = b["Description"].toUpperCase();
-      if (desc.includes("SEPTIC")) {
-        // This is an extra feature, not part of the main structure's materials.
-      }
-      if (desc.includes("WELL")) {
-        // Another extra feature.
-      }
-      if (desc.includes("GEN PRP BLDG")) {
-        // General purpose building, could imply a shed or outbuilding.
-        // We don't have enough detail to map materials from this.
-      }
-    }
-
-    if (b["Just (Market) Value"]) {
-      // This is a monetary value, not a physical attribute.
-    }
-
-    if (b["Finished Area"]) { // Assuming a field like this might exist in other HTML versions
-      totalFinishedBaseArea += parseNumber(b["Finished Area"]) || 0;
-    }
+  buildings.forEach((building, idx) => {
+    structures.push({
+      source: "building",
+      structure_index: idx + 1,
+      building_index: idx + 1,
+      exterior_wall_material_primary: building.exterior_wall_material_primary,
+      interior_wall_surface_material_primary:
+        building.interior_wall_surface_material_primary,
+      flooring_material_primary: building.flooring_material_primary,
+      roof_covering_material: building.roof_covering_material,
+      primary_framing_material: building.primary_framing_material,
+      number_of_stories: building.number_of_stories,
+      finished_base_area: building.finished_base_area,
+      actual_year_built: building.actual_year_built,
+      effective_year_built: building.effective_year_built,
+    });
   });
 
-  // Since the provided HTML doesn't have direct fields for many of these,
-  // most of the `rec` fields will remain null.
-  // If you have other HTML examples with more detailed building information,
-  // the `collectBuildings` function and this `buildStructureRecord` function
-  // would need to be updated to parse those specific fields.
+  extraFeatures.forEach((feature) => {
+    if (!featureLooksLikeStructure(feature.description)) return;
+    structures.push({
+      source: "extra_feature",
+      structure_index: structures.length + 1,
+      building_index: null,
+      description: feature.description,
+      finished_base_area: feature.area_sq_ft || null,
+      actual_year_built: feature.year_built || null,
+      value: feature.value || null,
+    });
+  });
 
-  // Example of how to set a field if data was available:
-  // rec.finished_base_area = totalFinishedBaseArea > 0 ? totalFinishedBaseArea : null;
-
-  return rec;
+  return { structures };
 }
 
 function main() {
@@ -259,14 +276,13 @@ function main() {
   if (!parcelId) {
     throw new Error("Parcel ID not found");
   }
-  const buildings = collectBuildings($); // This will now collect data from "Valuation" and "Extra Features"
-  const structureRecord = buildStructureRecord($, buildings);
 
+  const data = buildStructureData($);
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "structure_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = structureRecord;
+  outObj[`property_${parcelId}`] = data;
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }

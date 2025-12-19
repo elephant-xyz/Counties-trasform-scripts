@@ -10,6 +10,104 @@ function safeText($, sel) {
   return t ? t.trim() : "";
 }
 
+function normalize(value) {
+  return value ? value.trim() : "";
+}
+
+function extractTwoDigitCode(value) {
+  if (!value) return null;
+  const match = String(value).match(/\b(\d{1,2})\b/);
+  if (!match) return null;
+  return match[1].padStart(2, "0");
+}
+
+const AC_CODE_MAP = {
+  "00": null,
+  "01": "WindowAirConditioner",
+  "02": "CentralAir",
+  "03": "CentralAir",
+  "04": "CentralAir",
+};
+
+const HEATING_FUEL_CODE_MAP = {
+  "00": null,
+  "01": "Oil",
+  "02": "NaturalGas",
+  "03": "Electric",
+  "04": "Solar",
+};
+
+const HEAT_TYPE_CODE_MAP = {
+  "00": null,
+  "01": "Radiant",
+  "02": "Central",
+  "03": "Central",
+  "04": "Radiant",
+  "05": "Radiant",
+  "06": "Radiant",
+  "07": "Radiant",
+};
+
+const HVAC_CODE_MAP = {
+  "00": { heat: null, cool: null },
+  "01": { heat: "Central", cool: "CentralAir" },
+  "02": { heat: "Central", cool: "CentralAir" },
+};
+
+function mapCoolingSystem(value) {
+  const raw = normalize(value);
+  if (!raw) return null;
+  const code = extractTwoDigitCode(raw);
+  if (code && code in AC_CODE_MAP) return AC_CODE_MAP[code];
+  const upper = raw.toUpperCase();
+  if (upper.includes("WINDOW")) return "WindowAirConditioner";
+  if (upper.includes("CENTRAL")) return "CentralAir";
+  if (upper.includes("PACKAGED") || upper.includes("ROOF")) return "CentralAir";
+  if (upper.includes("CHILLED")) return "CentralAir";
+  if (upper.includes("NONE") || upper.includes("N/A")) return null;
+  if (upper.includes("DUCTLESS")) return "Ductless";
+  return null;
+}
+
+function mapHeatingFuel(value) {
+  const raw = normalize(value);
+  if (!raw) return null;
+  const code = extractTwoDigitCode(raw);
+  if (code && code in HEATING_FUEL_CODE_MAP) return HEATING_FUEL_CODE_MAP[code];
+  const upper = raw.toUpperCase();
+  if (upper.includes("OIL")) return "Oil";
+  if (upper.includes("GAS")) return "NaturalGas";
+  if (upper.includes("ELECTRIC")) return "Electric";
+  if (upper.includes("SOLAR")) return "Solar";
+  if (upper.includes("NONE") || upper.includes("N/A")) return null;
+  return null;
+}
+
+function mapHeatingSystem(value, fuelType) {
+  const raw = normalize(value);
+  const code = extractTwoDigitCode(raw);
+  if (code && code in HEAT_TYPE_CODE_MAP) return HEAT_TYPE_CODE_MAP[code];
+  if (!raw && fuelType) {
+    if (fuelType === "Electric") return "Electric";
+    if (fuelType === "NaturalGas") return "Gas";
+    if (fuelType === "Oil") return null;
+  }
+  if (!raw) return null;
+  const upper = raw.toUpperCase();
+  if (upper.includes("HEAT PUMP")) return "HeatPump";
+  if (upper.includes("FORCED") || upper.includes("DUCT")) return "Central";
+  if (upper.includes("CENTRAL")) return "Central";
+  if (upper.includes("BASEBOARD")) return "Baseboard";
+  if (upper.includes("RADIANT")) return "Radiant";
+  if (upper.includes("DUCTLESS")) return "Ductless";
+  if (upper.includes("ELECTRIC")) return "Electric";
+  if (upper.includes("GAS")) return "Gas";
+  if (fuelType === "Electric") return "Electric";
+  if (fuelType === "NaturalGas") return "Gas";
+  if (fuelType === "Solar") return "Solar";
+  return null;
+}
+
 (function main() {
   const inputPath = path.join(process.cwd(), "input.html");
   const html = fs.readFileSync(inputPath, "utf-8");
@@ -21,24 +119,24 @@ function safeText($, sel) {
   const acText = safeText($, "#lblBuildingAC");
   const fuelText = safeText($, "#lblBuildingFuel");
 
-  // Map heating
-  let heating_system_type = null;
-  if (/forced\s*air/i.test(heatText) || /ducted/i.test(heatText)) {
-    heating_system_type = "Central";
-  }
-  if (/electric/i.test(fuelText) && !heating_system_type) {
-    heating_system_type = "Electric";
-  }
+  const heating_fuel_type = mapHeatingFuel(fuelText);
+  const heating_system_type = mapHeatingSystem(heatText, heating_fuel_type);
+  let cooling_system_type = mapCoolingSystem(acText);
+  let effective_heating_system_type = heating_system_type;
 
-  // Map cooling
-  let cooling_system_type = null;
-  if (/central/i.test(acText)) {
-    cooling_system_type = "CentralAir";
+  const hvacCode =
+    extractTwoDigitCode(acText) || extractTwoDigitCode(heatText) || null;
+  if (hvacCode && hvacCode in HVAC_CODE_MAP) {
+    const hvac = HVAC_CODE_MAP[hvacCode];
+    if (!cooling_system_type && hvac.cool) cooling_system_type = hvac.cool;
+    if (!effective_heating_system_type && hvac.heat)
+      effective_heating_system_type = hvac.heat;
   }
 
   const utility = {
-    cooling_system_type: cooling_system_type,
-    heating_system_type: heating_system_type,
+    cooling_system_type,
+    heating_system_type: effective_heating_system_type,
+    heating_fuel_type,
     public_utility_type: null,
     sewer_type: null,
     water_source_type: null,
@@ -56,6 +154,7 @@ function safeText($, sel) {
     hvac_unit_condition: null,
     solar_inverter_visible: false,
     hvac_unit_issues: null,
+    request_identifier: parcelId,
   };
 
   const out = {};
