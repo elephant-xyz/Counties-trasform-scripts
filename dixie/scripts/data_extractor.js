@@ -1524,30 +1524,21 @@ function writePersonCompaniesSalesRelationships($, parcelId, salesRecords) {
   });
 
   const mailingAddress = extractMailingAddress($);
+  const mailingPath = path.join("data", "mailing_address_1.json");
   if (mailingAddress) {
-    const mailingPath = path.join("data", "mailing_address_1.json");
-    writeJSON(mailingPath, {
-      unnormalized_address: mailingAddress,
-      latitude: null,
-      longitude: null,
-      source_http_request: buildSourceHttpRequest(parcelId),
-      request_identifier: parcelId,
-    });
-
     const ownersForMailing = Array.isArray(ownersByDate.current) && ownersByDate.current.length
       ? ownersByDate.current
       : (latestSaleIso && Array.isArray(ownersByDate[latestSaleIso]) ? ownersByDate[latestSaleIso] : []);
 
-    const processedPerson = new Set();
-    const processedCompany = new Set();
+    const personIndices = [];
+    const companyIndices = [];
 
     ownersForMailing
       .filter((o) => o.type === "person")
       .forEach((o) => {
         const idx = findPersonIndexByName(personIndexMap, o.first_name, o.last_name);
-        if (idx && !processedPerson.has(idx)) {
-          processedPerson.add(idx);
-          writeHasRelationship(`./person_${idx}.json`, "./mailing_address_1.json");
+        if (idx) {
+          personIndices.push(idx);
         }
       });
 
@@ -1555,16 +1546,35 @@ function writePersonCompaniesSalesRelationships($, parcelId, salesRecords) {
       .filter((o) => o.type === "company")
       .forEach((o) => {
         const idx = findCompanyIndexByName(companyIndexMap, o.name);
-        if (idx && !processedCompany.has(idx)) {
-          processedCompany.add(idx);
-          writeHasRelationship(`./company_${idx}.json`, "./mailing_address_1.json");
+        if (idx) {
+          companyIndices.push(idx);
         }
       });
-  } else {
-    const mailingPath = path.join("data", "mailing_address_1.json");
-    if (fs.existsSync(mailingPath)) {
+
+    const uniquePersonIndices = [...new Set(personIndices)];
+    const uniqueCompanyIndices = [...new Set(companyIndices)];
+
+    if (uniquePersonIndices.length || uniqueCompanyIndices.length) {
+      writeJSON(mailingPath, {
+        unnormalized_address: mailingAddress,
+        latitude: null,
+        longitude: null,
+        source_http_request: buildSourceHttpRequest(parcelId),
+        request_identifier: parcelId,
+      });
+
+      uniquePersonIndices.forEach((idx) => {
+        writeHasRelationship(`./person_${idx}.json`, "./mailing_address_1.json");
+      });
+
+      uniqueCompanyIndices.forEach((idx) => {
+        writeHasRelationship(`./company_${idx}.json`, "./mailing_address_1.json");
+      });
+    } else if (fs.existsSync(mailingPath)) {
       fs.unlinkSync(mailingPath);
     }
+  } else if (fs.existsSync(mailingPath)) {
+    fs.unlinkSync(mailingPath);
   }
 }
 
