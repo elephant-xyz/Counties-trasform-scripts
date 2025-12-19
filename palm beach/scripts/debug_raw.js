@@ -35977,6 +35977,66 @@ async function main() {
     }
   }
 
+  // Rebuild the terminal address payload to guarantee the oneOf-required fields
+  // are present and trimmed. Prefer the raw branch when the source supplied an
+  // unnormalized string; otherwise emit the normalized surface without the raw
+  // field so the schema only matches a single branch.
+  if (fs.existsSync(addressOutputPath)) {
+    const snapshot = readJSONIfExists(addressOutputPath) || {};
+    const preferRawBranch = hasMeaningfulAddressValue(
+      snapshot.unnormalized_address,
+    );
+    const rebuilt = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") return;
+      if (field === "source_http_request") {
+        rebuilt[field] =
+          prepareSourceHttpRequest(snapshot.source_http_request) || null;
+        return;
+      }
+      let value = snapshot[field];
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        rebuilt[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      rebuilt[field] = value === undefined ? null : value;
+    });
+
+    if (preferRawBranch) {
+      rebuilt.unnormalized_address = safeNullIfEmpty(
+        snapshot.unnormalized_address,
+      );
+    } else {
+      delete rebuilt.unnormalized_address;
+    }
+
+    if (!rebuilt.postal_code) {
+      rebuilt.plus_four_postal_code = null;
+    }
+    if ((rebuilt.latitude == null) !== (rebuilt.longitude == null)) {
+      rebuilt.latitude = null;
+      rebuilt.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rebuilt.state_code) &&
+      !hasMeaningfulAddressValue(rebuilt.country_code)
+    ) {
+      rebuilt.country_code = "US";
+    }
+
+    writeJSON(addressOutputPath, applyNullAddressRelationships(rebuilt));
+  }
+
+  // Final cleanup: ensure local address relationships are removed/null so the
+  // platform can populate URIs downstream.
+  purgeAddressRelationshipArtifacts(dataDir);
+  purgeAddressRelationshipArtifacts(relationshipsDir);
+  removeAddressRelationshipFiles(dataDir);
+  removeAddressRelationshipFiles(relationshipsDir);
+  nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
+  enforcePropertyRelationshipNulls(propertyFilePath);
   enforceAddressRelationshipNulls(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
   [
