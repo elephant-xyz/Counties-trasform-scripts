@@ -1895,6 +1895,7 @@ function writeLayout(
 ) {
   clearExistingLayoutFiles();
   if (!parcelId) return;
+  if (propertyType === "LandParcel") return;
   const layoutsData = readJSON(path.join("owners", "layout_data.json"));
   if (!layoutsData) return;
   const key = `property_${parcelId}`;
