@@ -2293,7 +2293,7 @@ function extractMailingAddress(ownershipHtml) {
     .trim();
 }
 
-const PERSON_NAME_PATTERN = /^[A-Z][a-z]*(?:[ \-',.][A-Za-z][a-z]*)*$/;
+const PERSON_NAME_PATTERN = /^[A-Z][a-zA-Z\s\-',.]*$/;
 
 function validateNotNull(value, fieldName) {
   if (value === null || value === undefined || value === "") {
@@ -2311,9 +2311,17 @@ function validateStringNotNull(value, fieldName) {
 }
 
 function validatePersonName(value, fieldName) {
-  const str = validateStringNotNull(value, fieldName);
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const str = String(value).trim();
+  if (!str) {
+    return null;
+  }
+  // Validate against the strict pattern
   if (!PERSON_NAME_PATTERN.test(str)) {
-    console.log(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
+    console.log(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}, got: "${str}"`);
+    return null;
   }
   return str;
 }
@@ -2321,11 +2329,82 @@ function validatePersonName(value, fieldName) {
 
 
 function formatName(name) {
-  if (!name || name.trim() === "") return null;
-  const normalizedSpacing = name.trim().toLowerCase().replace(/\s+/g, " ");
-  const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
-  const sanitized = capitalized.replace(/\. (?=[A-Za-z])/g, " ");
-  return sanitized;
+  if (!name || typeof name !== 'string') return null;
+
+  // Trim and remove any non-letter, non-allowed-special-char characters
+  let cleaned = name.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
+  if (!cleaned || cleaned.length === 0) return null;
+
+  // Convert to lowercase first
+  cleaned = cleaned.toLowerCase();
+
+  // Normalize whitespace (collapse multiple spaces/tabs into one space)
+  cleaned = cleaned.replace(/\s+/g, " ");
+
+  // Remove periods followed by whitespace (e.g., "Jr. Smith" -> "Jr Smith")
+  cleaned = cleaned.replace(/\.\s+/g, " ");
+
+  // Remove all remaining periods (e.g., "Jr." -> "Jr", "J.A." -> "JA")
+  cleaned = cleaned.replace(/\./g, "");
+
+  // Replace multiple consecutive special characters (not spaces) with a single space
+  cleaned = cleaned.replace(/[\-',]{2,}/g, " ");
+
+  // Remove leading/trailing special characters
+  cleaned = cleaned.replace(/^[\s\-',.]+|[\s\-',.]+$/g, "");
+
+  if (!cleaned || cleaned.length === 0) return null;
+
+  // Split into tokens, keeping track of positions
+  const result = [];
+  let i = 0;
+
+  while (i < cleaned.length) {
+    const char = cleaned[i];
+
+    // If it's a letter, start collecting a word
+    if (/[a-z]/.test(char)) {
+      let word = char;
+      i++;
+
+      // Collect rest of word (lowercase letters only)
+      while (i < cleaned.length && /[a-z]/.test(cleaned[i])) {
+        word += cleaned[i];
+        i++;
+      }
+
+      // Capitalize first letter of word
+      word = word.charAt(0).toUpperCase() + word.slice(1);
+      result.push(word);
+    }
+    // If it's a special character (space, hyphen, apostrophe, comma)
+    else if (/[ \-',]/.test(char)) {
+      result.push(char);
+      i++;
+    }
+    else {
+      // Skip any other characters
+      i++;
+    }
+  }
+
+  const finalResult = result.join('');
+
+  // Final cleanup: remove trailing special characters and trim
+  let trimmed = finalResult.replace(/[\s\-',.]+$/, '').trim();
+
+  if (!trimmed || trimmed.length === 0) return null;
+
+  // Validate against the strict Elephant schema pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!pattern.test(trimmed)) {
+    // Log the invalid name for debugging
+    console.log(`formatName: Invalid name after formatting: "${trimmed}"`);
+    return null;
+  }
+
+  return trimmed;
 }
 
 // Validate prefix/suffix against schema
@@ -2341,8 +2420,12 @@ function validateSuffix(suffix) {
 
 function parsePerson(name) {
   if (!name) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
-  
-  let tokens = name.trim().split(/\s+/).filter(Boolean);
+
+  // Check if name is all uppercase to determine parsing strategy
+  const originalName = name.trim();
+  const isAllUppercase = originalName === originalName.toUpperCase() && /[A-Z]/.test(originalName);
+
+  let tokens = originalName.split(/\s+/).filter(Boolean);
   if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
 
   // Extract prefix
@@ -2370,46 +2453,108 @@ function parsePerson(name) {
 
   if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix, suffix };
 
-  const firstName = tokens[0];
-  const lastName = tokens[tokens.length - 1];
-  const middleName = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
+  // For all-uppercase names, assume format is: LASTNAME FIRSTNAME [MIDDLE]
+  // For mixed-case names, assume format is: FIRSTNAME [MIDDLE] LASTNAME
+  // Special case: If second token is a single letter, it's likely FIRSTNAME MIDDLE, not LASTNAME FIRSTNAME
+  let firstName, lastName, middleName;
+
+  if (isAllUppercase) {
+    // All-caps format: LASTNAME FIRSTNAME [MIDDLE]
+    lastName = tokens[0];
+    firstName = tokens[1] || null;
+    middleName = tokens.length > 2 ? tokens.slice(2).join(" ") : null;
+  } else {
+    // Mixed-case format: FIRSTNAME [MIDDLE] LASTNAME
+    firstName = tokens[0];
+    lastName = tokens[tokens.length - 1];
+    middleName = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
+  }
 
   return { firstName, lastName, middleName, prefix, suffix };
 }
 
 function extractOwnerInfo(ownershipHtml) {
   if (!ownershipHtml) return [];
-  
-  // Remove content within <p></p> tags (addresses)
-  const htmlWithoutAddresses = ownershipHtml.replace(/<p>.*?<\/p>/gs, '');
-  
-  // Split by <br> tags to get individual owner lines
-  const ownerLines = htmlWithoutAddresses.split(/<br\s*\/?>/i)
+
+  // Split by <br> tags first to get all lines
+  const allLines = ownershipHtml.split(/<br\s*\/?>/i)
+    .map(line => {
+      // Remove <p> and </p> tags but keep content
+      return line.replace(/<\/?p[^>]*>/gi, '');
+    })
     .map(line => line.replace(/<[^>]*>/g, '').trim())
     .filter(line => line.length > 0);
-  
+
+  // The owner name is typically the first 1-2 lines before the address
+  // Address lines usually contain patterns like "PO BOX", street numbers, zip codes, etc.
+  const ownerLines = [];
+  for (const line of allLines) {
+    // Stop when we hit address-like content
+    // Check for: PO BOX, zip codes, street numbers (e.g., "3860 KINDERLOU FOREST")
+    if (/\b(PO\s+BOX|\d{5}(-\d{4})?$|\d+\s+[A-Z])/i.test(line)) {
+      break;
+    }
+    // Skip lines that are ownership type descriptions, not owner names
+    if (/^(AS\s+)?(JOINT\s+TENANTS?|TENANTS?\s+(IN\s+)?COMMON|W\s*\/?\s*R\s*\/?\s*O\s*\/?\s*S|WITH\s+RIGHT|RIGHTS?\s+OF\s+SURVIVORSHIP|COMMUNITY\s+PROPERTY|LIFE\s+ESTATE|TRUST(EE)?$)/i.test(line)) {
+      continue;
+    }
+    ownerLines.push(line);
+  }
+
   const owners = [];
-  const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP)\b/i;
-  
-  for (const line of ownerLines) {
-    let cleanName = line.trim();
-    if (cleanName && cleanName.length > 2) {
-      // Decode HTML entities like &amp; to &
-      cleanName = cleanName.replace(/&amp;/g, '&');
-      
-      // Split by & to handle multiple owners on same line
-      const namesParts = cleanName.split(/\s*&\s*/);
-      
-      for (const namePart of namesParts) {
-        const trimmedName = namePart.trim();
-        if (trimmedName && trimmedName.length > 2) {
-          const ownerType = companyIndicators.test(trimmedName) ? 'Company' : 'Person';
+  // Enhanced company indicators to catch government entities, departments, and acronyms
+  // Fixed to limit acronym pattern to 2-5 letters only (e.g., FBI, DEP) to avoid matching normal all-caps names
+  const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP|DEPT|DEP|DEPARTMENT|GOV|GOVERNMENT|COUNTY|CITY|STATE|FEDERAL|DISTRICT|DIVISION|AUTHORITY|COMMISSION|BOARD|AGENCY|SERVICES|PROPERTIES|INVESTMENTS|GROUP|HOLDINGS|ENTERPRISES)\b|^[A-Z]{2,5}\/|\/[A-Z]{2,5}\b/i;
+
+  // Track last name from first owner for shared surnames
+  let sharedLastName = null;
+
+  // Process each line as a potential separate owner
+  for (let i = 0; i < ownerLines.length; i++) {
+    let line = ownerLines[i].trim();
+    if (!line || line.length < 2) continue;
+
+    // Remove "ETAL" suffix if present (means "and others")
+    line = line.replace(/\s+ETAL?\s*$/i, '').trim();
+    if (!line) continue;
+
+    // Decode HTML entities like &amp; to &
+    line = line.replace(/&amp;/g, '&');
+
+    // Split by & to handle multiple owners on same line
+    const namesParts = line.split(/\s*&\s*/);
+
+    for (let j = 0; j < namesParts.length; j++) {
+      const trimmedName = namesParts[j].trim();
+      if (trimmedName && trimmedName.length > 2) {
+        const ownerType = companyIndicators.test(trimmedName) ? 'Company' : 'Person';
+
+        // Check if this is a short name (FIRSTNAME MIDDLE) that might share a surname
+        const tokens = trimmedName.split(/\s+/);
+        const isShortName = tokens.length === 2 && tokens[1].length === 1 && trimmedName === trimmedName.toUpperCase();
+
+        if (isShortName && sharedLastName && owners.length > 0) {
+          // This is likely FIRSTNAME MIDDLE sharing the previous owner's last name
+          // Reconstruct full name as "LASTNAME FIRSTNAME MIDDLE"
+          const fullName = `${sharedLastName} ${trimmedName}`;
+          owners.push({ name: fullName, type: 'Person' });
+        } else {
           owners.push({ name: trimmedName, type: ownerType });
+
+          // If this is a person, extract the last name for potential sharing
+          if (ownerType === 'Person') {
+            const parsed = parsePerson(trimmedName);
+            if (parsed && parsed.lastName) {
+              sharedLastName = parsed.lastName;
+            }
+          } else {
+            sharedLastName = null; // Reset for companies
+          }
         }
       }
     }
   }
-  
+
   return owners;
 }
 
@@ -2978,7 +3123,16 @@ function main() {
       if (middleName != null) {
         middleName = validatePersonName(middleName, 'middle_name');
       }
-      
+
+      // Only create person if we have valid required fields (first_name and last_name)
+      // Ensure they are non-empty strings
+      if (!firstName || !lastName ||
+          typeof firstName !== 'string' || typeof lastName !== 'string' ||
+          firstName.trim().length === 0 || lastName.trim().length === 0) {
+        console.log(`Skipping person with invalid name: firstName="${firstName}", lastName="${lastName}"`);
+        return;
+      }
+
       const person = {
         source_http_request: {
           method: "GET",
@@ -2986,9 +3140,9 @@ function main() {
         },
         request_identifier: parcelIdentifier || seed.parcel_id || "",
         birth_date: null,
-        first_name: firstName,
-        last_name: lastName,
-        middle_name: middleName,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        middle_name: middleName && typeof middleName === 'string' && middleName.trim().length > 0 ? middleName.trim() : null,
         prefix_name: parsed.prefix ? validatePrefix(parsed.prefix) : null,
         suffix_name: parsed.suffix ? validateSuffix(parsed.suffix) : null,
         us_citizenship_status: null,
@@ -3000,27 +3154,27 @@ function main() {
       initialPersonFiles.push(personFileName);
       }
   });
-  
-  const mailingAddress = {
-    source_http_request: {
-      method: "GET",
-      url: seed.source_http_request.url
-    },
-    request_identifier: parcelIdentifier || seed.parcel_id || "",
-    // county_name: null,
-    unnormalized_address: mailingAddr,
-    longitude: null,
-    latitude: null
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
-  
+
   // Track if relationships were created for initial owners
   let initialRelationshipsCreated = false;
-  
-  // Create relationships between owners and mailing address
+
+  // Create mailing address and relationships only when there are owners
   if (personCounter > 0 || companyCounter > 0) {
     initialRelationshipsCreated = true;
-    
+
+    const mailingAddress = {
+      source_http_request: {
+        method: "GET",
+        url: seed.source_http_request.url
+      },
+      request_identifier: parcelIdentifier || seed.parcel_id || "",
+      // county_name: null,
+      unnormalized_address: mailingAddr,
+      longitude: null,
+      latitude: null
+    };
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
+
     for (let i = 1; i <= personCounter; i++) {
       const rel = {
         from: { "/": `./person_${i}.json` },
@@ -3031,7 +3185,7 @@ function main() {
         rel,
       );
     }
-    
+
     for (let i = 1; i <= companyCounter; i++) {
       const rel = {
         from: { "/": `./company_${i}.json` },
@@ -3178,6 +3332,13 @@ function main() {
     const bookPage = instCell.find("a").text().trim();
     const dateStr = tds.eq(1).text().trim();
     const priceStr = tds.eq(6).text().trim();
+
+    // Skip rows where both instAbbr and bookPage are empty (placeholder rows)
+    // Also skip if the date is empty, which indicates an invalid/placeholder row
+    if ((!instAbbr && !bookPage) || !dateStr) {
+      return;
+    }
+
     const deedType = deedTypeMap[instAbbr] || "Miscellaneous";
 
     const purchase_price_amount = parseCurrencyToNumber(priceStr);
@@ -3210,14 +3371,22 @@ function main() {
     writeJSON(path.join("data", deedFileName), deedObj);
 
     // Construct the file name, ensuring it's never empty
-    let fileName = ((instAbbr ? instAbbr.trim() + " " : "") + (bookPage || "")).trim();
-    if (!fileName) {
+    const instAbbrPart = instAbbr && instAbbr.trim() ? instAbbr.trim() : "";
+    const bookPagePart = bookPage && bookPage.trim() ? bookPage.trim() : "";
+    let fileName = (instAbbrPart + (instAbbrPart && bookPagePart ? " " : "") + bookPagePart).trim();
+    // Check for empty string or whitespace-only string - must have at least 1 character
+    if (!fileName || fileName.length === 0) {
+      fileName = "Deed Document";
+    }
+
+    // Final safety check to ensure fileName is never empty
+    if (typeof fileName !== 'string' || fileName.length < 1) {
       fileName = "Deed Document";
     }
 
     const fileObj = {
       file_format: null,
-      name: fileName,
+      name: (fileName && fileName.trim().length > 0) ? fileName : "Deed Document",
       original_url: deedUrl,
       ipfs_url: null,
       document_type: mapDocumentType(deedType),
@@ -3267,6 +3436,16 @@ function main() {
         if (middleName != null) {
           middleName = validatePersonName(middleName, 'middle_name');
         }
+
+        // Only create person if we have valid required fields (first_name and last_name)
+        // Ensure they are non-empty strings
+        if (!firstName || !lastName ||
+            typeof firstName !== 'string' || typeof lastName !== 'string' ||
+            firstName.trim().length === 0 || lastName.trim().length === 0) {
+          console.log(`Skipping person with invalid name: firstName="${firstName}", lastName="${lastName}"`);
+          return null;
+        }
+
         const personObj = {
           source_http_request: {
             method: "GET",
@@ -3274,9 +3453,9 @@ function main() {
           },
           request_identifier: parcelIdentifier || seed.parcel_id || "",
           birth_date: null,
-          first_name: firstName,
-          last_name: lastName,
-          middle_name: middleName,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          middle_name: middleName && typeof middleName === 'string' && middleName.trim().length > 0 ? middleName.trim() : null,
           prefix_name: owner.prefix_name ? validatePrefix(owner.prefix_name) : null,
           suffix_name: owner.suffix_name ? validateSuffix(owner.suffix_name) : null,
           us_citizenship_status: null,
@@ -3316,6 +3495,11 @@ function main() {
       ownersForDate.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
+          // Skip creating relationship if person is invalid (ensurePerson returned null)
+          if (!personFile) {
+            console.log(`Skipping relationship for invalid person in sale ${sref.index}`);
+            return;
+          }
           const rel = {
             from: { "/": `./${sref.salesFileName}` },
             to: { "/": `./${personFile}` },
@@ -3380,29 +3564,50 @@ function main() {
     // Create person-mailing address relationships for current owners only if not already created
     if (!initialRelationshipsCreated) {
       const currentOwners = ownersByDate["current"] || [];
-      currentOwners.forEach((owner, j) => {
-        if (owner.type === "person") {
-          const personFile = ensurePerson(owner);
-          const rel = {
-            from: { "/": `./${personFile}` },
-            to: { "/": `./mailing_address.json` },
-          };
-          writeJSON(
-            path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
-            rel,
-          );
-        } else if (owner.type === "company") {
-          const companyFile = ensureCompany(owner);
-          const rel = {
-            from: { "/": `./${companyFile}` },
-            to: { "/": `./mailing_address.json` },
-          };
-          writeJSON(
-            path.join("data", `relationship_company_${j + 1}_has_mailing_address.json`),
-            rel,
-          );
-        }
-      });
+      if (currentOwners.length > 0) {
+        // Create mailing address file if it wasn't created earlier
+        const mailingAddress = {
+          source_http_request: {
+            method: "GET",
+            url: seed.source_http_request.url
+          },
+          request_identifier: parcelIdentifier || seed.parcel_id || "",
+          // county_name: null,
+          unnormalized_address: mailingAddr,
+          longitude: null,
+          latitude: null
+        };
+        writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
+
+        currentOwners.forEach((owner, j) => {
+          if (owner.type === "person") {
+            const personFile = ensurePerson(owner);
+            // Skip creating relationship if person is invalid (ensurePerson returned null)
+            if (!personFile) {
+              console.log(`Skipping mailing address relationship for invalid person`);
+              return;
+            }
+            const rel = {
+              from: { "/": `./${personFile}` },
+              to: { "/": `./mailing_address.json` },
+            };
+            writeJSON(
+              path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
+              rel,
+            );
+          } else if (owner.type === "company") {
+            const companyFile = ensureCompany(owner);
+            const rel = {
+              from: { "/": `./${companyFile}` },
+              to: { "/": `./mailing_address.json` },
+            };
+            writeJSON(
+              path.join("data", `relationship_company_${j + 1}_has_mailing_address.json`),
+              rel,
+            );
+          }
+        });
+      }
     }
   }
 
