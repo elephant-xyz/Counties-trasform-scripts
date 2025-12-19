@@ -2017,9 +2017,10 @@ function sanitizeAddressPayloadForWrite(payload) {
     return applyNullAddressRelationships(normalizedOut);
   }
 
-  return applyNullAddressRelationships(
-    stripAddressRequestMetadata(normalizedCandidate),
-  );
+  // If we don't have a raw string or a complete normalized surface, skip
+  // emitting the address entirely to avoid failing oneOf validation with
+  // partial data.
+  return null;
 }
 
 function writeJSON(p, obj) {
@@ -2031,6 +2032,10 @@ function writeJSON(p, obj) {
     typeof obj === "object"
   ) {
     payload = sanitizeAddressPayloadForWrite(obj);
+    if (payload === null) {
+      removeFileIfExists(p);
+      return;
+    }
     const shouldApplyCoverage =
       !(
         payload &&
