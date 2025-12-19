@@ -513,12 +513,18 @@ function parseCurrencyToNumber(text) {
   if (cleaned === "") return null;
   const num = parseFloat(cleaned);
   if (isNaN(num)) return null;
-  return Math.round(num * 100) / 100;
+  // Currency must be positive (>= 0)
+  if (num < 0) return null;
+  // Round to exactly 2 decimal places to avoid floating point precision issues
+  return parseFloat(num.toFixed(2));
 }
 
 const COMPANY_HINTS = [
   " LLC",
   " L.L.C",
+  " L.C.",
+  " L.C",
+  " LC",
   " INC",
   " CORPORATION",
   " CORP",
@@ -1667,7 +1673,8 @@ function main() {
       null,
   };
   const mailingAddressFile = "mailing_address.json";
-  writeJson(path.join("data", mailingAddressFile), mailingAddressOut);
+  // Conditionally write mailing_address.json only if it will be referenced by relationships
+  // (moved to after relationship filtering to avoid unused file)
 
   const geometryOut = {
     latitude: latitude ?? null,
@@ -1890,9 +1897,10 @@ function main() {
     const idx = persons.length + 1;
     const first = titleCaseName(p.first_name);
     const last = titleCaseName(p.last_name);
-    const middle = p.middle_name ? titleCaseName(p.middle_name) : null;
+    let middle = p.middle_name ? cleanMiddleName(p.middle_name) : null;
     // Ensure first and last names are valid after title casing
     if (!first || !last) return null;
+    // Middle name is already validated by cleanMiddleName (returns null if invalid)
     const personObj = {
       birth_date: null,
       first_name: first,
@@ -2009,7 +2017,6 @@ function main() {
         file_format: null,
         ipfs_url: null,
         name: name,
-        original_url: row.link,
       };
       filesOut.push({ file: `file_${fileIndex}.json`, data: fileObj });
       relDeedFile.push({
@@ -2228,6 +2235,11 @@ function main() {
       const fileName = path.basename(fromPath);
       return companyFilesWithSalesRelation.has(fileName);
     });
+
+  // Only write mailing_address.json if it will be referenced by at least one relationship
+  if (mailingPersonRelationshipsFiltered.length > 0 || mailingCompanyRelationshipsFiltered.length > 0) {
+    writeJson(path.join("data", mailingAddressFile), mailingAddressOut);
+  }
 
   personsToWrite.forEach((p) => writeJson(path.join("data", p.file), p.data));
   companiesToWrite.forEach((c) => writeJson(path.join("data", c.file), c.data));

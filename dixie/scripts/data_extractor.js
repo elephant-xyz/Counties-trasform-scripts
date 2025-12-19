@@ -1344,7 +1344,7 @@ function writeSalesHistoryArtifacts($, parcelId) {
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
     const deed = {
-      deed_type: mapDeedType(s.deedType),
+      deed_type: String(mapDeedType(s.deedType)),
       request_identifier: deedRequestId,
       source_http_request: buildSourceHttpRequest(parcelId),
     };
@@ -1610,6 +1610,15 @@ function sanitizeObject(obj) {
     }
   });
   return obj;
+}
+
+function applyTemplateDefaults(target, template) {
+  Object.keys(template).forEach((key) => {
+    if (!(key in target) || target[key] === undefined) {
+      target[key] = template[key];
+    }
+  });
+  return target;
 }
 
 function mergeDefined(base, overlay) {
@@ -2030,6 +2039,57 @@ function createStructureTemplate(parcelId, requestIdentifier) {
   };
 }
 
+function createUtilityTemplate(parcelId, requestIdentifier) {
+  return {
+    request_identifier: requestIdentifier ?? parcelId ?? null,
+    source_http_request: buildSourceHttpRequest(parcelId),
+    cooling_system_type: null,
+    electrical_panel_capacity: null,
+    electrical_panel_installation_date: null,
+    electrical_rewire_date: null,
+    electrical_wiring_type: null,
+    electrical_wiring_type_other_description: null,
+    heating_fuel_type: null,
+    heating_system_type: null,
+    hvac_capacity_kw: null,
+    hvac_capacity_tons: null,
+    hvac_condensing_unit_present: null,
+    hvac_equipment_component: null,
+    hvac_equipment_manufacturer: null,
+    hvac_equipment_model: null,
+    hvac_installation_date: null,
+    hvac_seer_rating: null,
+    hvac_system_configuration: null,
+    hvac_unit_condition: null,
+    hvac_unit_issues: null,
+    plumbing_fixture_count: null,
+    plumbing_fixture_quality: null,
+    plumbing_fixture_type_primary: null,
+    plumbing_system_installation_date: null,
+    plumbing_system_type: null,
+    plumbing_system_type_other_description: null,
+    public_utility_type: null,
+    sewer_connection_date: null,
+    sewer_type: null,
+    smart_home_features: null,
+    smart_home_features_other_description: null,
+    solar_installation_date: null,
+    solar_inverter_installation_date: null,
+    solar_inverter_manufacturer: null,
+    solar_inverter_model: null,
+    solar_inverter_visible: false,
+    solar_panel_present: false,
+    solar_panel_type: null,
+    solar_panel_type_other_description: null,
+    water_connection_date: null,
+    water_heater_installation_date: null,
+    water_heater_manufacturer: null,
+    water_heater_model: null,
+    water_source_type: null,
+    well_installation_date: null,
+  };
+}
+
 function writeUtilities(parcelId, buildings) {
   try {
     fs.readdirSync("data").forEach((f) => {
@@ -2048,6 +2108,12 @@ function writeUtilities(parcelId, buildings) {
     else if (record && typeof record === "object") entries = [record];
   }
   const buildingCount = buildings ? buildings.length : 0;
+
+  // If there are no buildings and no actual utility data, don't create utility files
+  if (buildingCount === 0 && entries.length === 0) {
+    return [];
+  }
+
   if (entries.length === 1 && buildingCount > 1) {
     const template = entries[0];
     entries = Array.from({ length: buildingCount }, () => ({ ...template }));
@@ -2056,11 +2122,28 @@ function writeUtilities(parcelId, buildings) {
     buildUtilityFromBuilding(building, parcelId, idx),
   );
   const sourceEntries = entries.length ? entries : derivedUtilities;
+
+  // If no buildings and only one entry with no real data, skip creating utility
+  if (buildingCount === 0 && sourceEntries.length > 0) {
+    const hasRealData = sourceEntries.some((entry) => {
+      return Object.keys(entry).some((key) => {
+        if (key === 'source_http_request' || key === 'request_identifier') return false;
+        const val = entry[key];
+        return val !== null && val !== undefined && val !== false && val !== '';
+      });
+    });
+    if (!hasRealData) {
+      return [];
+    }
+  }
+
   const mergedEntries = sourceEntries.map((raw, idx) => {
     const derived = derivedUtilities[idx] || {};
     const utility = mergeDefined(derived, raw);
     utility.request_identifier =
       utility.request_identifier || formatBuildingRequestIdentifier(parcelId, "utility", idx);
+    const template = createUtilityTemplate(parcelId, utility.request_identifier);
+    applyTemplateDefaults(utility, template);
     utility.source_http_request = buildSourceHttpRequest(parcelId);
     sanitizeObject(utility);
     const fileName = `utility_${idx + 1}.json`;
@@ -2074,6 +2157,8 @@ function writeUtilities(parcelId, buildings) {
       finalUtility.request_identifier =
         finalUtility.request_identifier ||
         formatBuildingRequestIdentifier(parcelId, "utility", index);
+      const template = createUtilityTemplate(parcelId, finalUtility.request_identifier);
+      applyTemplateDefaults(finalUtility, template);
       finalUtility.source_http_request = buildSourceHttpRequest(parcelId);
       sanitizeObject(finalUtility);
       const fileName = `utility_${index + 1}.json`;
@@ -2158,6 +2243,8 @@ function writeStructures(parcelId, buildings) {
     const structure = mergeDefined(derived, raw);
     structure.request_identifier =
       structure.request_identifier || formatBuildingRequestIdentifier(parcelId, "structure", idx);
+    const template = createStructureTemplate(parcelId, structure.request_identifier);
+    applyTemplateDefaults(structure, template);
     structure.source_http_request = buildSourceHttpRequest(parcelId);
     sanitizeObject(structure);
     const fileName = `structure_${idx + 1}.json`;
@@ -2171,6 +2258,8 @@ function writeStructures(parcelId, buildings) {
       finalStructure.request_identifier =
         finalStructure.request_identifier ||
         formatBuildingRequestIdentifier(parcelId, "structure", index);
+      const template = createStructureTemplate(parcelId, finalStructure.request_identifier);
+      applyTemplateDefaults(finalStructure, template);
       finalStructure.source_http_request = buildSourceHttpRequest(parcelId);
       sanitizeObject(finalStructure);
       const fileName = `structure_${index + 1}.json`;
@@ -2183,6 +2272,7 @@ function writeStructures(parcelId, buildings) {
 
 function buildUtilityFromBuilding(building, parcelId, idx) {
   const requestIdentifier = formatBuildingRequestIdentifier(parcelId, "utility", idx);
+  const utility = createUtilityTemplate(parcelId, requestIdentifier);
   const coolingCandidate = pickBuildingValue(building, [
     "Cooling Type",
     "Cooling",
@@ -2220,30 +2310,18 @@ function buildUtilityFromBuilding(building, parcelId, idx) {
   ]);
   const solarPanelPresent = parseYesNo(solarHotWater);
 
-  const utility = {
-    request_identifier: requestIdentifier,
-    source_http_request: buildSourceHttpRequest(parcelId),
-    cooling_system_type: coolingSystemType,
-    heating_system_type: heatingSystemType,
-    heating_fuel_type: heatingFuelType,
-    public_utility_type: null,
-    sewer_type: mapSewerType(sewerValue),
-    water_source_type: mapWaterSource(waterValue),
-    plumbing_system_type: mapPlumbingSystem(plumbingValue),
-    plumbing_system_type_other_description: null,
-    electrical_panel_capacity: null,
-    electrical_wiring_type: mapElectricalWiring(electricalValue),
-    hvac_condensing_unit_present: hvacCondensingUnitPresent,
-    electrical_wiring_type_other_description: null,
-    solar_panel_present: solarPanelPresent,
-    solar_panel_type: null,
-    solar_panel_type_other_description: null,
-    smart_home_features: null,
-    smart_home_features_other_description: null,
-    hvac_unit_condition: null,
-    solar_inverter_visible: solarPanelPresent === true,
-    hvac_unit_issues: null,
-  };
+  utility.cooling_system_type = coolingSystemType;
+  utility.heating_system_type = heatingSystemType;
+  utility.heating_fuel_type = heatingFuelType;
+  utility.sewer_type = mapSewerType(sewerValue);
+  utility.water_source_type = mapWaterSource(waterValue);
+  utility.plumbing_system_type = mapPlumbingSystem(plumbingValue);
+  utility.electrical_wiring_type = mapElectricalWiring(electricalValue);
+  utility.hvac_condensing_unit_present = hvacCondensingUnitPresent;
+  const solarPanelValue = solarPanelPresent ?? false;
+  utility.solar_panel_present = solarPanelValue;
+  utility.solar_inverter_visible = solarPanelValue === true;
+
   sanitizeObject(utility);
   return utility;
 }
