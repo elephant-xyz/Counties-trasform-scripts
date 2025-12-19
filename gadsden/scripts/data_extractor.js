@@ -3613,8 +3613,8 @@ const structureItems = (() => {
   if (work) {
     const tax = {
       tax_year: work.year,
-      property_assessed_value_amount: work.assessed || null,
-      property_market_value_amount: work.justMarket || null,
+      property_assessed_value_amount: work.assessed || 0.0,
+      property_market_value_amount: work.justMarket || 0.0,
       property_building_amount: work.improvement || null,
       property_land_amount: work.land || null,
       property_taxable_value_amount: work.taxable || 0.0,
@@ -3632,8 +3632,8 @@ const structureItems = (() => {
   certs.forEach((rec) => {
     const tax = {
       tax_year: rec.year,
-      property_assessed_value_amount: rec.assessed || null,
-      property_market_value_amount: rec.justMarket || null,
+      property_assessed_value_amount: rec.assessed || 0.0,
+      property_market_value_amount: rec.justMarket || 0.0,
       property_building_amount: rec.improvement || null,
       property_land_amount: rec.land || null,
       property_taxable_value_amount: rec.taxable || 0.0,
