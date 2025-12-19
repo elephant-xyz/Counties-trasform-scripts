@@ -36541,6 +36541,66 @@ async function main() {
       ) {
         delete finalOut.unnormalized_address;
       }
+      const finalRawPreference = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          finalRawCandidate,
+          canonicalUnnormalized,
+          finalOut && finalOut.unnormalized_address,
+          ...(Array.isArray(finalUnnormalizedCandidates)
+            ? finalUnnormalizedCandidates
+            : []),
+          unAddr && unAddr.full_address,
+          unAddr && unAddr.unnormalized_address,
+        ]),
+      );
+      if (finalRawPreference) {
+        const normalizedSurface =
+          ensureNormalizedAddressSchemaSurface &&
+          ensureNormalizedAddressSchemaSurface({ ...(finalOut || {}) });
+        const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+        RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+          if (field === "unnormalized_address") {
+            rawOut[field] = finalRawPreference;
+            return;
+          }
+          let value =
+            finalOut && Object.prototype.hasOwnProperty.call(finalOut, field)
+              ? finalOut[field]
+              : normalizedSurface
+                ? normalizedSurface[field]
+                : null;
+          if (field === "county_name" && !value) {
+            value = formattedCountyName || countyName || null;
+          } else if (field === "state_code" && !value) {
+            value = inferredStateCode || "FL";
+          }
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            const numeric = parseCoordinate(value);
+            rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+            return;
+          }
+          if (typeof value === "string") {
+            const trimmed = value.trim();
+            rawOut[field] = trimmed.length ? trimmed : null;
+            return;
+          }
+          rawOut[field] = value === undefined ? null : value;
+        });
+        if (!rawOut.postal_code) {
+          rawOut.plus_four_postal_code = null;
+        }
+        if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+          rawOut.latitude = null;
+          rawOut.longitude = null;
+        }
+        if (
+          hasMeaningfulAddressValue(rawOut.state_code) &&
+          !hasMeaningfulAddressValue(rawOut.country_code)
+        ) {
+          rawOut.country_code = "US";
+        }
+        finalOut = rawOut;
+      }
     }
 
     if (finalOut) {
