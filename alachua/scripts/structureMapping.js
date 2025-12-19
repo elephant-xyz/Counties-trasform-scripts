@@ -133,11 +133,71 @@ function mapInteriorMaterial(token) {
 }
 
 function mapRoofCover(token) {
-  if (!token) return null;
-  const upper = token.toUpperCase();
-  if (upper.includes("ASPHALT")) return "Architectural Asphalt Shingle";
-  if (upper.includes("TAR") && upper.includes("GRAVEL")) return "Built-Up";
-  if (upper.includes("MINIMUM") || upper.includes("N/A")) return null;
+  if (!token || String(token).trim() === "") return null;
+  const upper = String(token).toUpperCase().trim();
+
+  // Check for asphalt shingles
+  if (upper.includes("ASPHALT") || upper.includes("SHINGLE")) {
+    if (upper.includes("3-TAB") || upper.includes("3 TAB")) {
+      return "3-Tab Asphalt Shingle";
+    }
+    return "Architectural Asphalt Shingle";
+  }
+
+  // Check for built-up roof (tar and gravel)
+  if (upper.includes("TAR") && upper.includes("GRAVEL")) return "Built-Up Roof";
+  if (upper.includes("BUILT") && upper.includes("UP")) return "Built-Up Roof";
+
+  // Check for metal roofing
+  if (upper.includes("METAL")) {
+    if (upper.includes("STANDING") && upper.includes("SEAM")) {
+      return "Metal Standing Seam";
+    }
+    if (upper.includes("CORRUGAT")) {
+      return "Metal Corrugated";
+    }
+    if (upper.includes("MODULAR")) {
+      return "Metal Corrugated";
+    }
+    // Default metal type
+    return "Metal Corrugated";
+  }
+
+  // Check for tile roofing
+  if (upper.includes("CLAY") && upper.includes("TILE")) return "Clay Tile";
+  if (upper.includes("CONCRETE") && upper.includes("TILE")) return "Concrete Tile";
+  if (upper.includes("TILE")) {
+    // Default tile type
+    return "Concrete Tile";
+  }
+
+  // Check for slate
+  if (upper.includes("SLATE")) {
+    if (upper.includes("NATURAL")) return "Natural Slate";
+    if (upper.includes("SYNTHETIC")) return "Synthetic Slate";
+    return "Natural Slate";
+  }
+
+  // Check for wood
+  if (upper.includes("WOOD")) {
+    if (upper.includes("SHAKE")) return "Wood Shake";
+    if (upper.includes("SHINGLE")) return "Wood Shingle";
+    return "Wood Shake";
+  }
+
+  // Check for membrane roofing
+  if (upper.includes("TPO")) return "TPO Membrane";
+  if (upper.includes("EPDM")) return "EPDM Membrane";
+  if (upper.includes("MODIFIED") && upper.includes("BITUMEN")) return "Modified Bitumen";
+  if (upper.includes("MEMBRANE")) return "TPO Membrane";
+
+  // Check for special types
+  if (upper.includes("GREEN") && upper.includes("ROOF")) return "Green Roof System";
+  if (upper.includes("SOLAR")) return "Solar Integrated Tiles";
+
+  // Return null for unknown, minimum, or N/A
+  if (upper.includes("MINIMUM") || upper.includes("N/A") || upper.includes("NONE") || upper.includes("UNKNOWN")) return null;
+
   return null;
 }
 
@@ -162,6 +222,17 @@ function mapFrameMaterial(token) {
   if (upper.includes("PRECAST")) return "Poured Concrete";
   if (upper.includes("STEEL")) return "Steel Frame";
   if (upper.includes("CONCRETE BLOCK") || upper.includes("BLOCK")) return "Concrete Block";
+  return null;
+}
+
+function mapSecondaryFramingMaterial(token) {
+  // Valid values for secondary_framing_material enum: "Steel Beams", "Engineered Lumber", "Concrete Lintels", "Wood Beams", null
+  const upper = token.toUpperCase();
+  if (upper.includes("STEEL")) return "Steel Beams";
+  if (upper.includes("ENGINEERED") || upper.includes("LVL") || upper.includes("GLULAM")) return "Engineered Lumber";
+  if (upper.includes("CONCRETE") && (upper.includes("LINTEL") || upper.includes("BEAM"))) return "Concrete Lintels";
+  if (upper.includes("WOOD") || upper.includes("TIMBER") || upper.includes("BEAM")) return "Wood Beams";
+  if (upper.includes("MASONRY")) return "Concrete Lintels";
   return null;
 }
 
@@ -260,12 +331,15 @@ function buildStructureForBuilding(building, requestIdentifier) {
   const frameVals = dedupe(
     splitTokens(left["frame"]).map(mapFrameMaterial),
   );
+  const frameTokens = splitTokens(left["frame"]);
+  const secondaryFraming = frameTokens[1] ? mapSecondaryFramingMaterial(frameTokens[1]) : null;
+
   const roofCover = mapRoofCover(left["roofing"]);
   let roofMaterialType = null;
   if (roofCover === "Architectural Asphalt Shingle") {
     roofMaterialType = "Shingle";
-  } else if (roofCover === "Built-Up") {
-    roofMaterialType = "Built-Up";
+  } else if (roofCover === "Built-Up Roof") {
+    roofMaterialType = "Composition";
   }
   const roofDesign = mapRoofDesign(left["roof type"]);
 
@@ -283,7 +357,7 @@ function buildStructureForBuilding(building, requestIdentifier) {
     roof_material_type: roofMaterialType,
     roof_design_type: roofDesign,
     primary_framing_material: frameVals[0] || null,
-    secondary_framing_material: frameVals[1] || null,
+    secondary_framing_material: secondaryFraming,
     number_of_stories: stories != null ? stories : null,
     finished_base_area: heatedArea,
     source_http_request: {

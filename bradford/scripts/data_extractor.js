@@ -70,26 +70,44 @@ function formatNameToPattern(name) {
   // Remove trailing periods
   cleaned = cleaned.replace(/\.+$/, '');
 
-  // Handle abbreviations: ensure letters after periods, hyphens, apostrophes are uppercase
-  // Pattern: letter + special char + letter should be: Upper + special + Upper
-  cleaned = cleaned.replace(/([A-Za-z])([.\-',])([A-Za-z])/g, (match, before, sep, after) => {
-    return before.charAt(0).toUpperCase() + sep + after.charAt(0).toUpperCase();
-  });
+  // Remove commas followed by spaces and what follows (usually suffixes like ", Jr." or ", III")
+  // These don't fit the strict pattern which doesn't allow consecutive separators
+  cleaned = cleaned.replace(/,\s+.*$/, '');
+
+  // Remove any characters that are not letters, spaces, or allowed separators
+  cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, '');
+
+  // Remove any remaining commas and periods that aren't part of valid name patterns
+  cleaned = cleaned.replace(/,/g, '');
+
+  // Remove standalone periods (but keep them in abbreviations like "St.John" -> "St.John")
+  cleaned = cleaned.replace(/\.\s+/g, ' ');
+  cleaned = cleaned.replace(/\s+\./g, '');
+
+  if (!cleaned || cleaned.length === 0) return null;
 
   // Split by spaces and format each word part
   const result = cleaned.split(' ').map(part => {
-    // For parts with special characters (abbreviations), handle carefully
-    if (/[.\-',]/.test(part)) {
-      // Split by special characters and capitalize each segment
-      return part.split(/([.\-',])/).map((segment, idx) => {
-        // If it's a separator, keep it
-        if (/[.\-',]/.test(segment)) return segment;
-        // If it's a letter segment, capitalize first letter
-        if (segment.length > 0) {
-          return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+    if (!part || part.length === 0) return '';
+
+    // For parts with special characters (like O'Brien, Mary-Jane, St.John)
+    if (/[\-'.]/.test(part)) {
+      // Split by separators while keeping them
+      const segments = part.split(/([\-'.])/).filter(s => s.length > 0);
+      let formatted = '';
+
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+
+        // If it's a separator, keep it as is
+        if (/[\-'.]/.test(segment)) {
+          formatted += segment;
+        } else if (segment.length > 0) {
+          // Format as: First letter uppercase, rest lowercase
+          formatted += segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
         }
-        return segment;
-      }).join('');
+      }
+      return formatted;
     } else {
       // Normal word: capitalize first letter, lowercase rest
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
@@ -1595,7 +1613,11 @@ function main() {
         message: `Missing property use mapping for label "${propertyUseLabel || "Unknown"}" (code: ${landUseCode || "N/A"}).`,
         path: "property.property_type",
       }));
-      mappedPropertyType = "MAPPING NOT AVAILABLE";
+      mappedPropertyType = "LandParcel";
+      buildStatusValue = null;
+      propertyUsageTypeValue = "Unknown";
+      structureFormValue = null;
+      ownershipEstateTypeValue = null;
     } else {
       mappedPropertyType = propertyUseMapping.property_type;
       buildStatusValue = propertyUseMapping.build_status;
@@ -1610,7 +1632,7 @@ function main() {
           message: `Property use mapping for "${propertyUseCanonicalLabel}" does not include a property_type.`,
           path: "property.property_type",
         }));
-        mappedPropertyType = "MAPPING NOT AVAILABLE";
+        mappedPropertyType = "LandParcel";
       }
     }
     propertyTypeValue = mappedPropertyType;
@@ -1631,7 +1653,7 @@ function main() {
       property_structure_built_year: effYear || null,
       property_effective_built_year: effYear || null,
       property_type: propertyTypeValue,
-      build_status: buildStatusValue ?? null,
+      build_status: buildStatusValue ?? "Improved",
       property_usage_type: propertyUsageTypeValue ?? null,
       structure_form: structureFormValue ?? null,
       ownership_estate_type: ownershipEstateTypeValue ?? null,
@@ -2028,8 +2050,13 @@ function main() {
 
     let fullAddress = null;
     if (typeof unnormalizedAddress?.full_address === "string") {
-      fullAddress = unnormalizedAddress.full_address.trim();
-    } else {
+      const trimmed = unnormalizedAddress.full_address.trim();
+      if (trimmed.length > 0) {
+        fullAddress = trimmed;
+      }
+    }
+
+    if (!fullAddress) {
       const situsHeader = $('td:contains("Situs Address")')
         .filter((i, el) => $(el).text().trim() === "Situs Address")
         .first();
@@ -2043,12 +2070,17 @@ function main() {
       }
     }
 
+    // Ensure unnormalized_address is never null or empty - use parcel_identifier as fallback
+    if (!fullAddress || fullAddress.trim().length === 0) {
+      fullAddress = `Parcel ${hyphenParcel || requestIdentifier || "Unknown"}`;
+    }
+
     writeJson(path.join("data", "address.json"), {
       source_http_request: sourceHttpRequest,
       request_identifier: requestIdentifier,
       county_name: "Bradford",
       country_code: "US",
-      unnormalized_address: fullAddress || null,
+      unnormalized_address: fullAddress,
       section: section || null,
       township: township || null,
       range: range || null,

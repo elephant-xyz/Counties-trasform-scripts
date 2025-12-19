@@ -826,138 +826,24 @@ function titleCaseName(s) {
   s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '').replace(/\s+/g, ' ');
   if (!s) return null;
 
-  // Convert to lowercase for processing
   s = s.toLowerCase();
 
-  // Split by separators while preserving them
-  const parts = [];
-  let currentWord = '';
-  let lastWasSeparator = false;
+  // Apply title casing: uppercase letter after start or after a separator
+  const result = s.replace(
+    /(^|[\s\-',.])([a-z])/g,
+    (m, p1, p2) => p1 + p2.toUpperCase()
+  );
 
-  for (let i = 0; i < s.length; i++) {
-    const char = s[i];
-    if (/[\s\-',.]/.test(char)) {
-      if (currentWord) {
-        parts.push({ type: 'word', value: currentWord });
-        currentWord = '';
-      }
-      if (!lastWasSeparator) {
-        parts.push({ type: 'sep', value: char });
-        lastWasSeparator = true;
-      }
-    } else {
-      currentWord += char;
-      lastWasSeparator = false;
-    }
+  // Remove any consecutive separators (reduce to single space)
+  let cleaned = result;
+  while (/[\s\-',.]{2,}/.test(cleaned)) {
+    cleaned = cleaned.replace(/[\s\-',.]{2,}/g, ' ');
   }
-  if (currentWord) {
-    parts.push({ type: 'word', value: currentWord });
-  }
+  cleaned = cleaned.trim();
 
-  // Build result with proper capitalization
-  let result = '';
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if (part.type === 'word') {
-      // Capitalize first letter, rest lowercase
-      result += part.value.charAt(0).toUpperCase() + part.value.slice(1);
-    } else {
-      result += part.value;
-    }
-  }
-
-  result = result.trim();
-
-  // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  if (!result || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) return null;
-  return result;
-}
-
-function cleanMiddleName(s) {
-  if (s == null) return null;
-  s = String(s).trim();
-  if (!s) return null;
-
-  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
-  s = s.replace(/[^a-zA-Z\s\-',.]/g, '');
-  if (!s) return null;
-
-  // Remove leading/trailing separators and collapse multiple spaces
-  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '').replace(/\s+/g, ' ');
-  if (!s) return null;
-
-  // For middle names, we use title case but preserve the more lenient pattern
-  // Convert to lowercase for processing
-  const lower = s.toLowerCase();
-
-  // Split by separators while preserving them
-  const parts = [];
-  let currentWord = '';
-  let lastWasSeparator = false;
-
-  for (let i = 0; i < lower.length; i++) {
-    const char = lower[i];
-    if (/[\s\-',.]/.test(char)) {
-      if (currentWord) {
-        parts.push({ type: 'word', value: currentWord });
-        currentWord = '';
-      }
-      if (!lastWasSeparator) {
-        parts.push({ type: 'sep', value: char });
-        lastWasSeparator = true;
-      }
-    } else {
-      currentWord += char;
-      lastWasSeparator = false;
-    }
-  }
-  if (currentWord) {
-    parts.push({ type: 'word', value: currentWord });
-  }
-
-  // Build result with proper capitalization
-  let result = '';
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if (part.type === 'word') {
-      // Capitalize first letter, rest lowercase
-      result += part.value.charAt(0).toUpperCase() + part.value.slice(1);
-    } else {
-      result += part.value;
-    }
-  }
-
-  // Final cleanup: trim and ensure no consecutive spaces or trailing separators
-  result = result.trim().replace(/\s+/g, ' ');
-
-  // Remove trailing separators
-  result = result.replace(/[\s\-',.]+$/g, '');
-
-  // Remove leading separators
-  result = result.replace(/^[\s\-',.]+/g, '');
-
-  if (!result) return null;
-
-  // Ensure result matches the middle name pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-  // This pattern is more lenient than first/last name pattern
-  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
-
-  // Additional validation: ensure the string only contains valid characters
-  // and doesn't have any edge cases that might pass regex but fail validation
-  for (let i = 0; i < result.length; i++) {
-    const char = result[i];
-    const code = char.charCodeAt(0);
-    // Check if it's a letter (A-Z, a-z)
-    const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
-    // Check if it's an allowed separator
-    const isSeparator = char === ' ' || char === '-' || char === "'" || char === ',' || char === '.';
-    if (!isLetter && !isSeparator) {
-      // Invalid character found
-      return null;
-    }
-  }
-
-  return result;
+  // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  if (!cleaned || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(cleaned)) return null;
+  return cleaned;
 }
 
 function getValueByStrong($, label) {

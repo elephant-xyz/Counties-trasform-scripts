@@ -62,49 +62,136 @@ function parseDateToISO(mdyy) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function normalizeWhitespace(str) {
+  return (str || "")
+    .replace(/\s+/g, " ")
+    .replace(/[\u00A0\s]+/g, " ")
+    .trim();
+}
+
+function cleanInvalidCharsFromName(raw) {
+  if (!raw) return "";
+  let parsedName = normalizeWhitespace(raw)
+    .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
+    .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .trim();
+  while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(1);
+  }
+  while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(0, parsedName.length - 1);
+  }
+  return parsedName;
+}
+
 function capitalizeProperName(name) {
   if (!name) return "";
 
-  // Trim and handle empty strings
-  const trimmed = name.trim();
-  if (!trimmed) return "";
+  // Clean and normalize whitespace
+  let cleaned = name.trim().replace(/\s+/g, ' ');
 
-  // Split on spaces, hyphens, apostrophes, but preserve the delimiters
-  const parts = trimmed.split(/(\s+|\-|'|,|\.)/);
+  // Remove trailing periods
+  cleaned = cleaned.replace(/\.+$/, '');
 
-  const capitalized = parts.map((part, index) => {
-    // If it's a delimiter, keep it as is
-    if (/^(\s+|\-|'|,|\.)$/.test(part)) return part;
+  // Remove commas followed by spaces and what follows (usually suffixes like ", Jr." or ", III")
+  // These don't fit the strict pattern which doesn't allow consecutive separators
+  cleaned = cleaned.replace(/,\s+.*$/, '');
 
-    // Skip empty parts
-    if (!part) return part;
+  // Remove any characters that are not letters, spaces, or allowed separators
+  cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, '');
 
-    // Capitalize: first letter uppercase, rest lowercase
-    // Handle special cases like O'Brien, McDonald
-    if (part.length === 1) {
-      return part.toUpperCase();
-    }
+  // Remove any remaining commas and periods that aren't part of valid name patterns
+  cleaned = cleaned.replace(/,/g, '');
 
-    // Check if previous part was an apostrophe or hyphen
-    const prevPart = index > 0 ? parts[index - 1] : null;
-    if (prevPart === "'" || prevPart === "-") {
-      // Capitalize after apostrophe or hyphen
+  // Remove standalone periods (but keep them in abbreviations like "St.John" -> "St.John")
+  cleaned = cleaned.replace(/\.\s+/g, ' ');
+  cleaned = cleaned.replace(/\s+\./g, '');
+
+  // Clean up malformed separator-space patterns
+  // Examples: "CARI- HEYWOOD" -> "CARI-HEYWOOD", "O' BRIEN" -> "O'BRIEN"
+  cleaned = cleaned.replace(/-\s+/g, '-').replace(/\s+-/g, '-');
+  cleaned = cleaned.replace(/'\s+/g, "'").replace(/\s+'/g, "'");
+
+  if (!cleaned || cleaned.length === 0) return "";
+
+  // Split by spaces and format each word part
+  const result = cleaned.split(' ').map(part => {
+    if (!part || part.length === 0) return '';
+
+    // For parts with special characters (like O'Brien, Mary-Jane, St.John)
+    if (/[\-'.]/.test(part)) {
+      // Split by separators while keeping them
+      const segments = part.split(/([\-'.])/).filter(s => s.length > 0);
+      let formatted = '';
+
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+
+        // If it's a separator, keep it as is
+        if (/[\-'.]/.test(segment)) {
+          formatted += segment;
+        } else if (segment.length > 0) {
+          // Format as: First letter uppercase, rest lowercase
+          formatted += segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+        }
+      }
+      return formatted;
+    } else {
+      // Normal word: capitalize first letter, lowercase rest
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     }
+  }).filter(p => p.length > 0).join(' ');
 
-    // Handle special prefixes (Mc, Mac, O')
-    if (part.toLowerCase().startsWith("mc") && part.length > 2) {
-      return "Mc" + part.charAt(2).toUpperCase() + part.slice(3).toLowerCase();
+  // Validate result matches the STRICT required pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // - Must start with uppercase letter
+  // - Followed by zero or more lowercase letters
+  // - Then optionally: (separator + one letter (any case) + lowercase letters)*
+  if (!result || result.length === 0 || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
+    return "";
+  }
+
+  return result;
+}
+
+function isValidFirstOrLastName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  return /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(trimmed);
+}
+
+function isValidMiddleName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  return /^[A-Z][a-zA-Z\s\-',.]*$/.test(trimmed);
+}
+
+function resolveUseCode(map, useCodeText) {
+  if (!useCodeText) return null;
+  const match = useCodeText.match(/\d+/);
+  if (!match) return null;
+  let code = parseInt(match[0], 10);
+  if (!Number.isFinite(code)) return null;
+
+  const seen = new Set();
+  while (code >= 0 && !seen.has(code)) {
+    if (Object.prototype.hasOwnProperty.call(map, code)) {
+      return map[code];
     }
-    if (part.toLowerCase().startsWith("mac") && part.length > 3) {
-      return "Mac" + part.charAt(3).toUpperCase() + part.slice(4).toLowerCase();
+    seen.add(code);
+    if (code < 10) {
+      break;
     }
+    code = Math.floor(code / 10);
+  }
 
-    // Standard capitalization
-    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-  });
-
-  return capitalized.join("");
+  return Object.prototype.hasOwnProperty.call(map, code)
+    ? map[code]
+    : null;
 }
 
 function resolveUseCode(map, useCodeText) {
@@ -543,6 +630,23 @@ function main() {
   const dataDir = path.join(".", "data");
   ensureDir(dataDir);
 
+  // Cleanup old company and person files from previous runs
+  try {
+    const existingFiles = fs.readdirSync(dataDir);
+    existingFiles.forEach((f) => {
+      if (
+        /^company_\d+\.json$/i.test(f) ||
+        /^person_\d+\.json$/i.test(f) ||
+        /^relationship_sales_history_\d+_buyer_company_\d+\.json$/i.test(f) ||
+        /^relationship_sales_history_\d+_buyer_person_\d+\.json$/i.test(f)
+      ) {
+        try {
+          fs.unlinkSync(path.join(dataDir, f));
+        } catch (_) {}
+      }
+    });
+  } catch (_) {}
+
   const folio = seed.request_identifier || seed.parcel_id;
 
   // Extract base fields from HTML
@@ -753,7 +857,7 @@ function main() {
       purchase_price_amount: s.amount || 0, // Use 0 if amount is 0
     };
     fs.writeFileSync(
-      path.join(dataDir, `sales_${idx + 1}.json`),
+      path.join(dataDir, `sales_history_${idx + 1}.json`),
       JSON.stringify(saleObj, null, 2),
     );
   });
@@ -766,11 +870,11 @@ function main() {
     if (orig !== -1) {
       const deedIdx = orig + 1;
       const rel = {
-        from: { "/": `./sales_${idx + 1}.json` },
+        from: { "/": `./sales_history_${idx + 1}.json` },
         to: { "/": `./deed_${deedIdx}.json` },
       };
       fs.writeFileSync(
-        path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
+        path.join(dataDir, `relationship_sales_history_${idx + 1}_has_deed.json`),
         JSON.stringify(rel, null, 2),
       );
     }
@@ -785,11 +889,16 @@ function main() {
     Array.isArray(ownerEntry.owners_by_date.current)
   ) {
     const curr = ownerEntry.owners_by_date.current;
-    if (curr.length > 0) {
+    if (curr.length > 0 && validSales.length > 0) {
+      // Only create company/person files if there are valid sales to link them to
       // Cleanup any legacy duplicate relationship files
       const files = fs
         .readdirSync(dataDir)
-        .filter((f) => f.startsWith("relationship_sales_company"));
+        .filter(
+          (f) =>
+            f.startsWith("relationship_sales_history") &&
+            (f.includes("_buyer_company_") || f.includes("_buyer_person_")),
+        );
       for (const f of files) {
         try {
           fs.unlinkSync(path.join(dataDir, f));
@@ -813,18 +922,36 @@ function main() {
           companyFiles.push(filename);
           companyIdx++;
         } else if (owner.type === "person") {
+          const firstName = capitalizeProperName(owner.first_name) || "";
+          const lastName = capitalizeProperName(owner.last_name) || "";
+
+          // Validate names match required pattern before creating person record
+          if (!isValidFirstOrLastName(firstName) || !isValidFirstOrLastName(lastName)) {
+            // Skip creating person record if names don't match pattern
+            return;
+          }
+
+          // Validate and set middle_name - only include if it matches the required pattern
+          let middleName = null;
+          if (owner.middle_name) {
+            const capitalizedMiddle = capitalizeProperName(owner.middle_name);
+            if (capitalizedMiddle && isValidMiddleName(capitalizedMiddle)) {
+              middleName = capitalizedMiddle;
+            }
+          }
+
           const person = {
             birth_date: owner.birth_date || null,
-            first_name: capitalizeProperName(owner.first_name) || "",
-            last_name: capitalizeProperName(owner.last_name) || "",
-            middle_name: owner.middle_name
-              ? capitalizeProperName(owner.middle_name)
-              : null,
+            first_name: firstName,
+            last_name: lastName,
+            middle_name: middleName,
             prefix_name: owner.prefix_name || null,
             suffix_name: owner.suffix_name || null,
             us_citizenship_status: owner.us_citizenship_status || null,
             veteran_status:
               owner.veteran_status != null ? owner.veteran_status : null,
+            source_http_request: sourceHttpRequest,
+            request_identifier: requestIdentifier,
           };
           const filename = `person_${personIdx}.json`;
           fs.writeFileSync(
@@ -836,57 +963,150 @@ function main() {
         }
       });
 
-      // Create relationships for valid sales
-      if (validSales.length > 0) {
-        validSales.forEach((s, si) => {
-          // Link to all person files
-          personFiles.forEach((personFile, pi) => {
-            const rel = {
-              to: { "/": `./${personFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_person_${pi + 1}_${si + 1}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-          });
+      // Track which owner indices are actually used
+      const usedPersonIndices = new Set();
+      const usedCompanyIndices = new Set();
 
-          // Link to all company files
-          companyFiles.forEach((companyFile, ci) => {
-            const rel = {
-              to: { "/": `./${companyFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-          });
+      // Create relationships for valid sales
+      validSales.forEach((s, si) => {
+        // Link to all person files
+        personFiles.forEach((personFile, pi) => {
+          const rel = {
+            from: { "/": `./sales_history_${si + 1}.json` },
+            to: { "/": `./${personFile}` },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_sales_history_${si + 1}_buyer_person_${pi + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+          usedPersonIndices.add(pi + 1);
         });
+
+        // Link to all company files
+        companyFiles.forEach((companyFile, ci) => {
+          const rel = {
+            from: { "/": `./sales_history_${si + 1}.json` },
+            to: { "/": `./${companyFile}` },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_sales_history_${si + 1}_buyer_company_${ci + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+          usedCompanyIndices.add(ci + 1);
+        });
+      });
+
+      // Remove unused owner files - scan actual relationship files to determine which entities are referenced
+      try {
+        const files = fs.readdirSync(dataDir);
+
+        // Build sets of which person/company indices are actually referenced by ANY relationship file
+        const personsReferencedByRelationships = new Set();
+        const companiesReferencedByRelationships = new Set();
+
+        // First pass: scan all relationship files to find what entities they reference
+        for (const f of files) {
+          if (f.startsWith("relationship_") && f.endsWith(".json")) {
+            try {
+              const relContent = JSON.parse(fs.readFileSync(path.join(dataDir, f), "utf8"));
+
+              // Extract person/company references from "from" and "to" fields
+              const fromRef = relContent.from && relContent.from["/"] ? relContent.from["/"] : null;
+              const toRef = relContent.to && relContent.to["/"] ? relContent.to["/"] : null;
+
+              [fromRef, toRef].forEach(ref => {
+                if (ref) {
+                  // Handle both ./person_N.json and person_N.json formats
+                  const personMatch = ref.match(/person_(\d+)\.json/);
+                  const companyMatch = ref.match(/company_(\d+)\.json/);
+
+                  if (personMatch) {
+                    personsReferencedByRelationships.add(parseInt(personMatch[1]));
+                  } else if (companyMatch) {
+                    companiesReferencedByRelationships.add(parseInt(companyMatch[1]));
+                  }
+                }
+              });
+            } catch (parseError) {
+              // Continue with next file even if one fails
+            }
+          }
+        }
+
+        // Second pass: delete person/company files that are NOT referenced by any relationship
+        for (const f of files) {
+          try {
+            const personMatch = f.match(/^person_(\d+)\.json$/);
+            const companyMatch = f.match(/^company_(\d+)\.json$/);
+
+            if (personMatch) {
+              const idx = parseInt(personMatch[1]);
+              if (!personsReferencedByRelationships.has(idx)) {
+                const filePath = path.join(dataDir, f);
+                if (fs.existsSync(filePath)) {
+                  fs.unlinkSync(filePath);
+                }
+              }
+            } else if (companyMatch) {
+              const idx = parseInt(companyMatch[1]);
+              if (!companiesReferencedByRelationships.has(idx)) {
+                const filePath = path.join(dataDir, f);
+                if (fs.existsSync(filePath)) {
+                  fs.unlinkSync(filePath);
+                }
+              }
+            }
+          } catch (fileError) {
+            // Continue with next file even if one fails
+          }
+        }
+      } catch (e) {
+        // If cleanup fails, fall back to the simple logic
+        for (let i = 1; i <= personFiles.length; i++) {
+          if (!usedPersonIndices.has(i)) {
+            try {
+              fs.unlinkSync(path.join(dataDir, `person_${i}.json`));
+            } catch (_) {}
+          }
+        }
+        for (let i = 1; i <= companyFiles.length; i++) {
+          if (!usedCompanyIndices.has(i)) {
+            try {
+              fs.unlinkSync(path.join(dataDir, `company_${i}.json`));
+            } catch (_) {}
+          }
+        }
       }
     }
   }
 
   // Utilities from owners/utilities_data.json
   const utilsEntry = utils[ownerKey];
-  let utilityCreated = false;
   if (utilsEntry) {
     fs.writeFileSync(
-      path.join(dataDir, "utility.json"),
+      path.join(dataDir, "utility_1.json"),
       JSON.stringify(utilsEntry, null, 2),
     );
-    utilityCreated = true;
+
+    // Create relationship between property and utility
+    const relPropertyUtility = {
+      from: { "/": "./property.json" },
+      to: { "/": "./utility.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_utility.json"),
+      JSON.stringify(relPropertyUtility, null, 2),
+    );
   }
 
   // Layouts from owners/layout_data.json
   let layoutIdx = 1;
-  let firstLayoutIndex = null;
   const layoutEntry = layouts[ownerKey];
   if (layoutEntry && Array.isArray(layoutEntry.layouts)) {
     for (const lay of layoutEntry.layouts) {
@@ -906,12 +1126,6 @@ function main() {
           path.join(dataDir, `layout_${layoutIdx}.json`),
           JSON.stringify(lay, null, 2),
         );
-
-        // Track the first layout index
-        if (firstLayoutIndex === null) {
-          firstLayoutIndex = layoutIdx;
-        }
-
         layoutIdx++;
       }
     }
@@ -1077,27 +1291,9 @@ function main() {
         path.join(dataDir, `layout_${layoutIdx}.json`),
         JSON.stringify(layoutObj, null, 2),
       );
-
-      // Track the first layout index
-      if (firstLayoutIndex === null) {
-        firstLayoutIndex = layoutIdx;
-      }
-
       layoutIdx++;
     }
   });
-
-  // Create relationship between utility and first layout (if both exist)
-  if (utilityCreated && firstLayoutIndex !== null) {
-    const relationshipObj = {
-      from: { "/": `./layout_${firstLayoutIndex}.json` },
-      to: { "/": "./utility.json" },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "relationship_layout_has_utility.json"),
-      JSON.stringify(relationshipObj, null, 2),
-    );
-  }
 
   // Structure data from permits and building features
   const structureObj = {
@@ -1205,18 +1401,70 @@ function main() {
 
   // Always write structure.json with all required fields
   fs.writeFileSync(
-    path.join(dataDir, "structure.json"),
+    path.join(dataDir, "structure_1.json"),
     JSON.stringify(structureObj, null, 2),
   );
 
-  // Create relationship from property to structure
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_property_has_structure.json"),
-    JSON.stringify({
-      from: { "/": "./property.json" },
-      to: { "/": "./structure.json" }
-    }, null, 2),
-  );
+  // Create relationship from layout_1 to structure_1 (if layout_1 exists), otherwise from property
+  if (layoutIdx > 1) {
+    // layoutIdx was incremented after creating layout_1, so if it's > 1, layout_1 exists
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_layout_1_has_structure_1.json"),
+      JSON.stringify(
+        {
+          from: { "/": "./layout_1.json" },
+          to: { "/": "./structure_1.json" },
+        },
+        null,
+        2,
+      ),
+    );
+
+    // Also create relationship from layout_1 to utility_1 (if utility exists)
+    const utility1Path = path.join(dataDir, "utility_1.json");
+    if (fs.existsSync(utility1Path)) {
+      fs.writeFileSync(
+        path.join(dataDir, "relationship_layout_1_has_utility_1.json"),
+        JSON.stringify(
+          {
+            from: { "/": "./layout_1.json" },
+            to: { "/": "./utility_1.json" },
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  } else {
+    // No layouts exist, connect structure directly to property
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_structure_1.json"),
+      JSON.stringify(
+        {
+          from: { "/": "./property.json" },
+          to: { "/": "./structure_1.json" },
+        },
+        null,
+        2,
+      ),
+    );
+
+    // Also connect utility directly to property if it exists
+    const utility1Path = path.join(dataDir, "utility_1.json");
+    if (fs.existsSync(utility1Path)) {
+      fs.writeFileSync(
+        path.join(dataDir, "relationship_property_has_utility_1.json"),
+        JSON.stringify(
+          {
+            from: { "/": "./property.json" },
+            to: { "/": "./utility_1.json" },
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  }
 
   // Tax from Summary and History
   // From Summary (preliminary/current)
