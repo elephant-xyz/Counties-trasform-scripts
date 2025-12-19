@@ -33855,6 +33855,146 @@ async function main() {
     defaultCounty: formattedCountyName || countyName || "Palm Beach",
     defaultCountry: "US",
   });
+
+  // Deterministically lock the final address to a single oneOf branch:
+  // - prefer the raw branch when we have any unnormalized address string
+  // - otherwise, only emit a normalized payload when it is fully populated.
+  // This prevents mixed/partial payloads that trigger missing-field or
+  // unexpected-field validation errors.
+  const finalSnapshot = readJSONIfExists(addressOutputPath) || {};
+  const deterministicRawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      finalSnapshot.unnormalized_address,
+      ...rawCandidates,
+    ]),
+  );
+  const deterministicNormalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...finalSnapshot });
+  const deterministicNormalizedComplete =
+    deterministicNormalizedSurface &&
+    hasCompleteNormalizedAddress({ ...deterministicNormalizedSurface });
+
+  let deterministicAddress = null;
+  if (deterministicRawValue) {
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        rawOut[field] = deterministicRawValue;
+        return;
+      }
+      if (field === "request_identifier") {
+        rawOut[field] =
+          resolvedRequestIdentifier ??
+          finalSnapshot.request_identifier ??
+          trimmedRequestIdentifier ??
+          parcelId ??
+          null;
+        return;
+      }
+      if (field === "source_http_request") {
+        rawOut[field] =
+          prepareSourceHttpRequest(
+            resolvedSourceHttp ??
+              finalSnapshot.source_http_request ??
+              sourceHttpCandidate,
+          ) || null;
+        return;
+      }
+      let value = finalSnapshot[field];
+      if (value === undefined && deterministicNormalizedSurface) {
+        value = deterministicNormalizedSurface[field];
+      }
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        rawOut[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      rawOut[field] = value === undefined ? null : value;
+    });
+    if (!rawOut.postal_code) rawOut.plus_four_postal_code = null;
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rawOut.state_code) &&
+      !hasMeaningfulAddressValue(rawOut.country_code)
+    ) {
+      rawOut.country_code = "US";
+    }
+    deterministicAddress = applyNullAddressRelationships(rawOut);
+  } else if (deterministicNormalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = deterministicNormalizedSurface[field];
+      if (field === "request_identifier") {
+        value =
+          resolvedRequestIdentifier ??
+          finalSnapshot.request_identifier ??
+          trimmedRequestIdentifier ??
+          parcelId ??
+          null;
+      } else if (field === "source_http_request") {
+        value =
+          prepareSourceHttpRequest(
+            resolvedSourceHttp ??
+              finalSnapshot.source_http_request ??
+              sourceHttpCandidate,
+          ) || null;
+      } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) normalizedOut.plus_four_postal_code = null;
+    if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")
+    ) {
+      delete normalizedOut.unnormalized_address;
+    }
+    deterministicAddress = applyNullAddressRelationships(normalizedOut);
+  } else {
+    removeFileIfExists(addressOutputPath);
+  }
+
+  if (deterministicAddress) {
+    writeJSON(addressOutputPath, deterministicAddress);
+  }
+
+  // Clean up any locally generated relationship files so downstream systems
+  // can populate UR-based links without validation errors.
+  [
+    path.join(dataDir, "property_has_address.json"),
+    path.join(dataDir, "relationship_property_has_address.json"),
+    path.join(dataDir, "address_has_fact_sheet.json"),
+    path.join(dataDir, "relationship_address_has_fact_sheet.json"),
+    path.join(relationshipsDir, "property_has_address.json"),
+    path.join(relationshipsDir, "relationship_property_has_address.json"),
+    path.join(relationshipsDir, "address_has_fact_sheet.json"),
+    path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
+  ].forEach((p) => removeFileIfExists(p));
   ensureRawAddressFieldPresence(addressOutputPath);
   enforceAddressRelationshipNulls(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
