@@ -696,12 +696,11 @@ function collectBuildings($) {
 }
 
 function toInt(val) {
-  const n = Number(
-    String(val || "")
-      .replace(/[,]/g, "")
-      .trim(),
-  );
-  return Number.isFinite(n) ? n : 0;
+  const normalized = String(val || "").replace(/[,]/g, "").trim();
+  if (!normalized) return 0;
+  const n = Number(normalized);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n);
 }
 
 function formatNameForSchema(name) {
@@ -2347,6 +2346,18 @@ function assignEntitiesToLayouts(buildingLayouts, entities, assignedSet) {
   }
 }
 
+function ensurePropertyRelationships(entities) {
+  if (!entities || !entities.length) return;
+  entities.forEach((entity) => {
+    const relFileName = `relationship_property_has_${path
+      .basename(entity.ref)
+      .replace(/\.json$/i, "")}.json`;
+    const relPath = path.join("data", relFileName);
+    if (fs.existsSync(relPath)) return;
+    writeHasRelationship("./property.json", entity.ref);
+  });
+}
+
 function writeLayouts($, parcelId, propertyType, buildings, utilities, structures) {
   const ensureLayoutDefaults = (layout) => {
     if (!("space_type" in layout) || layout.space_type == null) {
@@ -2401,7 +2412,8 @@ function writeLayouts($, parcelId, propertyType, buildings, utilities, structure
       }
     });
   } catch (e) {}
-  if (propertyType === "LandParcel" || !buildings.length) {
+  const hasBuildings = Array.isArray(buildings) && buildings.length > 0;
+  if (!hasBuildings) {
     return {
       buildingLayouts: [],
       assignedUtilityIndices: new Set(),
@@ -2606,6 +2618,7 @@ function main() {
       writeHasRelationship("./property.json", utility.ref);
     }
   });
+  ensurePropertyRelationships(utilities);
 
   const assignedStructureIndices = layoutInfo.assignedStructureIndices || new Set();
   structures.forEach((structure) => {
@@ -2613,6 +2626,7 @@ function main() {
       writeHasRelationship("./property.json", structure.ref);
     }
   });
+  ensurePropertyRelationships(structures);
 
   // Address last
   const secTwpRng = extractSecTwpRng($);
