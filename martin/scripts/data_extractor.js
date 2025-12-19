@@ -1647,11 +1647,16 @@ function cleanNum(text) {
 
 function parseSquareFeetValue(value) {
   if (value == null) return null;
-  if (typeof value === "number") return value;
-  const cleaned = String(value).replace(/[^0-9.]/g, "");
-  if (cleaned === "") return null;
-  const num = parseFloat(cleaned);
-  return Number.isNaN(num) ? null : num;
+  let numeric = null;
+  if (typeof value === "number") {
+    numeric = value;
+  } else {
+    const cleaned = String(value).replace(/[^0-9.]/g, "");
+    if (cleaned === "") return null;
+    numeric = parseFloat(cleaned);
+  }
+  if (!Number.isFinite(numeric)) return null;
+  return Math.round(numeric);
 }
 
 function main() {
@@ -1830,6 +1835,7 @@ function main() {
 
   const neighborhood = getValueByStrong($, "Neighborhood");
 
+  const livableText = livable != null ? String(livable) : null;
   const propertyOut = {
     parcel_identifier: parcelId,
     property_type: propertyCodeMapping.property_type,
@@ -1839,8 +1845,8 @@ function main() {
     structure_form: propertyCodeMapping.structure_form ?? null,
     property_structure_built_year: yearBuilt || null,
     property_effective_built_year: null,
-    livable_floor_area: livable || null,
-    area_under_air: livable || null,
+    livable_floor_area: livableText,
+    area_under_air: livableText,
     total_area: null,
     number_of_units: numUnits || null,
     number_of_units_type: unitsType,
