@@ -40136,10 +40136,17 @@ async function main() {
       seed && seed.source_http_request,
       unAddr && unAddr.source_http_request,
     );
+    const countyFallback =
+      safeNullIfEmpty(terminalSnapshot.county_name) ||
+      safeNullIfEmpty(formattedCountyName) ||
+      safeNullIfEmpty(countyName) ||
+      "Palm Beach";
+
+    let finalAddressPayload = null;
 
     if (terminalRaw) {
-      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+      RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
         if (field === "unnormalized_address") {
           rawOut[field] = terminalRaw;
           return;
@@ -40163,12 +40170,20 @@ async function main() {
         }
         if (typeof value === "string") {
           const trimmed = value.trim();
-          rawOut[field] = trimmed.length ? trimmed : null;
+          rawOut[field] = trimmed.length
+            ? sanitizeAddressFieldValue(field, trimmed)
+            : null;
           return;
         }
-        rawOut[field] = value === undefined ? null : value;
+        rawOut[field] =
+          value === undefined || value === null
+            ? null
+            : sanitizeAddressFieldValue(field, value);
       });
 
+      if (!hasMeaningfulAddressValue(rawOut.county_name) && countyFallback) {
+        rawOut.county_name = countyFallback;
+      }
       if (!rawOut.postal_code) {
         rawOut.plus_four_postal_code = null;
       }
@@ -40182,11 +40197,7 @@ async function main() {
       ) {
         rawOut.country_code = "US";
       }
-      rawOut.relationships = {
-        property_has_address: null,
-        address_has_fact_sheet: null,
-      };
-      writeJSON(addressOutputPath, rawOut);
+      finalAddressPayload = applyNullAddressRelationships(rawOut);
     } else if (terminalNormalizedReady) {
       const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
       NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
@@ -40227,12 +40238,39 @@ async function main() {
       ) {
         normalizedOut.country_code = "US";
       }
-      delete normalizedOut.unnormalized_address;
-      normalizedOut.relationships = {
-        property_has_address: null,
-        address_has_fact_sheet: null,
-      };
-      writeJSON(addressOutputPath, normalizedOut);
+      if (Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")) {
+        delete normalizedOut.unnormalized_address;
+      }
+      finalAddressPayload = applyNullAddressRelationships(normalizedOut);
+    }
+
+    if (finalAddressPayload) {
+      const allowedFields = new Set(
+        terminalRaw ? RAW_ONE_OF_ALLOWED_FIELDS : NORMALIZED_ADDRESS_FIELDS,
+      );
+      Object.keys(finalAddressPayload).forEach((key) => {
+        if (key === "relationships") return;
+        if (!allowedFields.has(key)) {
+          delete finalAddressPayload[key];
+        }
+      });
+      if (!finalAddressPayload.postal_code) {
+        finalAddressPayload.plus_four_postal_code = null;
+      }
+      if (
+        (finalAddressPayload.latitude == null) !==
+        (finalAddressPayload.longitude == null)
+      ) {
+        finalAddressPayload.latitude = null;
+        finalAddressPayload.longitude = null;
+      }
+      if (
+        hasMeaningfulAddressValue(finalAddressPayload.state_code) &&
+        !hasMeaningfulAddressValue(finalAddressPayload.country_code)
+      ) {
+        finalAddressPayload.country_code = "US";
+      }
+      writeJSON(addressOutputPath, finalAddressPayload);
     } else {
       removeFileIfExists(addressOutputPath);
     }
