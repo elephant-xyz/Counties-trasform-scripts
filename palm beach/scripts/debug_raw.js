@@ -11659,29 +11659,13 @@ const NORMALIZED_ADDRESS_FIELDS = [
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 const NORMALIZED_ADDRESS_FIELD_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 
-// Raw (unnormalized) branch per schema: only the fields explicitly allowed on
-// the raw oneOf surface plus the unnormalized string from the source.
-const RAW_ADDRESS_FIELDS = [
-  "block",
-  "city_name",
-  "country_code",
-  "county_name",
-  "latitude",
-  "longitude",
-  "lot",
-  "municipality_name",
-  "plus_four_postal_code",
-  "postal_code",
-  "range",
-  "request_identifier",
-  "route_number",
-  "section",
-  "source_http_request",
-  "state_code",
-  "township",
-  "unit_identifier",
-  "unnormalized_address",
-];
+// Raw (unnormalized) branch: align to the full address schema surface plus the
+// unnormalized string so every required key is present (nullable) when we pick
+// the raw oneOf option. This prevents validators from complaining about missing
+// normalized fields inside relationship payloads.
+const RAW_ADDRESS_FIELDS = Array.from(
+  new Set([...NORMALIZED_ADDRESS_FIELDS, "unnormalized_address"]),
+);
 const RAW_ADDRESS_FIELD_SET = new Set(RAW_ADDRESS_FIELDS);
 
 // Union of both branches for intermediate parsing.
