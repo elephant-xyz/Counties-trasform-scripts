@@ -21068,13 +21068,12 @@ function buildRawAddressPayloadFromSources(options = {}) {
     return null;
   }
 
+  // Start from the full raw template so every schema field is present (nullable)
+  // and keep the raw string intact for oneOf selection.
   const payload = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedUnnormalized,
   };
-
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    payload[field] = null;
-  }
 
   for (const source of fieldSources) {
     if (!source || typeof source !== "object") continue;
