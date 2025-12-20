@@ -37648,6 +37648,174 @@ async function main() {
     }
   }
 
+  // Deterministic final address selection: prefer the raw branch when any
+  // unnormalized address is available from the source, otherwise emit the
+  // normalized branch only if it is complete. This keeps oneOf compliant and
+  // makes sure every raw-field key exists (nullable) to avoid missing-property
+  // validation errors inside relationships.
+  if (fs.existsSync(addressOutputPath)) {
+    const terminalSnapshot = readJSONIfExists(addressOutputPath) || {};
+    const rawPreference = [
+      terminalSnapshot.unnormalized_address,
+      ...finalUnnormalizedCandidates,
+      ...finalRawCandidates,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ];
+    const terminalRawValue = safeNullIfEmpty(
+      resolveFirstNonEmptyString(rawPreference),
+    );
+    const terminalNormalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...terminalSnapshot });
+    const terminalNormalizedReady =
+      terminalNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...terminalNormalizedSurface });
+
+    const resolveTerminalRequestId = () =>
+      safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          terminalSnapshot.request_identifier,
+          resolvedRequestIdentifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+          unnormalizedSource.request_identifier,
+          unAddr && unAddr.request_identifier,
+        ]),
+      );
+    const resolveTerminalSourceHttp = () =>
+      resolveSourceHttpRequest(
+        terminalSnapshot.source_http_request,
+        terminalNormalizedSurface &&
+          terminalNormalizedSurface.source_http_request,
+        resolvedSourceHttp,
+        sourceHttpCandidate,
+        unnormalizedSource.source_http_request,
+        seedSource.source_http_request,
+      );
+
+    let deterministicAddress = null;
+    if (terminalRawValue) {
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (field === "unnormalized_address") {
+          rawOut[field] = terminalRawValue;
+          return;
+        }
+        if (field === "request_identifier") {
+          rawOut[field] = resolveTerminalRequestId() ?? null;
+          return;
+        }
+        if (field === "source_http_request") {
+          rawOut[field] = prepareSourceHttpRequest(
+            resolveTerminalSourceHttp(),
+          ) || null;
+          return;
+        }
+        let value =
+          terminalSnapshot[field] !== undefined
+            ? terminalSnapshot[field]
+            : terminalNormalizedSurface && terminalNormalizedSurface[field];
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+          return;
+        }
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          rawOut[field] = trimmed.length ? trimmed : null;
+          return;
+        }
+        rawOut[field] = value === undefined ? null : value;
+      });
+      if (!rawOut.county_name) {
+        rawOut.county_name =
+          safeNullIfEmpty(
+            resolveFirstNonEmptyString([
+              terminalSnapshot.county_name,
+              inferredCounty,
+              formattedCountyName,
+              countyName,
+              "Palm Beach",
+            ]),
+          ) || null;
+      }
+      if (!rawOut.state_code) {
+        rawOut.state_code = inferredStateCode || "FL";
+      }
+      if (hasMeaningfulAddressValue(rawOut.state_code)) {
+        rawOut.country_code =
+          safeNullIfEmpty(rawOut.country_code) || "US";
+      }
+      if (!rawOut.postal_code) {
+        rawOut.plus_four_postal_code = null;
+      }
+      if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+        rawOut.latitude = null;
+        rawOut.longitude = null;
+      }
+      deterministicAddress = rawOut;
+    } else if (terminalNormalizedReady) {
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        let value =
+          field === "request_identifier"
+            ? resolveTerminalRequestId()
+            : field === "source_http_request"
+              ? prepareSourceHttpRequest(resolveTerminalSourceHttp()) || null
+              : terminalNormalizedSurface[field];
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          value = Number.isFinite(numeric) ? numeric : null;
+        } else if (typeof value === "string") {
+          const trimmed = value.trim();
+          value = trimmed.length ? trimmed : null;
+        } else if (value === undefined) {
+          value = null;
+        }
+        normalizedOut[field] = value;
+      });
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+        normalizedOut.latitude = null;
+        normalizedOut.longitude = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOut,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOut.unnormalized_address;
+      }
+      deterministicAddress = normalizedOut;
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+
+    if (deterministicAddress) {
+      writeJSON(
+        addressOutputPath,
+        applyNullAddressRelationships(deterministicAddress),
+      );
+    }
+  }
+
   // Clean up any locally generated address relationship stubs so downstream
   // processes can populate URs safely.
   removeAddressRelationshipFiles(dataDir);
