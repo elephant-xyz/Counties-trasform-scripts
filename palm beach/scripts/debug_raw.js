@@ -12088,6 +12088,56 @@ function enforceRawAddressFieldCoverage(addressPath, options = {}) {
   writeJSON(addressPath, completed);
 }
 
+// When an unnormalized address exists and we cannot satisfy a complete
+// normalized surface, force the payload onto the raw branch so the oneOf
+// validator does not expect street components or coordinates to be populated.
+function lockRawAddressWhenUnnormalized(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath) || {};
+  const rawValue = safeNullIfEmpty(snapshot.unnormalized_address);
+  if (!rawValue) return;
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...snapshot });
+  if (normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface })) {
+    return;
+  }
+
+  const requestIdentifier =
+    safeNullIfEmpty(options.requestIdentifier) ??
+    safeNullIfEmpty(snapshot.request_identifier) ??
+    null;
+  const sourceHttp = resolveSourceHttpRequest(
+    snapshot.source_http_request,
+    ...(options.sourceHttpRequestCandidates || []),
+  );
+
+  const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+  RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      rawOut[field] = rawValue;
+      return;
+    }
+    if (field === "request_identifier") {
+      rawOut[field] = requestIdentifier ?? null;
+      return;
+    }
+    if (field === "source_http_request") {
+      rawOut[field] = prepareSourceHttpRequest(sourceHttp) || null;
+      return;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(snapshot[field]);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    rawOut[field] = snapshot[field] === undefined ? null : snapshot[field];
+  });
+
+  writeJSON(addressPath, applyNullAddressRelationships(rawOut));
+}
+
 // Clamp the address output to a single oneOf branch. Prefer the raw branch
 // whenever an unnormalized string exists, and hydrate every schema field with
 // null defaults so required keys are always present.
@@ -39644,6 +39694,17 @@ async function main() {
         seed && seed.request_identifier,
         unAddr && unAddr.request_identifier,
       ],
+      sourceHttpRequestCandidates: [
+        finalSourceHttp,
+        snapshot.source_http_request,
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      ],
+    });
+
+    lockRawAddressWhenUnnormalized(addressOutputPath, {
+      requestIdentifier: finalRequestId,
       sourceHttpRequestCandidates: [
         finalSourceHttp,
         snapshot.source_http_request,
