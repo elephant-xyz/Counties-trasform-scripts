@@ -40334,6 +40334,104 @@ async function main() {
   enforcePropertyRelationshipNulls(propertyFilePath);
   enforceAddressRelationshipNulls(addressOutputPath);
 
+  // Final guard: prefer the raw branch when an unnormalized string exists and
+  // fully hydrate the schema surface (nullable) so oneOf validation never sees
+  // missing required address fields. Fall back to a normalized payload only
+  // when the normalized surface is complete and no raw value is available.
+  const ultimateAddressSnapshot = readJSONIfExists(addressOutputPath) || {};
+  const ultimateRawValue = safeNullIfEmpty(ultimateAddressSnapshot.unnormalized_address);
+  const ultimateNormalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...ultimateAddressSnapshot });
+  const ultimateNormalizedComplete =
+    ultimateNormalizedSurface &&
+    hasCompleteNormalizedAddress({ ...ultimateNormalizedSurface });
+
+  if (ultimateRawValue) {
+    const hydrated = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        hydrated[field] = ultimateRawValue;
+        return;
+      }
+      if (field === "request_identifier") {
+        const resolved = safeNullIfEmpty(ultimateAddressSnapshot.request_identifier);
+        hydrated.request_identifier = resolved === undefined ? null : resolved;
+        return;
+      }
+      if (field === "source_http_request") {
+        hydrated.source_http_request =
+          prepareSourceHttpRequest(ultimateAddressSnapshot.source_http_request) || null;
+        return;
+      }
+      let value = ultimateAddressSnapshot[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        hydrated[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        hydrated[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      hydrated[field] = value === undefined ? null : value;
+    });
+    if (!hydrated.postal_code) {
+      hydrated.plus_four_postal_code = null;
+    }
+    if ((hydrated.latitude == null) !== (hydrated.longitude == null)) {
+      hydrated.latitude = null;
+      hydrated.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(hydrated.state_code) &&
+      !hasMeaningfulAddressValue(hydrated.country_code)
+    ) {
+      hydrated.country_code = "US";
+    }
+    hydrated.relationships = {
+      property_has_address: null,
+      address_has_fact_sheet: null,
+    };
+    writeJSON(addressOutputPath, applyNullAddressRelationships(hydrated));
+  } else if (ultimateNormalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = ultimateNormalizedSurface[field];
+      if (field === "request_identifier") {
+        value = safeNullIfEmpty(value);
+      } else if (field === "source_http_request") {
+        value = prepareSourceHttpRequest(value) || null;
+      } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    writeJSON(addressOutputPath, applyNullAddressRelationships(normalizedOut));
+  } else {
+    removeFileIfExists(addressOutputPath);
+  }
+
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
   console.log("All mapping scripts completed successfully");
