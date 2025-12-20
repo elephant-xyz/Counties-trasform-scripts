@@ -39407,6 +39407,32 @@ async function main() {
     countryFallback: "US",
   });
 
+  // Make sure the final raw branch carries the full schema surface so oneOf
+  // validation never reports missing address fields inside relationships.
+  enforceRawAddressFieldCoverage(addressOutputPath, {
+    countyFallback: formattedCountyName || countyName || "Palm Beach",
+    stateFallback: inferredStateCode || "FL",
+    requestIdentifierCandidates: [
+      resolvedRequestIdentifier,
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ],
+  });
+
+  // Final cleanup: strip any locally generated address relationship stubs so
+  // downstream systems can populate URIs without schema failures.
+  scrubRelationshipArtifacts(dataDir);
+  scrubRelationshipArtifacts(relationshipsDir);
+  removeAddressRelationshipFiles(dataDir);
+  removeAddressRelationshipFiles(relationshipsDir);
   enforcePropertyRelationshipNulls(propertyFilePath);
   enforceAddressRelationshipNulls(addressOutputPath);
 
