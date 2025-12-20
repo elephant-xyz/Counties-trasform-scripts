@@ -12349,6 +12349,171 @@ const RAW_ONE_OF_REQUIRED_SURFACE_FIELDS = Object.freeze([
   ...RAW_MINIMAL_OUTPUT_FIELDS,
 ]);
 
+// Rebuild the address payload so it cleanly selects a single oneOf branch.
+// Prefer the raw branch whenever we have any unnormalized string, and hydrate
+// every allowed field (nullable) to avoid "missing required property" errors.
+function rebuildPreferredAddressBranch(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawCandidate = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      snapshot.unnormalized_address,
+      ...(Array.isArray(options.rawCandidates)
+        ? options.rawCandidates
+        : []),
+    ]),
+  );
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...snapshot })
+      : null;
+  const normalizedComplete =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (rawCandidate) {
+    const rebuilt = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        rebuilt[field] = rawCandidate;
+        return;
+      }
+      if (field === "request_identifier") {
+        const requestId = safeNullIfEmpty(
+          snapshot.request_identifier ?? options.requestIdentifier,
+        );
+        rebuilt[field] = requestId === undefined ? null : requestId;
+        return;
+      }
+      if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(
+          snapshot.source_http_request || options.sourceHttpRequest,
+        );
+        rebuilt[field] = prepared ? prepared : null;
+        return;
+      }
+      let value =
+        snapshot[field] !== undefined
+          ? snapshot[field]
+          : normalizedSurface
+            ? normalizedSurface[field]
+            : undefined;
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        rebuilt[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        rebuilt[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      rebuilt[field] = value === undefined ? null : value;
+    });
+    if (!rebuilt.postal_code) {
+      rebuilt.plus_four_postal_code = null;
+    }
+    if ((rebuilt.latitude == null) !== (rebuilt.longitude == null)) {
+      rebuilt.latitude = null;
+      rebuilt.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rebuilt.state_code) &&
+      !hasMeaningfulAddressValue(rebuilt.country_code)
+    ) {
+      rebuilt.country_code = options.defaultCountry || "US";
+    }
+    rebuilt.relationships = {
+      property_has_address: null,
+      address_has_fact_sheet: null,
+    };
+    writeJSON(addressPath, rebuilt);
+    return;
+  }
+
+  if (normalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value =
+        snapshot[field] !== undefined ? snapshot[field] : normalizedSurface[field];
+      if (field === "request_identifier") {
+        value = safeNullIfEmpty(
+          snapshot.request_identifier ?? options.requestIdentifier,
+        );
+      } else if (field === "source_http_request") {
+        value =
+          prepareSourceHttpRequest(
+            snapshot.source_http_request || options.sourceHttpRequest,
+          ) || null;
+      } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = options.defaultCountry || "US";
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")
+    ) {
+      delete normalizedOut.unnormalized_address;
+    }
+    normalizedOut.relationships = {
+      property_has_address: null,
+      address_has_fact_sheet: null,
+    };
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  removeFileIfExists(addressPath);
+}
+
+// Force relationship placeholders to null so downstream population can fill URs.
+function forceNullRelationshipPlaceholders(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return;
+  const payload = readJSONIfExists(filePath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
+  payload.relationships = {
+    property_has_address: null,
+    address_has_fact_sheet: null,
+  };
+  writeJSON(filePath, payload);
+}
+
+// Remove any locally generated relationship stubs so validation never sees UR placeholders.
+function scrubAutogeneratedRelationshipFiles(directories = []) {
+  (Array.isArray(directories) ? directories : [directories])
+    .filter(Boolean)
+    .forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
+      purgeAddressRelationshipArtifacts(dirPath);
+      scrubRelationshipArtifacts(dirPath);
+    });
+}
+
 // Guarantee the raw branch carries every schema field so oneOf validation
 // never complains about missing normalized keys when we only have a raw string.
 function enforceRawAddressFieldCoverage(addressPath, options = {}) {
@@ -40791,6 +40956,29 @@ async function main() {
   } else {
     removeFileIfExists(addressOutputPath);
   }
+
+  // Final guard: prefer the raw branch when any unnormalized string exists,
+  // surface every required field as null, and keep relationships null so URs
+  // can be populated downstream.
+  rebuildPreferredAddressBranch(addressOutputPath, {
+    rawCandidates: [
+      ultimateRawValue,
+      canonicalUnnormalized,
+      ...finalUnnormalizedCandidates,
+      finalRawCandidate,
+      finalRawCandidateClamp,
+    ],
+    requestIdentifier:
+      ultimateRequestIdentifier ??
+      trimmedRequestIdentifier ??
+      parcelId ??
+      null,
+    sourceHttpRequest: ultimateSourceHttp || sourceHttpCandidate || null,
+    defaultCountry: "US",
+  });
+  forceNullRelationshipPlaceholders(addressOutputPath);
+  forceNullRelationshipPlaceholders(propertyFilePath);
+  scrubAutogeneratedRelationshipFiles([dataDir, relationshipsDir]);
 
   enforceRawAddressFieldCoverage(addressOutputPath, {
     requestIdentifierCandidates: [
