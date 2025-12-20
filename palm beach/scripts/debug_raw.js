@@ -206,24 +206,9 @@ function writeNullRelationshipPlaceholders(directoryPath, baseNames = []) {
 function coerceAddressRelationshipsToNull(filePath) {
   const payload = readJSONIfExists(filePath);
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
-  const relationships =
-    payload.relationships && typeof payload.relationships === "object"
-      ? { ...payload.relationships }
-      : null;
-  if (!relationships) return;
-  let mutated = false;
-  if (relationships.property_has_address !== null) {
-    relationships.property_has_address = null;
-    mutated = true;
-  }
-  if (relationships.address_has_fact_sheet !== null) {
-    relationships.address_has_fact_sheet = null;
-    mutated = true;
-  }
-  if (mutated) {
-    payload.relationships = relationships;
-    writeJSON(filePath, payload);
-  }
+  if (!Object.prototype.hasOwnProperty.call(payload, "relationships")) return;
+  delete payload.relationships;
+  writeJSON(filePath, payload);
 }
 
 function nullifyAddressRelationshipsRecursively(rootDir) {
@@ -250,16 +235,9 @@ function enforcePropertyRelationshipNulls(propertyPath) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return;
   }
-  // Downstream processes populate relationship URIs; ensure we only emit the
-  // null placeholders expected by the schema so validation doesn't see local
-  // stubs or bad URIs.
-  const relationships =
-    payload.relationships && typeof payload.relationships === "object"
-      ? payload.relationships
-      : {};
-  relationships.property_has_address = null;
-  relationships.address_has_fact_sheet = null;
-  payload.relationships = relationships;
+  if (Object.prototype.hasOwnProperty.call(payload, "relationships")) {
+    delete payload.relationships;
+  }
   writeJSON(propertyPath, payload);
 }
 
@@ -268,15 +246,11 @@ function applyNullAddressRelationships(payload) {
     return payload;
   }
   const cleaned = { ...payload };
-  const relationships =
-    cleaned.relationships && typeof cleaned.relationships === "object"
-      ? { ...cleaned.relationships }
-      : {};
-  // Downstream populates relationship URs; keep explicit null placeholders so
-  // validation never sees locally generated stubs.
-  relationships.property_has_address = null;
-  relationships.address_has_fact_sheet = null;
-  cleaned.relationships = relationships;
+  // Address schema does not allow a relationships object; strip any local
+  // placeholders so validation only sees schema-defined fields.
+  if (Object.prototype.hasOwnProperty.call(cleaned, "relationships")) {
+    delete cleaned.relationships;
+  }
   return cleaned;
 }
 
@@ -1074,13 +1048,11 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
         typeof data === "string"
           ? JSON.parse(data)
           : JSON.parse(data.toString("utf8"));
-      const relationships =
-        payload && typeof payload.relationships === "object"
-          ? { ...payload.relationships }
-          : {};
-      relationships.property_has_address = null;
-      relationships.address_has_fact_sheet = null;
-      payload.relationships = relationships;
+      if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+        if (Object.prototype.hasOwnProperty.call(payload, "relationships")) {
+          delete payload.relationships;
+        }
+      }
       data = `${JSON.stringify(payload, null, 2)}\n`;
     } catch {
       // If we can't safely parse, fall back to the original write.
@@ -1099,14 +1071,8 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
           ? JSON.parse(data)
           : JSON.parse(data.toString("utf8"));
       if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-        const relationships =
-          payload.relationships && typeof payload.relationships === "object"
-            ? { ...payload.relationships }
-            : null;
-        if (relationships) {
-          relationships.property_has_address = null;
-          relationships.address_has_fact_sheet = null;
-          payload.relationships = relationships;
+        if (Object.prototype.hasOwnProperty.call(payload, "relationships")) {
+          delete payload.relationships;
           data = `${JSON.stringify(payload, null, 2)}\n`;
         }
       }
@@ -2451,6 +2417,16 @@ function writeJSON(p, obj) {
     const completed = ensureAddressOutputFieldPresence(payload) || payload;
     if (completed && typeof completed === "object") {
       payload = completed;
+    }
+  }
+  if (
+    typeof p === "string" &&
+    p.endsWith("property.json") &&
+    payload &&
+    typeof payload === "object"
+  ) {
+    if (Object.prototype.hasOwnProperty.call(payload, "relationships")) {
+      delete payload.relationships;
     }
   }
 
@@ -29828,6 +29804,12 @@ async function main() {
     parcel_identifier:
       parcelId ||
       safeNullIfEmpty(pcnHyphen ? pcnHyphen.replace(/-/g, "") : null),
+    request_identifier:
+      safeNullIfEmpty(seed && seed.request_identifier) ||
+      safeNullIfEmpty(parcelId) ||
+      null,
+    source_http_request:
+      (seed && prepareSourceHttpRequest(seed.source_http_request)) || null,
     property_structure_built_year: yearBuiltStr
       ? parseInt(yearBuiltStr, 10)
       : null,
@@ -29845,11 +29827,6 @@ async function main() {
       ? parseInt(effectiveYearStr, 10)
       : null,
     historic_designation: false,
-    // Downstream populates address relationships; keep them null to satisfy the schema.
-    relationships: {
-      property_has_address: null,
-      address_has_fact_sheet: null,
-    },
   };
   writeJSON(path.join(dataDir, "property.json"), property);
   enforcePropertyRelationshipNulls(path.join(dataDir, "property.json"));
@@ -40671,21 +40648,6 @@ async function main() {
     } else {
       removeFileIfExists(addressOutputPath);
     }
-  }
-
-  // Keep the property relationships explicitly null so downstream URI population
-  // never sees placeholder objects.
-  const propertySnapshot = readJSONIfExists(propertyFilePath);
-  if (
-    propertySnapshot &&
-    typeof propertySnapshot === "object" &&
-    !Array.isArray(propertySnapshot)
-  ) {
-    propertySnapshot.relationships = {
-      property_has_address: null,
-      address_has_fact_sheet: null,
-    };
-    writeJSON(propertyFilePath, propertySnapshot);
   }
 
   // Ensure any locally generated address relationship stubs are overwritten
