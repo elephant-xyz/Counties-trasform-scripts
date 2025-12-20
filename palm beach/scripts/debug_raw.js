@@ -217,6 +217,71 @@ function enforceAddressRelationshipNulls(addressPath) {
   writeJSON(addressPath, withNulls);
 }
 
+// Normalize a raw-address branch to ensure all required oneOf fields are
+// present (nullable) so validation never reports missing latitude/longitude or
+// identifiers when we only have an unnormalized string from the source.
+function enforceRawOneOfRequiredSurface(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath) || {};
+  const rawValue = safeNullIfEmpty(snapshot.unnormalized_address);
+  if (!rawValue) return;
+
+  const requestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      snapshot.request_identifier,
+      ...(options.requestIdentifierCandidates || []),
+    ]),
+  );
+  const sourceHttp = resolveSourceHttpRequest(
+    snapshot.source_http_request,
+    ...(options.sourceHttpRequestCandidates || []),
+  );
+
+  const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+  RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      rawOut[field] = rawValue;
+      return;
+    }
+    if (field === "request_identifier") {
+      rawOut[field] = requestIdentifier === undefined ? null : requestIdentifier;
+      return;
+    }
+    if (field === "source_http_request") {
+      rawOut[field] = prepareSourceHttpRequest(sourceHttp) || null;
+      return;
+    }
+    let value = snapshot[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rawOut[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    rawOut[field] = value === undefined ? null : value;
+  });
+
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = options.countryFallback || "US";
+  }
+
+  writeJSON(addressPath, applyNullAddressRelationships(rawOut));
+}
+
 function stabilizeFinalAddressOneOf(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
   const snapshot = readJSONIfExists(addressPath) || {};
@@ -37591,6 +37656,37 @@ async function main() {
   // Re-assert relationship nulling so URs are left for downstream population.
   enforcePropertyRelationshipNulls(propertyFilePath);
   nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
+
+  // Final guard: force the raw oneOf surface to carry all required keys when
+  // we have an unnormalized address string so validation does not report
+  // missing latitude/longitude or identifiers inside relationship payloads.
+  enforceRawOneOfRequiredSurface(addressOutputPath, {
+    requestIdentifierCandidates: [
+      resolvedRequestIdentifier,
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ],
+    countryFallback: "US",
+  });
+  enforcePropertyRelationshipNulls(propertyFilePath);
+  [
+    path.join(dataDir, "property_has_address.json"),
+    path.join(dataDir, "relationship_property_has_address.json"),
+    path.join(dataDir, "address_has_fact_sheet.json"),
+    path.join(dataDir, "relationship_address_has_fact_sheet.json"),
+    path.join(relationshipsDir, "property_has_address.json"),
+    path.join(relationshipsDir, "relationship_property_has_address.json"),
+    path.join(relationshipsDir, "address_has_fact_sheet.json"),
+    path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
+  ].forEach(removeFileIfExists);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
