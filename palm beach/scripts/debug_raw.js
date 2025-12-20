@@ -40561,46 +40561,68 @@ async function main() {
 
   const buildRawHydratedAddress = () => {
     const hydrated = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    const rawValue = safeNullIfEmpty(ultimateRawValue);
+    hydrated.unnormalized_address = rawValue || null;
+    hydrated.request_identifier =
+      ultimateRequestIdentifier === undefined ? null : ultimateRequestIdentifier;
+    hydrated.source_http_request =
+      prepareSourceHttpRequest(ultimateSourceHttp) || null;
+
+    // Carry forward only metadata that does not force the normalized branch.
+    hydrated.county_name =
+      safeNullIfEmpty(formattedCountyName) ||
+      safeNullIfEmpty(countyName) ||
+      safeNullIfEmpty(workingAddressSnapshot.county_name) ||
+      null;
+    hydrated.country_code =
+      safeNullIfEmpty(workingAddressSnapshot.country_code) ||
+      null;
+    hydrated.state_code =
+      safeNullIfEmpty(workingAddressSnapshot.state_code) ||
+      safeNullIfEmpty(inferredStateCode) ||
+      null;
+    const postalRaw = safeNullIfEmpty(
+      workingAddressSnapshot.postal_code || fallbackPostalValue,
+    );
+    const postal =
+      postalRaw && /\d{5}/.test(postalRaw)
+        ? postalRaw.match(/\d{5}/)[0]
+        : null;
+    hydrated.postal_code = postal;
+    const plus4Candidate = safeNullIfEmpty(
+      workingAddressSnapshot.plus_four_postal_code,
+    );
+    hydrated.plus_four_postal_code =
+      postal && plus4Candidate && /^\d{4}$/.test(String(plus4Candidate))
+        ? plus4Candidate
+        : null;
+    hydrated.city_name = safeNullIfEmpty(workingAddressSnapshot.city_name) || null;
+    hydrated.municipality_name =
+      safeNullIfEmpty(workingAddressSnapshot.municipality_name) || null;
+
+    const latCandidate = parseCoordinate(
+      workingAddressSnapshot.latitude ??
+        initialLatitude ??
+        (parcelCentroid && parcelCentroid.latitude),
+    );
+    const lonCandidate = parseCoordinate(
+      workingAddressSnapshot.longitude ??
+        initialLongitude ??
+        (parcelCentroid && parcelCentroid.longitude),
+    );
+    if (Number.isFinite(latCandidate) && Number.isFinite(lonCandidate)) {
+      hydrated.latitude = latCandidate;
+      hydrated.longitude = lonCandidate;
+    }
+
+    // Ensure every schema field exists (nullable) so the oneOf raw branch never
+    // reports missing required properties.
     RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-      if (field === "unnormalized_address") {
-        hydrated[field] = ultimateRawValue;
-        return;
+      if (!Object.prototype.hasOwnProperty.call(hydrated, field)) {
+        hydrated[field] = null;
       }
-      if (field === "request_identifier") {
-        hydrated.request_identifier =
-          ultimateRequestIdentifier === undefined ? null : ultimateRequestIdentifier;
-        return;
-      }
-      if (field === "source_http_request") {
-        hydrated.source_http_request =
-          prepareSourceHttpRequest(ultimateSourceHttp) || null;
-        return;
-      }
-      let value = workingAddressSnapshot[field];
-      if (value === undefined && ultimateNormalizedSurface) {
-        value = ultimateNormalizedSurface[field];
-      }
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(value);
-        hydrated[field] = Number.isFinite(numeric) ? numeric : null;
-        return;
-      }
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        hydrated[field] = trimmed.length ? trimmed : null;
-        return;
-      }
-      hydrated[field] = value === undefined ? null : value;
     });
-    if (!hydrated.county_name) {
-      hydrated.county_name =
-        safeNullIfEmpty(formattedCountyName) ||
-        safeNullIfEmpty(countyName) ||
-        null;
-    }
-    if (!hydrated.state_code) {
-      hydrated.state_code = inferredStateCode || "FL";
-    }
+
     if (!hydrated.postal_code) {
       hydrated.plus_four_postal_code = null;
     }
