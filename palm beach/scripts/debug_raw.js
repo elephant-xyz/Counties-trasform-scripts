@@ -40091,6 +40091,168 @@ async function main() {
     }
   }
 
+  // Deterministic final rewrite: prefer the raw branch whenever we have an
+  // unnormalized string and hydrate every address field (nullable) so the oneOf
+  // validator never reports missing properties inside relationships.
+  if (fs.existsSync(addressOutputPath)) {
+    const terminalSnapshot = readJSONIfExists(addressOutputPath) || {};
+    const terminalNormalized =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...terminalSnapshot });
+    const terminalNormalizedReady =
+      terminalNormalized &&
+      hasCompleteNormalizedAddress({ ...terminalNormalized });
+    const terminalRaw = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalSnapshot.unnormalized_address,
+        finalRawCandidate,
+        finalRawCandidateClamp,
+        canonicalUnnormalized,
+        unnormalizedAddressCandidate,
+        addressLineCombined,
+        combinedModelAddress,
+        siteLocationLine,
+        fullAddr,
+        fullAddrInput,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+    const terminalRequestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalSnapshot.request_identifier,
+        resolvedRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ]),
+    );
+    const terminalSourceHttp = resolveSourceHttpRequest(
+      terminalSnapshot.source_http_request,
+      terminalNormalized && terminalNormalized.source_http_request,
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    );
+
+    if (terminalRaw) {
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (field === "unnormalized_address") {
+          rawOut[field] = terminalRaw;
+          return;
+        }
+        if (field === "request_identifier") {
+          rawOut[field] = terminalRequestId ?? null;
+          return;
+        }
+        if (field === "source_http_request") {
+          rawOut[field] = prepareSourceHttpRequest(terminalSourceHttp) || null;
+          return;
+        }
+        let value = terminalSnapshot[field];
+        if (value === undefined && terminalNormalized) {
+          value = terminalNormalized[field];
+        }
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+          return;
+        }
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          rawOut[field] = trimmed.length ? trimmed : null;
+          return;
+        }
+        rawOut[field] = value === undefined ? null : value;
+      });
+
+      if (!rawOut.postal_code) {
+        rawOut.plus_four_postal_code = null;
+      }
+      if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+        rawOut.latitude = null;
+        rawOut.longitude = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rawOut.state_code) &&
+        !hasMeaningfulAddressValue(rawOut.country_code)
+      ) {
+        rawOut.country_code = "US";
+      }
+      rawOut.relationships = {
+        property_has_address: null,
+        address_has_fact_sheet: null,
+      };
+      writeJSON(addressOutputPath, rawOut);
+    } else if (terminalNormalizedReady) {
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        if (field === "request_identifier") {
+          normalizedOut[field] = terminalRequestId ?? null;
+          return;
+        }
+        if (field === "source_http_request") {
+          normalizedOut[field] = prepareSourceHttpRequest(terminalSourceHttp) || null;
+          return;
+        }
+        let value =
+          terminalSnapshot[field] !== undefined
+            ? terminalSnapshot[field]
+            : terminalNormalized[field];
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+          return;
+        }
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          normalizedOut[field] = trimmed.length ? trimmed : null;
+          return;
+        }
+        normalizedOut[field] = value === undefined ? null : value;
+      });
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+        normalizedOut.latitude = null;
+        normalizedOut.longitude = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      delete normalizedOut.unnormalized_address;
+      normalizedOut.relationships = {
+        property_has_address: null,
+        address_has_fact_sheet: null,
+      };
+      writeJSON(addressOutputPath, normalizedOut);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  }
+
+  // Keep the property relationships explicitly null so downstream URI population
+  // never sees placeholder objects.
+  const propertySnapshot = readJSONIfExists(propertyFilePath);
+  if (
+    propertySnapshot &&
+    typeof propertySnapshot === "object" &&
+    !Array.isArray(propertySnapshot)
+  ) {
+    propertySnapshot.relationships = {
+      property_has_address: null,
+      address_has_fact_sheet: null,
+    };
+    writeJSON(propertyFilePath, propertySnapshot);
+  }
+
   // Ensure any locally generated address relationship stubs are overwritten
   // with explicit null payloads so downstream population of URs never sees
   // placeholder objects that violate the schema.
