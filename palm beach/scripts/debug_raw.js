@@ -127,6 +127,27 @@ function removeAddressRelationshipFiles(directoryPath) {
   });
 }
 
+function purgeAddressRelationshipArtifacts(rootDir) {
+  if (!rootDir || !fs.existsSync(rootDir)) return;
+  const entries = fs.readdirSync(rootDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const target = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      purgeAddressRelationshipArtifacts(target);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const base = entry.name.toLowerCase().replace(/\.json$/, "");
+    const normalizedBase = base.replace(/_\d+$/, "");
+    if (
+      ADDRESS_RELATIONSHIP_BASENAME_SET.has(base) ||
+      ADDRESS_RELATIONSHIP_BASENAME_SET.has(normalizedBase)
+    ) {
+      removeFileIfExists(target);
+    }
+  }
+}
+
 // Recursively delete auto-generated relationship stubs so no UR placeholders
 // leak into validation outputs.
 function scrubRelationshipArtifacts(rootDir) {
@@ -145,24 +166,6 @@ function scrubRelationshipArtifacts(rootDir) {
     });
     if (shouldDelete) {
       removeFileIfExists(target);
-    }
-  }
-}
-
-function purgeAddressRelationshipArtifacts(directoryPath) {
-  if (!directoryPath || !fs.existsSync(directoryPath)) {
-    return;
-  }
-  const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    const base = entry.name.toLowerCase();
-    for (const managed of ADDRESS_RELATIONSHIP_BASENAMES) {
-      if (base.startsWith(managed.toLowerCase())) {
-        const targetPath = path.join(directoryPath, entry.name);
-        removeFileIfExists(targetPath);
-        break;
-      }
     }
   }
 }
@@ -40535,6 +40538,24 @@ async function main() {
   } else {
     removeFileIfExists(addressOutputPath);
   }
+
+  enforceRawAddressFieldCoverage(addressOutputPath, {
+    requestIdentifierCandidates: [
+      ultimateRequestIdentifier,
+      resolvedRequestIdentifier,
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      ultimateSourceHttp,
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ],
+  });
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
