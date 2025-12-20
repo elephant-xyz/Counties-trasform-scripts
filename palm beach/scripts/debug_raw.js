@@ -40346,7 +40346,39 @@ async function main() {
   // missing required address fields. Fall back to a normalized payload only
   // when the normalized surface is complete and no raw value is available.
   const ultimateAddressSnapshot = readJSONIfExists(addressOutputPath) || {};
-  const ultimateRawValue = safeNullIfEmpty(ultimateAddressSnapshot.unnormalized_address);
+  const ultimateRawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      ultimateAddressSnapshot.unnormalized_address,
+      finalRawCandidate,
+      finalRawCandidateClamp,
+      canonicalUnnormalized,
+      addressLineCombined,
+      combinedModelAddress,
+      siteLocationLine,
+      fullAddr,
+      fullAddrInput,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ]),
+  );
+  const ultimateRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      ultimateAddressSnapshot.request_identifier,
+      resolvedRequestIdentifier,
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ]),
+  );
+  const ultimateSourceHttp =
+    resolveSourceHttpRequest(
+      ultimateAddressSnapshot.source_http_request,
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ) || null;
   const ultimateNormalizedSurface =
     ensureNormalizedAddressSchemaSurface &&
     ensureNormalizedAddressSchemaSurface({ ...ultimateAddressSnapshot });
@@ -40362,16 +40394,19 @@ async function main() {
         return;
       }
       if (field === "request_identifier") {
-        const resolved = safeNullIfEmpty(ultimateAddressSnapshot.request_identifier);
-        hydrated.request_identifier = resolved === undefined ? null : resolved;
+        hydrated.request_identifier =
+          ultimateRequestIdentifier === undefined ? null : ultimateRequestIdentifier;
         return;
       }
       if (field === "source_http_request") {
         hydrated.source_http_request =
-          prepareSourceHttpRequest(ultimateAddressSnapshot.source_http_request) || null;
+          prepareSourceHttpRequest(ultimateSourceHttp) || null;
         return;
       }
       let value = ultimateAddressSnapshot[field];
+      if (value === undefined && ultimateNormalizedSurface) {
+        value = ultimateNormalizedSurface[field];
+      }
       if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
         const numeric = parseCoordinate(value);
         hydrated[field] = Number.isFinite(numeric) ? numeric : null;
@@ -40384,6 +40419,15 @@ async function main() {
       }
       hydrated[field] = value === undefined ? null : value;
     });
+    if (!hydrated.county_name) {
+      hydrated.county_name =
+        safeNullIfEmpty(formattedCountyName) ||
+        safeNullIfEmpty(countyName) ||
+        null;
+    }
+    if (!hydrated.state_code) {
+      hydrated.state_code = inferredStateCode || "FL";
+    }
     if (!hydrated.postal_code) {
       hydrated.plus_four_postal_code = null;
     }
