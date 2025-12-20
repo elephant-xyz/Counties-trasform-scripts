@@ -262,6 +262,88 @@ function enforceAddressRelationshipNulls(addressPath) {
   writeJSON(addressPath, withNulls);
 }
 
+// Emit a deterministic raw address payload that satisfies the raw oneOf branch
+// by hydrating every allowed field (nullable) and preferring the source
+// unnormalized string when present.
+function emitRawAddressOneOf(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath) || {};
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      ...(Array.isArray(options.rawCandidates) ? options.rawCandidates : []),
+      snapshot.unnormalized_address,
+      snapshot.full_address,
+      snapshot.address,
+      snapshot.site_address,
+    ]),
+  );
+  if (!rawValue) return;
+
+  const output = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+  const requestId =
+    safeNullIfEmpty(options.requestIdentifier ?? snapshot.request_identifier) ??
+    null;
+  const sourceHttp =
+    prepareSourceHttpRequest(
+      resolveSourceHttpRequest(
+        options.sourceHttpRequest,
+        snapshot.source_http_request,
+      ),
+    ) || null;
+
+  RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      output[field] = rawValue;
+      return;
+    }
+    if (field === "request_identifier") {
+      output[field] = requestId;
+      return;
+    }
+    if (field === "source_http_request") {
+      output[field] = sourceHttp;
+      return;
+    }
+    let value = snapshot[field];
+    if (field === "county_name" && !hasMeaningfulAddressValue(value)) {
+      value = options.countyName;
+    }
+    if (field === "state_code" && !hasMeaningfulAddressValue(value)) {
+      value = options.stateCode;
+    }
+    if (field === "country_code" && !hasMeaningfulAddressValue(value)) {
+      value = options.countryCode;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      output[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      output[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    output[field] = value === undefined ? null : value;
+  });
+
+  if (!output.postal_code) {
+    output.plus_four_postal_code = null;
+  }
+  if ((output.latitude == null) !== (output.longitude == null)) {
+    output.latitude = null;
+    output.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(output.state_code) &&
+    !hasMeaningfulAddressValue(output.country_code)
+  ) {
+    output.country_code = options.countryCode || "US";
+  }
+
+  writeJSON(addressPath, applyNullAddressRelationships(output));
+}
+
 // Normalize a raw-address branch to ensure all required oneOf fields are
 // present (nullable) so validation never reports missing latitude/longitude or
 // identifiers when we only have an unnormalized string from the source.
@@ -41424,6 +41506,39 @@ async function main() {
     stateFallback: inferredStateCode || "FL",
     countryFallback: "US",
   });
+
+  // Final deterministic clamp to the raw oneOf branch when an unnormalized
+  // string is available from the source. This ensures every required field
+  // exists (nullable) and avoids mixed-branch payloads that trigger oneOf
+  // validation errors.
+  emitRawAddressOneOf(addressOutputPath, {
+    rawCandidates: [
+      ultimateRawValue,
+      canonicalUnnormalized,
+      addressLineCombined,
+      siteLocationLine,
+      fullAddr,
+      fullAddrInput,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ],
+    requestIdentifier:
+      ultimateRequestIdentifier ?? trimmedRequestIdentifier ?? parcelId ?? null,
+    sourceHttpRequest:
+      ultimateSourceHttp ||
+      sourceHttpCandidate ||
+      (seed && seed.source_http_request) ||
+      (unAddr && unAddr.source_http_request) ||
+      null,
+    countyName:
+      formattedCountyName ||
+      countyName ||
+      (unAddr && unAddr.county_jurisdiction) ||
+      null,
+    stateCode: inferredStateCode || "FL",
+    countryCode: "US",
+  });
+  enforceAddressRelationshipNulls(addressOutputPath);
 
   // Defensive cleanup: drop any address relationship stubs so downstream UR population
   // never encounters partially populated address payloads.
