@@ -38584,10 +38584,17 @@ async function main() {
   // address oneOf selects a single valid branch.
   if (fs.existsSync(addressOutputPath)) {
     const finalSnapshot = readJSONIfExists(addressOutputPath) || {};
-    const rawValue =
-      typeof finalSnapshot.unnormalized_address === "string"
-        ? finalSnapshot.unnormalized_address.trim()
-        : "";
+    const rawValue = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        finalSnapshot.unnormalized_address,
+        canonicalUnnormalized,
+        finalRawCandidate,
+        finalRawCandidateClamp,
+        addressLineCombined,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
     const resolvedRequestId = safeNullIfEmpty(
       resolveFirstNonEmptyString([
         finalSnapshot.request_identifier,
@@ -38608,6 +38615,19 @@ async function main() {
           unAddr && unAddr.source_http_request,
         ),
       ) || null;
+    const parsedPostalFromRaw = parsePostalFromAddressString(rawValue || "");
+    const resolveCoordinate = (field) => {
+      const candidates = [
+        finalSnapshot[field],
+        unAddr && unAddr[field],
+        parcelCentroid && parcelCentroid[field],
+      ];
+      for (const candidate of candidates) {
+        const numeric = parseCoordinate(candidate);
+        if (Number.isFinite(numeric)) return numeric;
+      }
+      return null;
+    };
 
     if (rawValue) {
       const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
@@ -38626,9 +38646,32 @@ async function main() {
           return;
         }
         let value = finalSnapshot[field];
+        if (value === undefined && unAddr && typeof unAddr === "object") {
+          value = unAddr[field];
+        }
+        if (field === "postal_code" && !hasMeaningfulAddressValue(value)) {
+          value = parsedPostalFromRaw.postal_code || null;
+        }
+        if (
+          field === "plus_four_postal_code" &&
+          !hasMeaningfulAddressValue(value)
+        ) {
+          value = parsedPostalFromRaw.plus_four_postal_code || null;
+        }
+        if (!hasMeaningfulAddressValue(value) && field === "county_name") {
+          value = titleCaseCounty(
+            formattedCountyName || countyName || "Palm Beach",
+          );
+        }
+        if (!hasMeaningfulAddressValue(value) && field === "state_code") {
+          value = inferredStateCode ? inferredStateCode.toUpperCase() : null;
+        }
         if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
           const numeric = parseCoordinate(value);
-          rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+          rawOut[field] =
+            Number.isFinite(numeric) || numeric === 0
+              ? numeric
+              : resolveCoordinate(field);
           return;
         }
         if (typeof value === "string") {
@@ -38638,12 +38681,12 @@ async function main() {
         }
         rawOut[field] = value === undefined ? null : value;
       });
-      if (!rawOut.county_name) {
-        rawOut.county_name = titleCaseCounty(
-          formattedCountyName || countyName || "Palm Beach",
-        );
+      if (!rawOut.postal_code) {
+        rawOut.postal_code = parsedPostalFromRaw.postal_code || null;
       }
-      if (!rawOut.postal_code) rawOut.plus_four_postal_code = null;
+      if (!rawOut.plus_four_postal_code) {
+        rawOut.plus_four_postal_code = parsedPostalFromRaw.plus_four_postal_code || null;
+      }
       if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
         rawOut.latitude = null;
         rawOut.longitude = null;
@@ -38671,7 +38714,10 @@ async function main() {
         let value = finalSnapshot[field];
         if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
           const numeric = parseCoordinate(value);
-          normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+          normalizedOut[field] =
+            Number.isFinite(numeric) || numeric === 0
+              ? numeric
+              : resolveCoordinate(field);
           return;
         }
         if (typeof value === "string") {
@@ -38681,7 +38727,14 @@ async function main() {
         }
         normalizedOut[field] = value === undefined ? null : value;
       });
-      if (!normalizedOut.postal_code) normalizedOut.plus_four_postal_code = null;
+      if (!normalizedOut.postal_code) {
+        normalizedOut.postal_code =
+          parsedPostalFromRaw.postal_code || normalizedOut.postal_code || null;
+      }
+      if (!normalizedOut.plus_four_postal_code) {
+        normalizedOut.plus_four_postal_code =
+          parsedPostalFromRaw.plus_four_postal_code || null;
+      }
       if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
         normalizedOut.latitude = null;
         normalizedOut.longitude = null;
