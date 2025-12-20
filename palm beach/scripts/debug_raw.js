@@ -200,6 +200,45 @@ function writeNullRelationshipPlaceholders(directoryPath, baseNames = []) {
     });
 }
 
+function coerceAddressRelationshipsToNull(filePath) {
+  const payload = readJSONIfExists(filePath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
+  const relationships =
+    payload.relationships && typeof payload.relationships === "object"
+      ? { ...payload.relationships }
+      : null;
+  if (!relationships) return;
+  let mutated = false;
+  if (relationships.property_has_address !== null) {
+    relationships.property_has_address = null;
+    mutated = true;
+  }
+  if (relationships.address_has_fact_sheet !== null) {
+    relationships.address_has_fact_sheet = null;
+    mutated = true;
+  }
+  if (mutated) {
+    payload.relationships = relationships;
+    writeJSON(filePath, payload);
+  }
+}
+
+function nullifyAddressRelationshipsRecursively(rootDir) {
+  if (!rootDir || !fs.existsSync(rootDir)) return;
+  const entries = fs.readdirSync(rootDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const target = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      nullifyAddressRelationshipsRecursively(target);
+      continue;
+    }
+    if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".json")) {
+      continue;
+    }
+    coerceAddressRelationshipsToNull(target);
+  }
+}
+
 function enforcePropertyRelationshipNulls(propertyPath) {
   if (!propertyPath || !fs.existsSync(propertyPath)) {
     return;
@@ -39597,10 +39636,37 @@ async function main() {
     } else {
       removeFileIfExists(addressOutputPath);
     }
+
+    enforceRawAddressFieldCoverage(addressOutputPath, {
+      countyFallback: titleCaseCounty(
+        formattedCountyName || countyName || "Palm Beach",
+      ),
+      stateFallback: inferredStateCode || "FL",
+      requestIdentifierCandidates: [
+        finalRequestId,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ],
+      sourceHttpRequestCandidates: [
+        finalSourceHttp,
+        snapshot.source_http_request,
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      ],
+    });
   }
 
   enforceAddressRelationshipNulls(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
+  nullifyAddressRelationshipsRecursively(dataDir);
+  nullifyAddressRelationshipsRecursively(relationshipsDir);
+  removeAddressRelationshipFiles(dataDir);
+  removeAddressRelationshipFiles(relationshipsDir);
+  enforcePropertyRelationshipNulls(propertyFilePath);
+  enforceAddressRelationshipNulls(addressOutputPath);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
