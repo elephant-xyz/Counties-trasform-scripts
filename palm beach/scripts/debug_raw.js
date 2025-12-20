@@ -26622,6 +26622,103 @@ function finalizeAddressOneOfSelection(addressPath, options = {}) {
   writeJSON(addressPath, rawOut);
 }
 
+// Force the raw address surface to include every schema field (nullable) so the
+// raw oneOf branch always satisfies required properties when we only have an
+// unnormalized string from the source.
+function enforceRawTemplateCoverage(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const snapshot = readJSONIfExists(addressPath) || {};
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      snapshot.unnormalized_address,
+      ...(options.rawCandidates || []),
+    ]),
+  );
+  if (!rawValue) return;
+
+  const requestIdentifier = safeNullIfEmpty(
+    options.requestIdentifier !== undefined
+      ? options.requestIdentifier
+      : resolveFirstNonEmptyString([
+          snapshot.request_identifier,
+          ...(options.requestIdentifierCandidates || []),
+        ]),
+  );
+
+  const preparedSource = resolveSourceHttpRequest(
+    snapshot.source_http_request,
+    options.sourceHttpRequest,
+    ...(options.sourceHttpRequestCandidates || []),
+  );
+
+  const output = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      output[field] = rawValue;
+      return;
+    }
+    if (field === "request_identifier") {
+      output[field] =
+        requestIdentifier === undefined
+          ? snapshot.request_identifier ?? null
+          : requestIdentifier;
+      return;
+    }
+    if (field === "source_http_request") {
+      output[field] = prepareSourceHttpRequest(preparedSource) || null;
+      return;
+    }
+
+    let value = snapshot[field];
+    if (options.fallbacks && options.fallbacks[field] !== undefined) {
+      value = value === undefined ? options.fallbacks[field] : value;
+    }
+    if (field === "county_name" && value === undefined) {
+      value = options.countyFallback;
+    } else if (field === "state_code" && value === undefined) {
+      value = options.stateFallback;
+    } else if (field === "country_code" && value === undefined) {
+      value = options.countryFallback;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      output[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      output[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    output[field] = value === undefined ? null : value;
+  });
+
+  if (!output.postal_code) {
+    const parsedPostal = parsePostalFromAddressString(rawValue);
+    output.postal_code = parsedPostal.postal_code || null;
+    output.plus_four_postal_code = output.postal_code
+      ? parsedPostal.plus_four_postal_code || null
+      : null;
+  } else if (!output.plus_four_postal_code) {
+    output.plus_four_postal_code = null;
+  }
+
+  if ((output.latitude == null) !== (output.longitude == null)) {
+    output.latitude = null;
+    output.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(output.state_code) &&
+    !hasMeaningfulAddressValue(output.country_code)
+  ) {
+    output.country_code = options.countryFallback || "US";
+  }
+
+  writeJSON(addressPath, applyNullAddressRelationships(output));
+}
+
 // Clamp the final address payload to a single schema branch with the full
 // schema surface present (nullable). Prefer normalized only when coverage is
 // complete; otherwise emit the raw branch anchored on the unnormalized string
@@ -38318,6 +38415,35 @@ async function main() {
       seed && seed.source_http_request,
       unAddr && unAddr.source_http_request,
     ),
+    countyFallback: formattedCountyName || countyName || "Palm Beach",
+    stateFallback: inferredStateCode || "FL",
+    countryFallback: "US",
+  });
+  enforceRawTemplateCoverage(addressOutputPath, {
+    rawCandidates: [
+      canonicalUnnormalized,
+      finalRawCandidate,
+      finalRawCandidateClamp,
+      addressLineCombined,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+      ...(Array.isArray(finalUnnormalizedCandidates)
+        ? finalUnnormalizedCandidates
+        : []),
+    ],
+    requestIdentifierCandidates: [
+      resolvedRequestIdentifier,
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ],
     countyFallback: formattedCountyName || countyName || "Palm Beach",
     stateFallback: inferredStateCode || "FL",
     countryFallback: "US",
