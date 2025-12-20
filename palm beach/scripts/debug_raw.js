@@ -9283,7 +9283,9 @@ function enforceRawOneOfCoverage(addressPath, defaults = {}) {
     safeNullIfEmpty(defaults.country) ||
     (fallbackState ? "US" : null);
 
-  if (rawValue && !normalizedReady) {
+  // Always favor the raw branch when any unnormalized string exists so the
+  // address lands on the raw oneOf option with the full schema surface.
+  if (rawValue) {
     const seeded = {
       ...RAW_ONE_OF_SCHEMA_TEMPLATE,
       ...snapshot,
