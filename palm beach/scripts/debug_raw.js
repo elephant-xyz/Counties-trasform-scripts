@@ -11827,8 +11827,9 @@ const NORMALIZED_ADDRESS_FIELDS = [
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 const NORMALIZED_ADDRESS_FIELD_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 
-// Raw (unnormalized) branch: keep to the lean oneOf surface (raw string plus
-// legal/geo context) so validation doesn't expect normalized street components.
+// Raw (unnormalized) branch: include the normalized street components as
+// nullable placeholders so the oneOf branch doesn't fail on missing required
+// fields when we only have the raw string.
 const RAW_ADDRESS_FIELDS = [
   "latitude",
   "longitude",
@@ -11837,6 +11838,12 @@ const RAW_ADDRESS_FIELDS = [
   "section",
   "block",
   "lot",
+  "street_number",
+  "street_name",
+  "street_suffix_type",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "unit_identifier",
   "city_name",
   "country_code",
   "plus_four_postal_code",
