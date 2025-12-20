@@ -38754,6 +38754,29 @@ async function main() {
       writeJSON(addressOutputPath, applyNullAddressRelationships(normalizedOut));
     }
   }
+
+  // Keep the raw branch aligned with the full schema surface whenever we have
+  // an unnormalized address so oneOf validation never complains about missing
+  // normalized fields. Relationships stay null; downstream populates URs.
+  enforceRawAddressFieldCoverage(addressOutputPath, {
+    countyFallback: titleCaseCounty(formattedCountyName || countyName || "Palm Beach"),
+    stateFallback: inferredStateCode || "FL",
+    countryFallback: "US",
+    requestIdentifierCandidates: [
+      resolvedRequestIdentifier,
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ],
+  });
+  enforceAddressRelationshipNulls(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
