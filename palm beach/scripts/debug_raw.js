@@ -41130,59 +41130,32 @@ async function main() {
     };
 
     if (rawValue) {
-      const parsedPostal = parsePostalFromAddressString(rawValue || "");
-      const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
-      RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
-        if (field === "unnormalized_address") {
-          rawOut[field] = rawValue;
-          return;
-        }
-        if (field === "request_identifier") {
-          rawOut[field] = resolvedRequestId === undefined ? null : resolvedRequestId;
-          return;
-        }
-        if (field === "source_http_request") {
-          rawOut[field] = finalResolvedSourceHttp;
-          return;
-        }
-        let value = snapshot[field];
-        if (value === undefined && unAddr && typeof unAddr === "object") {
-          value = unAddr[field];
-        }
-        if (!hasMeaningfulAddressValue(value) && field === "county_name") {
-          value = formattedCountyName || countyName || null;
-        }
-        if (!hasMeaningfulAddressValue(value) && field === "state_code") {
-          value = inferredStateCode || null;
-        }
-        if (
-          (field === "postal_code" || field === "plus_four_postal_code") &&
-          !hasMeaningfulAddressValue(value)
-        ) {
-          value = parsedPostal[field] || null;
-        }
-        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-          const numeric = parseCoordinate(value);
-          rawOut[field] = Number.isFinite(numeric) ? numeric : null;
-          return;
-        }
-        if (typeof value === "string") {
-          const trimmed = value.trim();
-          rawOut[field] = trimmed.length ? trimmed : null;
-          return;
-        }
-        rawOut[field] = value === undefined ? null : value;
-      });
-      if (!rawOut.postal_code) {
-        rawOut.postal_code = parsedPostal.postal_code || null;
+      // Prefer the raw branch and fully hydrate the raw oneOf surface so every
+      // required field exists (nullable). This prevents the validator from
+      // complaining about missing latitude/street fields while honoring the
+      // source-provided unnormalized address.
+      const rawOverrides = {
+        unnormalized_address: rawValue,
+        request_identifier: resolvedRequestId,
+        source_http_request: finalResolvedSourceHttp,
+        county_name: snapshot.county_name || formattedCountyName || countyName || null,
+        state_code: snapshot.state_code || inferredStateCode || null,
+      };
+      const sanitizedRaw =
+        sanitizeRawOneOfPayload(
+          { ...snapshot, ...rawOverrides },
+          rawOverrides,
+        ) ||
+        buildRawAddressMinimalSurface({ ...snapshot, ...rawOverrides }, rawValue);
+
+      if (sanitizedRaw) {
+        writeJSON(
+          addressOutputPath,
+          applyNullAddressRelationships(normalizeCoordinatesAndPostal(sanitizedRaw)),
+        );
+      } else {
+        removeFileIfExists(addressOutputPath);
       }
-      if (!rawOut.plus_four_postal_code) {
-        rawOut.plus_four_postal_code = parsedPostal.plus_four_postal_code || null;
-      }
-      writeJSON(
-        addressOutputPath,
-        applyNullAddressRelationships(normalizeCoordinatesAndPostal(rawOut)),
-      );
     } else {
       const normalizedSurface =
         ensureNormalizedAddressSchemaSurface &&
