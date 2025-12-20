@@ -11659,12 +11659,29 @@ const NORMALIZED_ADDRESS_FIELDS = [
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 const NORMALIZED_ADDRESS_FIELD_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 
-// Raw (unnormalized) branch per schema: include the full address surface so
-// required fields remain present (nullable) when only an unnormalized string is
-// available from the source.
-const RAW_ADDRESS_FIELDS = Array.from(
-  new Set([...NORMALIZED_ADDRESS_FIELDS, "unnormalized_address"]),
-);
+// Raw (unnormalized) branch per schema: only the fields explicitly allowed on
+// the raw oneOf surface plus the unnormalized string from the source.
+const RAW_ADDRESS_FIELDS = [
+  "block",
+  "city_name",
+  "country_code",
+  "county_name",
+  "latitude",
+  "longitude",
+  "lot",
+  "municipality_name",
+  "plus_four_postal_code",
+  "postal_code",
+  "range",
+  "request_identifier",
+  "route_number",
+  "section",
+  "source_http_request",
+  "state_code",
+  "township",
+  "unit_identifier",
+  "unnormalized_address",
+];
 const RAW_ADDRESS_FIELD_SET = new Set(RAW_ADDRESS_FIELDS);
 
 // Union of both branches for intermediate parsing.
@@ -11672,19 +11689,13 @@ const ADDRESS_SCHEMA_FIELDS = Array.from(
   new Set([...NORMALIZED_ADDRESS_FIELDS, ...RAW_ADDRESS_FIELDS]),
 );
 
-// The raw oneOf branch carries the full address surface (with normalized
-// fields nullable) plus the unnormalized string so oneOf validation always has
-// the required keys present.
+// The raw oneOf branch only allows the raw schema surface.
 const RAW_BRANCH_ALLOWED_FIELDS = Object.freeze([...RAW_ADDRESS_FIELDS]);
 const RAW_BRANCH_ALLOWED_FIELD_SET = new Set(RAW_BRANCH_ALLOWED_FIELDS);
 
-// Align the raw branch with the full address schema surface so the oneOf raw
-// option still carries every nullable field (latitude/longitude, street
-// components, etc.) alongside the unnormalized string. This prevents
-// validation errors complaining about missing required fields when only a raw
-// address is available.
-// The raw branch still includes the unnormalized source string and permits the
-// normalized fields to remain null when they are not provided by the source.
+// Align the raw branch with the address schema surface so the oneOf raw option
+// only carries allowed fields (no normalized street components) alongside the
+// unnormalized string.
 const RAW_ONE_OF_ALLOWED_FIELDS = [...RAW_BRANCH_ALLOWED_FIELDS];
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
