@@ -28500,6 +28500,125 @@ function enforceAddressOneOfSurface(addressPath, options = {}) {
   writeJSON(addressPath, applyNullAddressRelationships(out));
 }
 
+// Normalize the final address payload to a single schema branch. Prefer the raw
+// branch when an unnormalized address string exists; otherwise emit the
+// normalized branch. Ensures every required field is present (nullable) and
+// drops relationship stubs so downstream can populate URIs.
+function normalizeFinalAddressOutput(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return null;
+  }
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return null;
+  }
+
+  const preferRaw = !!options.preferRaw;
+  const countryFallback = options.countryFallback || "US";
+  const rawValue = safeNullIfEmpty(snapshot.unnormalized_address);
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...snapshot })
+      : { ...snapshot };
+  const normalizedReady =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  const writeNormalized = (payload) => {
+    if (!payload.postal_code) {
+      payload.plus_four_postal_code = null;
+    }
+    if ((payload.latitude == null) !== (payload.longitude == null)) {
+      payload.latitude = null;
+      payload.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(payload.state_code) &&
+      !hasMeaningfulAddressValue(payload.country_code)
+    ) {
+      payload.country_code = countryFallback;
+    }
+    writeJSON(addressPath, applyNullAddressRelationships(payload));
+    return payload;
+  };
+
+  if (rawValue && (preferRaw || !normalizedReady)) {
+    const sources = [snapshot, normalizedSurface].filter(
+      (src) => src && typeof src === "object",
+    );
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        rawOut[field] = rawValue;
+        return;
+      }
+      let value;
+      for (const candidate of sources) {
+        if (candidate && candidate[field] !== undefined) {
+          value = candidate[field];
+          break;
+        }
+      }
+      if (field === "request_identifier") {
+        value = safeNullIfEmpty(value);
+      } else if (field === "source_http_request") {
+        value = prepareSourceHttpRequest(value) || null;
+      } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      rawOut[field] = value;
+    });
+    return writeNormalized(rawOut);
+  }
+
+  if (normalizedReady) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value =
+        snapshot[field] !== undefined ? snapshot[field] : normalizedSurface[field];
+      if (field === "request_identifier") {
+        value = safeNullIfEmpty(value);
+      } else if (field === "source_http_request") {
+        value = prepareSourceHttpRequest(value) || null;
+      } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")
+    ) {
+      delete normalizedOut.unnormalized_address;
+    }
+    return writeNormalized(normalizedOut);
+  }
+
+  if (rawValue) {
+    const minimalRaw = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      minimalRaw[field] = field === "unnormalized_address" ? rawValue : null;
+    });
+    return writeNormalized(minimalRaw);
+  }
+
+  removeFileIfExists(addressPath);
+  return null;
+}
+
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -38746,6 +38865,15 @@ async function main() {
       writeJSON(addressOutputPath, applyNullAddressRelationships(normalizedOut));
     }
   }
+
+  normalizeFinalAddressOutput(addressOutputPath, {
+    preferRaw:
+      hasUnnormalizedInput ||
+      !!canonicalUnnormalized ||
+      !!finalRawCandidate ||
+      !!finalRawCandidateClamp,
+    countryFallback: "US",
+  });
 
   // Keep the raw branch aligned with the full schema surface whenever we have
   // an unnormalized address so oneOf validation never complains about missing
