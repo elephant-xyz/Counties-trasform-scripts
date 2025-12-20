@@ -28396,6 +28396,118 @@ function finalizeAddressOneOfSimplified(addressPath, options = {}) {
   removeFileIfExists(addressPath);
 }
 
+// Final guard to keep the address payload aligned with exactly one oneOf branch
+// and make sure all required fields exist (nullable) when we only have an
+// unnormalized address string from the source.
+function enforceAddressOneOfSurface(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const trimmedRaw = safeNullIfEmpty(snapshot.unnormalized_address);
+  const hasRaw = typeof trimmedRaw === "string" && trimmedRaw.length > 0;
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...snapshot })
+      : { ...snapshot };
+  const normalizedComplete =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (!hasRaw && !normalizedComplete) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const fieldList = hasRaw
+    ? RAW_ADDRESS_ALLOWED_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+  const template = hasRaw
+    ? RAW_ADDRESS_SCHEMA_TEMPLATE
+    : NORMALIZED_ADDRESS_SCHEMA_TEMPLATE;
+  const out = { ...template };
+
+  fieldList.forEach((field) => {
+    if (!hasRaw && field === "unnormalized_address") return;
+    if (field === "unnormalized_address") {
+      out[field] = trimmedRaw;
+      return;
+    }
+
+    let value =
+      snapshot[field] !== undefined ? snapshot[field] : normalizedSurface[field];
+
+    if (field === "county_name" && (value === undefined || value === null)) {
+      value = options.countyFallback ?? null;
+    } else if (
+      field === "state_code" &&
+      (value === undefined || value === null)
+    ) {
+      value = options.stateFallback ?? null;
+    } else if (
+      field === "country_code" &&
+      (value === undefined || value === null)
+    ) {
+      value = options.countryFallback ?? null;
+    }
+
+    if (field === "request_identifier") {
+      const identifier = safeNullIfEmpty(value);
+      out[field] = identifier === undefined ? null : identifier;
+      return;
+    }
+
+    if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(value);
+      out[field] = prepared ? deepClone(prepared) : null;
+      return;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      out[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+
+    if (value === undefined || value === null) {
+      out[field] = null;
+      return;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      out[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+
+    out[field] = value;
+  });
+
+  if (!out.postal_code) {
+    out.plus_four_postal_code = null;
+  }
+  if ((out.latitude == null) !== (out.longitude == null)) {
+    out.latitude = null;
+    out.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(out.state_code) &&
+    !hasMeaningfulAddressValue(out.country_code)
+  ) {
+    out.country_code = options.countryFallback || "US";
+  }
+  if (!hasRaw && Object.prototype.hasOwnProperty.call(out, "unnormalized_address")) {
+    delete out.unnormalized_address;
+  }
+
+  writeJSON(addressPath, applyNullAddressRelationships(out));
+}
+
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -38444,6 +38556,11 @@ async function main() {
       seed && seed.source_http_request,
       unAddr && unAddr.source_http_request,
     ],
+    countyFallback: formattedCountyName || countyName || "Palm Beach",
+    stateFallback: inferredStateCode || "FL",
+    countryFallback: "US",
+  });
+  enforceAddressOneOfSurface(addressOutputPath, {
     countyFallback: formattedCountyName || countyName || "Palm Beach",
     stateFallback: inferredStateCode || "FL",
     countryFallback: "US",
