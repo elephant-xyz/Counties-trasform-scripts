@@ -2236,17 +2236,9 @@ function writeJSON(p, obj) {
       removeFileIfExists(p);
       return;
     }
-    const shouldApplyCoverage =
-      !(
-        payload &&
-        typeof payload === "object" &&
-        Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")
-      );
-    if (shouldApplyCoverage) {
-      const completed = ensureAddressOutputFieldPresence(payload) || payload;
-      if (completed && typeof completed === "object") {
-        payload = completed;
-      }
+    const completed = ensureAddressOutputFieldPresence(payload) || payload;
+    if (completed && typeof completed === "object") {
+      payload = completed;
     }
   }
   if (typeof p === "string" && p.endsWith("property.json") && payload && typeof payload === "object") {
@@ -38778,6 +38770,15 @@ async function main() {
   });
   enforceAddressRelationshipNulls(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
+  // Final sweep: drop any locally generated relationship stubs so downstream
+  // systems can populate URIs, and keep property/address relationships null.
+  nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
+  purgeAddressRelationshipArtifacts(dataDir);
+  purgeAddressRelationshipArtifacts(relationshipsDir);
+  removeAddressRelationshipFiles(dataDir);
+  removeAddressRelationshipFiles(relationshipsDir);
+  enforcePropertyRelationshipNulls(propertyFilePath);
+  enforceAddressRelationshipNulls(addressOutputPath);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
