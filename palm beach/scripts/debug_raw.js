@@ -8398,6 +8398,107 @@ function forceRawCountyAddressOutput(addressFilePath, options = {}) {
   writeJSON(addressFilePath, surfacedRaw);
 }
 
+function lockAddressOutputToPreferredBranch(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) return;
+  const snapshot = readJSONIfExists(addressFilePath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    return;
+  }
+
+  const preferRaw = options.preferRaw !== false;
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      options.rawValue,
+      snapshot.unnormalized_address,
+      ...(options.rawCandidates || []),
+    ]),
+  );
+
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...snapshot })
+      : null;
+  const normalizedComplete =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  const sanitizeValue = (field, candidate) => {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      return Number.isFinite(numeric) ? numeric : null;
+    }
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      return trimmed.length ? trimmed : null;
+    }
+    if (candidate === undefined) return null;
+    return candidate === null ? null : candidate;
+  };
+
+  if (preferRaw && rawValue) {
+    const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+    RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") return;
+      let value = snapshot[field];
+      if (value === undefined && normalizedSurface) {
+        value = normalizedSurface[field];
+      }
+      rawOut[field] = sanitizeValue(field, value);
+    });
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
+    }
+    if (rawOut.state_code && !rawOut.country_code) {
+      rawOut.country_code = "US";
+    }
+    if (rawOut.relationships) {
+      delete rawOut.relationships;
+    }
+    writeJSON(addressFilePath, rawOut);
+    return;
+  }
+
+  if (normalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      normalizedOut[field] = sanitizeValue(field, normalizedSurface[field]);
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (normalizedOut.state_code && !normalizedOut.country_code) {
+      normalizedOut.country_code = "US";
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")) {
+      delete normalizedOut.unnormalized_address;
+    }
+    if (normalizedOut.relationships) {
+      delete normalizedOut.relationships;
+    }
+    writeJSON(addressFilePath, normalizedOut);
+    return;
+  }
+
+  if (rawValue) {
+    const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+    RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") return;
+      rawOut[field] = sanitizeValue(field, snapshot[field]);
+    });
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
+    }
+    if (rawOut.state_code && !rawOut.country_code) {
+      rawOut.country_code = "US";
+    }
+    if (rawOut.relationships) {
+      delete rawOut.relationships;
+    }
+    writeJSON(addressFilePath, rawOut);
+  }
+}
+
 function hydrateAddressFromContext(addressFilePath, options = {}) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -30855,6 +30956,11 @@ async function main() {
         }
       }
     }
+
+    lockAddressOutputToPreferredBranch(addressFilePath, {
+      preferRaw: true,
+      rawCandidates: finalUnnormalizedCandidates,
+    });
 
     for (const dirPath of relationshipDirs) {
       removeAddressRelationshipFiles(dirPath);
