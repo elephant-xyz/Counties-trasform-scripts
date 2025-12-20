@@ -265,8 +265,15 @@ function applyNullAddressRelationships(payload) {
     return payload;
   }
   const cleaned = { ...payload };
-  // Drop locally generated relationship stubs; downstream populates URs.
-  delete cleaned.relationships;
+  const relationships =
+    cleaned.relationships && typeof cleaned.relationships === "object"
+      ? { ...cleaned.relationships }
+      : {};
+  // Downstream populates relationship URs; keep explicit null placeholders so
+  // validation never sees locally generated stubs.
+  relationships.property_has_address = null;
+  relationships.address_has_fact_sheet = null;
+  cleaned.relationships = relationships;
   return cleaned;
 }
 
