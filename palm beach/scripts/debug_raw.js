@@ -12968,6 +12968,110 @@ function enforceRawAddressFieldCoverage(addressPath, options = {}) {
   writeJSON(addressPath, completed);
 }
 
+function pickCoordinatePair(candidates = []) {
+  if (!Array.isArray(candidates)) return { latitude: null, longitude: null };
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const lat = parseCoordinate(candidate.latitude);
+    const lon = parseCoordinate(candidate.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      return { latitude: lat, longitude: lon };
+    }
+  }
+  return { latitude: null, longitude: null };
+}
+
+// Force the final address into the raw oneOf branch with the full schema surface
+// so validation never sees missing required properties when the source only
+// provides an unnormalized string.
+function forceDeterministicRawAddress(addressPath, options = {}) {
+  if (!addressPath) return;
+  const snapshot = readJSONIfExists(addressPath) || {};
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      snapshot.unnormalized_address,
+      ...(options.rawCandidates || []),
+    ]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const completed = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  completed.unnormalized_address = rawValue;
+
+  const coords = pickCoordinatePair([
+    { latitude: snapshot.latitude, longitude: snapshot.longitude },
+    ...(options.coordinateCandidates || []),
+  ]);
+  completed.latitude = coords.latitude;
+  completed.longitude = coords.longitude;
+
+  completed.request_identifier =
+    safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        snapshot.request_identifier,
+        ...(options.requestIdentifierCandidates || []),
+      ]),
+    ) ?? null;
+
+  completed.source_http_request =
+    resolveSourceHttpRequest(
+      snapshot.source_http_request,
+      ...(options.sourceHttpRequestCandidates || []),
+    ) || null;
+
+  const fieldFallbacks =
+    options.fieldFallbacks && typeof options.fieldFallbacks === "object"
+      ? options.fieldFallbacks
+      : {};
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (
+      field === "unnormalized_address" ||
+      field === "request_identifier" ||
+      field === "source_http_request" ||
+      ADDRESS_COORDINATE_FIELDS.includes(field)
+    ) {
+      return;
+    }
+
+    const candidates = fieldFallbacks[field];
+    const fallbackValue = Array.isArray(candidates)
+      ? resolveFirstNonEmptyString(candidates)
+      : candidates;
+
+    let value =
+      snapshot[field] !== undefined && snapshot[field] !== null
+        ? snapshot[field]
+        : fallbackValue;
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      value = trimmed.length ? trimmed : null;
+    }
+
+    completed[field] = value === undefined ? null : value;
+  });
+
+  if (!completed.postal_code) {
+    completed.plus_four_postal_code = null;
+  }
+  if ((completed.latitude == null) !== (completed.longitude == null)) {
+    completed.latitude = null;
+    completed.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(completed.state_code) &&
+    !hasMeaningfulAddressValue(completed.country_code)
+  ) {
+    completed.country_code = options.countryFallback || "US";
+  }
+
+  writeJSON(addressPath, completed);
+}
+
 // Deterministically pick a single address branch for oneOf: prefer the raw
 // branch when any unnormalized string exists, otherwise emit the complete
 // normalized branch. Hydrate the full schema surface (nullable) and strip
@@ -42328,6 +42432,100 @@ async function main() {
       seed && seed.source_http_request,
       unAddr && unAddr.source_http_request,
     ],
+  });
+
+  const latestRawSnapshot = readJSONIfExists(addressOutputPath) || {};
+  forceDeterministicRawAddress(addressOutputPath, {
+    rawCandidates: [
+      latestRawSnapshot.unnormalized_address,
+      finalRawCandidate,
+      ...finalRawCandidates,
+      unnormalizedAddressCandidate,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+      fullAddrInput,
+      fullAddr,
+      siteLocationLine,
+      combinedModelAddress,
+      addressLineCombined,
+    ],
+    coordinateCandidates: [
+      {
+        latitude: latestRawSnapshot.latitude,
+        longitude: latestRawSnapshot.longitude,
+      },
+      { latitude: initialLatitude, longitude: initialLongitude },
+      parcelCentroid,
+    ].filter(Boolean),
+    requestIdentifierCandidates: [
+      latestRawSnapshot.request_identifier,
+      resolvedRequestIdentifier,
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      latestRawSnapshot.source_http_request,
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ],
+    fieldFallbacks: {
+      city_name: [
+        latestRawSnapshot.city_name,
+        normalizedCity,
+        resolvedCity,
+      ],
+      state_code: [
+        latestRawSnapshot.state_code,
+        resolvedState,
+        inferredStateCode,
+        "FL",
+      ],
+      postal_code: [
+        latestRawSnapshot.postal_code,
+        sanitizedPostalCode,
+        postalCode,
+      ],
+      plus_four_postal_code: [
+        latestRawSnapshot.plus_four_postal_code,
+        sanitizedPlus4,
+        plus4,
+      ],
+      county_name: [
+        latestRawSnapshot.county_name,
+        formattedCountyName,
+        countyName,
+        "Palm Beach",
+      ],
+      municipality_name: [
+        latestRawSnapshot.municipality_name,
+        normalizedMunicipality ? toTitleCase(normalizedMunicipality) : null,
+        resolvedCity,
+      ],
+      street_number: [latestRawSnapshot.street_number],
+      street_name: [latestRawSnapshot.street_name],
+      street_suffix_type: [latestRawSnapshot.street_suffix_type],
+      street_pre_directional_text: [
+        latestRawSnapshot.street_pre_directional_text,
+      ],
+      street_post_directional_text: [
+        latestRawSnapshot.street_post_directional_text,
+      ],
+      unit_identifier: [latestRawSnapshot.unit_identifier],
+      route_number: [latestRawSnapshot.route_number],
+      township: [latestRawSnapshot.township],
+      range: [latestRawSnapshot.range],
+      section: [latestRawSnapshot.section],
+      block: [latestRawSnapshot.block],
+      lot: [latestRawSnapshot.lot],
+      country_code: [latestRawSnapshot.country_code],
+    },
+    countryFallback: "US",
+    stateFallback: inferredStateCode || "FL",
+    countyFallback: formattedCountyName || countyName || "Palm Beach",
   });
 
   enforceRawAddressFieldCoverage(addressOutputPath, {
