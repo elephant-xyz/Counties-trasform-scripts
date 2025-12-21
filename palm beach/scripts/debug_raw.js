@@ -204,6 +204,8 @@ function writeNullRelationshipPlaceholders(directoryPath, baseNames = []) {
 }
 
 function coerceAddressRelationshipsToNull(filePath) {
+  const baseName = path.basename(filePath || "").toLowerCase();
+  if (baseName !== "address.json") return;
   const payload = readJSONIfExists(filePath);
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
   if (!Object.prototype.hasOwnProperty.call(payload, "relationships")) return;
@@ -235,9 +237,12 @@ function enforcePropertyRelationshipNulls(propertyPath) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return;
   }
-  if (Object.prototype.hasOwnProperty.call(payload, "relationships")) {
-    delete payload.relationships;
-  }
+  // Keep property relationship placeholders explicitly null so downstream URI
+  // population never sees locally generated links or partial objects.
+  payload.relationships = {
+    property_has_address: null,
+    address_has_fact_sheet: null,
+  };
   writeJSON(propertyPath, payload);
 }
 
@@ -2507,9 +2512,11 @@ function writeJSON(p, obj) {
     payload &&
     typeof payload === "object"
   ) {
-    if (Object.prototype.hasOwnProperty.call(payload, "relationships")) {
-      delete payload.relationships;
-    }
+    const relationships = {
+      property_has_address: null,
+      address_has_fact_sheet: null,
+    };
+    payload.relationships = relationships;
   }
 
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
@@ -41925,11 +41932,15 @@ async function main() {
   if (fs.existsSync(propertyFilePath)) {
     const propertyPayload = readJSONIfExists(propertyFilePath);
     if (propertyPayload && typeof propertyPayload === "object" && !Array.isArray(propertyPayload)) {
-      propertyPayload.relationships = {
+      const relationships = {
         property_has_address: null,
         address_has_fact_sheet: null,
       };
-      writeJSON(propertyFilePath, propertyPayload);
+      originalWriteFileSync.call(
+        fs,
+        propertyFilePath,
+        `${JSON.stringify({ ...propertyPayload, relationships }, null, 2)}\n`,
+      );
     }
   }
 
