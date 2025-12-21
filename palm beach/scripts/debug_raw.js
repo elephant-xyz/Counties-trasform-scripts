@@ -4904,17 +4904,8 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
     return;
   }
 
-  const payload = {
-    from: { "/": fromRelative },
-    to: { "/": toRelative },
-  };
-
-  try {
-    const serialized = `${JSON.stringify(payload, null, 2)}\n`;
-    originalWriteFileSync.call(fs, filePath, serialized);
-  } catch {
-    removeFileIfExists(filePath);
-  }
+  // Relationship URs are populated downstream; avoid emitting local stubs.
+  removeFileIfExists(filePath);
 }
 
 function removeFileIfExists(filePath) {
@@ -41716,6 +41707,97 @@ async function main() {
         `${JSON.stringify({ ...propertyPayload, relationships }, null, 2)}\n`,
       );
     }
+  }
+
+  // Final stabilization: prefer the raw address branch when any unnormalized string exists
+  // and hydrate every schema field (nullable) so oneOf validation never reports missing
+  // required properties. This also strips any lingering relationship content.
+  const terminalAddressSnapshot = readJSONIfExists(addressOutputPath) || {};
+  const ultimateRawCandidate = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      terminalAddressSnapshot.unnormalized_address,
+      canonicalUnnormalized,
+      finalRawCandidate,
+      finalRawCandidateClamp,
+      addressLineCombined,
+      siteLocationLine,
+      fullAddr,
+      fullAddrInput,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ]),
+  );
+  if (ultimateRawCandidate) {
+    const hydrated = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+    const parsedFromRaw = parsePostalFromAddressString(ultimateRawCandidate);
+    RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        hydrated[field] = ultimateRawCandidate;
+        return;
+      }
+      if (field === "request_identifier") {
+        const requestId =
+          terminalAddressSnapshot.request_identifier ??
+          (seed && seed.request_identifier) ??
+          parcelId;
+        hydrated[field] = requestId === undefined ? null : requestId;
+        return;
+      }
+      if (field === "source_http_request") {
+        const preparedSource =
+          prepareSourceHttpRequest(
+            resolveSourceHttpRequest(
+              terminalAddressSnapshot.source_http_request,
+              unAddr && unAddr.source_http_request,
+              seed && seed.source_http_request,
+            ),
+          ) || null;
+        hydrated[field] = preparedSource;
+        return;
+      }
+      let value = terminalAddressSnapshot[field];
+      if (value === undefined && unAddr && Object.prototype.hasOwnProperty.call(unAddr, field)) {
+        value = unAddr[field];
+      }
+      if (value === undefined && seed && Object.prototype.hasOwnProperty.call(seed, field)) {
+        value = seed[field];
+      }
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric =
+          parseCoordinate(value) ??
+          parseCoordinate(parcelCentroid && parcelCentroid[field]);
+        hydrated[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (field === "postal_code" && !hasMeaningfulAddressValue(value)) {
+        value = parsedFromRaw.postal_code || value;
+      }
+      if (field === "plus_four_postal_code" && !hasMeaningfulAddressValue(value)) {
+        value = parsedFromRaw.plus_four_postal_code || value;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        hydrated[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      hydrated[field] = value === undefined ? null : value;
+    });
+    if (!hydrated.postal_code) {
+      hydrated.plus_four_postal_code = null;
+    }
+    if ((hydrated.latitude == null) !== (hydrated.longitude == null)) {
+      hydrated.latitude = null;
+      hydrated.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(hydrated.state_code) &&
+      !hasMeaningfulAddressValue(hydrated.country_code)
+    ) {
+      hydrated.country_code = "US";
+    }
+    writeJSON(addressOutputPath, applyNullAddressRelationships(hydrated));
+  } else {
+    enforceAddressRelationshipNulls(addressOutputPath);
   }
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
