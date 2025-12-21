@@ -41929,20 +41929,20 @@ async function main() {
   scrubRelationshipArtifacts(dataDir);
   scrubRelationshipArtifacts(relationshipsDir);
 
-  // Deterministically rebuild the address payload so it cleanly selects a
-  // single oneOf branch. Prefer the raw branch whenever we have an
-  // unnormalized string and hydrate the full schema surface (nullable) so the
-  // validator never reports missing required fields. Fall back to normalized
-  // only when it is complete, and always strip relationships/UR placeholders.
+  // Deterministically rebuild the address payload so it cleanly selects a single
+  // oneOf branch. Prefer the raw branch whenever an unnormalized string exists,
+  // hydrate every allowed field (nullable), and strip relationships/UR stubs so
+  // validators never see mixed branches.
   if (fs.existsSync(addressOutputPath)) {
     const snapshot = readJSONIfExists(addressOutputPath) || {};
-    const rawPreference = safeNullIfEmpty(
+    const rawCandidate = safeNullIfEmpty(
       resolveFirstNonEmptyString([
         snapshot.unnormalized_address,
         canonicalUnnormalized,
         finalRawCandidate,
         finalRawCandidateClamp,
         addressLineCombined,
+        siteLocationLine,
         fullAddrInput,
         fullAddr,
         unAddr && unAddr.full_address,
@@ -41977,10 +41977,12 @@ async function main() {
           unAddr && unAddr.source_http_request,
         ),
       ) || null;
+
     const resolveCoordinate = (field) => {
       const candidates = [
         snapshot[field],
         unAddr && unAddr[field],
+        seed && seed[field],
         parcelCentroid && parcelCentroid[field],
       ];
       for (const candidate of candidates) {
@@ -41990,14 +41992,14 @@ async function main() {
       return null;
     };
 
-    if (rawPreference) {
-      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    if (rawCandidate) {
       const parsedPostal = parsePostalFromAddressString(
-        rawPreference || addressLineCombined || "",
+        rawCandidate || addressLineCombined || "",
       );
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
       RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
         if (field === "unnormalized_address") {
-          rawOut[field] = rawPreference;
+          rawOut[field] = rawCandidate;
           return;
         }
         if (field === "request_identifier") {
@@ -42012,6 +42014,12 @@ async function main() {
           snapshot[field] !== undefined
             ? snapshot[field]
             : normalizedSurface && normalizedSurface[field];
+        if (value === undefined && unAddr && Object.prototype.hasOwnProperty.call(unAddr, field)) {
+          value = unAddr[field];
+        }
+        if (value === undefined && seed && Object.prototype.hasOwnProperty.call(seed, field)) {
+          value = seed[field];
+        }
         if (!hasMeaningfulAddressValue(value)) {
           if (field === "county_name") {
             value = titleCaseCounty(formattedCountyName || countyName || "Palm Beach");
@@ -42039,7 +42047,7 @@ async function main() {
         rawOut[field] = value === undefined ? null : value;
       });
       if (!rawOut.postal_code) {
-        rawOut.plus_four_postal_code = rawOut.plus_four_postal_code || null;
+        rawOut.plus_four_postal_code = null;
       }
       if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
         rawOut.latitude = null;
@@ -42067,12 +42075,15 @@ async function main() {
           normalizedSurface[field] !== undefined
             ? normalizedSurface[field]
             : snapshot[field];
+        if (value === undefined && unAddr && Object.prototype.hasOwnProperty.call(unAddr, field)) {
+          value = unAddr[field];
+        }
+        if (value === undefined && seed && Object.prototype.hasOwnProperty.call(seed, field)) {
+          value = seed[field];
+        }
         if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
           const numeric = parseCoordinate(value);
-          normalizedOut[field] =
-            Number.isFinite(numeric) || numeric === 0
-              ? numeric
-              : resolveCoordinate(field);
+          normalizedOut[field] = Number.isFinite(numeric) ? numeric : resolveCoordinate(field);
           return;
         }
         if (typeof value === "string") {
