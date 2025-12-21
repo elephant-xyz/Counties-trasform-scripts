@@ -2452,10 +2452,14 @@ function sanitizeAddressPayloadForWrite(payload) {
     return payload;
   }
 
+  const rawCandidate = resolveFirstNonEmptyString([
+    payload.unnormalized_address,
+    payload.full_address,
+    payload.address,
+    payload.site_address,
+  ]);
   const trimmedUnnormalized =
-    typeof payload.unnormalized_address === "string"
-      ? payload.unnormalized_address.trim()
-      : "";
+    typeof rawCandidate === "string" ? rawCandidate.trim() : "";
   const normalizedCandidate = ensureNormalizedAddressSchemaSurface
     ? ensureNormalizedAddressSchemaSurface({ ...payload })
     : { ...payload };
@@ -2604,7 +2608,14 @@ function writeJSON(p, obj) {
   }
 
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+    const rawValue = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        payload.unnormalized_address,
+        payload.full_address,
+        payload.address,
+        payload.site_address,
+      ]),
+    );
     if (rawValue) {
       const hydrated = {
         ...RAW_ADDRESS_SCHEMA_TEMPLATE,
