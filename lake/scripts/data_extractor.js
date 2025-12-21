@@ -53,8 +53,27 @@ function toISODate(mdY) {
 }
 function properCaseName(s) {
   if (!s) return s;
+  // Convert to lowercase first, then capitalize first letter of each word
+  // Words are separated by space, hyphen, apostrophe, comma, or period
   const lower = s.toLowerCase();
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
+  return lower.replace(/(^|[\s\-',.])([a-z])/g, (match, separator, letter) => {
+    return separator + letter.toUpperCase();
+  });
+}
+
+function cleanName(s) {
+  if (!s) return null;
+  // Remove characters not allowed by pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // Keep only: letters, spaces, hyphens, apostrophes, commas, and periods
+  let cleaned = String(s).replace(/[^a-zA-Z\s\-',.]/g, '');
+  // Remove consecutive separators (e.g., -- becomes -)
+  cleaned = cleaned.replace(/[\s\-',.]{2,}/g, (match) => match[0]);
+  // Remove leading and trailing separators
+  cleaned = cleaned.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '');
+  cleaned = cleaned.trim();
+  if (!cleaned) return null;
+  // Apply proper case
+  return properCaseName(cleaned);
 }
 
 function canonicalDeedKey(str) {
@@ -440,6 +459,9 @@ function main() {
     if (mYear) out.taxYear = parseInt(mYear[1], 10);
 
     // Sales History: Book/Page, Sale Date, Instrument, Sale Price
+    // Track which deed indices have corresponding files
+    out.deedToFileMap = [];
+
     $("#cphMain_gvSalesHistory tr").each((i, tr) => {
       if (i === 0) return; // header
       const tds = $(tr).find("td");
@@ -459,18 +481,33 @@ function main() {
       out.sales.push(sale);
 
       const deed = { deed_type: instrument || null };
+      const deedIndex = out.deeds.length;
       out.deeds.push(deed);
 
-      const fileObj = {
-        document_type: /Warranty Deed/i.test(instrument)
-          ? "ConveyanceDeedWarrantyDeed"
-          : null,
-        file_format: null,
-        ipfs_url: null,
-        name: bookPageText ? `Official Records ${bookPageText}` : null,
-        original_url: docUrl || null,
-      };
-      out.files.push(fileObj);
+      // Skip creating file objects for invalid book/page data (e.g., "NO** / DATA", "N/A", "NONE")
+      // These entries have invalid URLs that cannot be processed
+      // Check for patterns like: NO**, **/**, N/A, NONE, UNKNOWN, or missing book/page numbers
+      const isInvalidBookPage = !bookPageText ||
+                                /\*\*/.test(bookPageText) ||
+                                /^(N\/?A|NONE|UNKNOWN)$/i.test(bookPageText.trim());
+
+      if (!isInvalidBookPage) {
+        const fileObj = {
+          document_type: /Warranty Deed/i.test(instrument)
+            ? "ConveyanceDeedWarrantyDeed"
+            : null,
+          file_format: null,
+          name: bookPageText ? `Official Records ${bookPageText}` : null,
+        };
+
+        // original_url is omitted and will be populated by the process
+
+        const fileIndex = out.files.length;
+        out.files.push(fileObj);
+
+        // Map this deed to its file
+        out.deedToFileMap.push({ deedIndex, fileIndex });
+      }
     });
 
     // Residential Building Characteristics (Sections) for stories and exterior wall types
@@ -1173,16 +1210,25 @@ function main() {
         const first = cleanName(o.first_name);
         const last = cleanName(o.last_name);
         const middle = cleanName(o.middle_name);
+
+        // Only create person if we have valid first_name and last_name (both required by schema)
+        // Ensure they are strings and not null/undefined
+        if (!first || !last || typeof first !== 'string' || typeof last !== 'string') {
+          console.warn(`Skipping person with invalid name: first="${o.first_name}", last="${o.last_name}"`);
+          return;
+        }
+
         const person = {
           birth_date: null,
           first_name: first,
           last_name: last,
-          middle_name: middle,
+          middle_name: middle || null,
           prefix_name: null,
           suffix_name: null,
           us_citizenship_status: null,
           veteran_status: null,
         };
+
         const file = `person_${personIndex}.json`;
         writeJSON(path.join(dataDir, file), person);
         personFiles.push(file);
@@ -1207,11 +1253,19 @@ function main() {
   const fileFiles = [];
   bx.sales.forEach((s, i) => {
     const sName = `sales_history_${i + 1}.json`;
-    writeJSON(path.join(dataDir, sName), {
+    const salesObj = {
       ownership_transfer_date: s.ownership_transfer_date || null,
       purchase_price_amount:
         s.purchase_price_amount != null ? s.purchase_price_amount : null,
-    });
+    };
+    // Add source_http_request and request_identifier from propSeed
+    if (propSeed && propSeed.source_http_request) {
+      salesObj.source_http_request = propSeed.source_http_request;
+    }
+    if (propSeed && propSeed.request_identifier) {
+      salesObj.request_identifier = propSeed.request_identifier;
+    }
+    writeJSON(path.join(dataDir, sName), salesObj);
     salesFiles.push(sName);
   });
   bx.deeds.forEach((d, i) => {
@@ -1221,33 +1275,52 @@ function main() {
     if (normalizedDeedType) {
       deedObj.deed_type = normalizedDeedType;
     }
+    // Add request_identifier from propSeed (but NOT source_http_request as it's not in deed schema)
+    if (propSeed && propSeed.request_identifier) {
+      deedObj.request_identifier = propSeed.request_identifier;
+    }
     writeJSON(path.join(dataDir, dName), deedObj);
     deedFiles.push(dName);
   });
   bx.files.forEach((f, i) => {
     const fName = `file_${i + 1}.json`;
-    const obj = { ...f };
+    // Only include properties that are part of the file schema
+    const obj = {};
+    if (f.document_type !== undefined) obj.document_type = f.document_type;
+    if (f.file_format !== undefined) obj.file_format = f.file_format;
+    if (f.ipfs_url !== undefined) obj.ipfs_url = f.ipfs_url;
+    if (f.name !== undefined) obj.name = f.name;
+    if (f.original_url !== undefined) obj.original_url = f.original_url;
+    // Add request_identifier from propSeed (file schema allows it)
+    if (propSeed && propSeed.request_identifier) {
+      obj.request_identifier = propSeed.request_identifier;
+    }
     writeJSON(path.join(dataDir, fName), obj);
     fileFiles.push(fName);
   });
 
-  // relationship_deed_file_*.json (deed → file)
-  for (let i = 0; i < Math.min(deedFiles.length, fileFiles.length); i++) {
-    const rel = {
-      from: { "/": `./${deedFiles[i]}` },
-      to: { "/": `./${fileFiles[i]}` },
-    };
-    const relName = `relationship_deed_file_${i + 1}.json`;
-    writeJSON(path.join(dataDir, relName), rel);
+  // relationship_deed_*_has_file_*.json (deed → file)
+  // Use the mapping to create correct relationships
+  if (bx.deedToFileMap && bx.deedToFileMap.length > 0) {
+    bx.deedToFileMap.forEach((mapping) => {
+      const deedNum = mapping.deedIndex + 1;
+      const fileNum = mapping.fileIndex + 1;
+      const rel = {
+        from: { "/": `./deed_${deedNum}.json` },
+        to: { "/": `./file_${fileNum}.json` },
+      };
+      const relName = `relationship_deed_${deedNum}_has_file_${fileNum}.json`;
+      writeJSON(path.join(dataDir, relName), rel);
+    });
   }
 
-  // relationship_sales_deed_*.json (sales → deed)
+  // relationship_sales_history_*_has_deed.json (sales → deed)
   for (let i = 0; i < Math.min(salesFiles.length, deedFiles.length); i++) {
     const rel = {
-      to: { "/": `./${deedFiles[i]}` },
       from: { "/": `./${salesFiles[i]}` },
+      to: { "/": `./${deedFiles[i]}` },
     };
-    const relName = `relationship_sales_deed_${i + 1}.json`;
+    const relName = `relationship_sales_history_${i + 1}_has_deed.json`;
     writeJSON(path.join(dataDir, relName), rel);
   }
 

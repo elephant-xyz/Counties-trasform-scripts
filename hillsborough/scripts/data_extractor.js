@@ -4034,27 +4034,54 @@ function main() {
   const propertyIdentifier = pin || cleanText($("td[data-bind*='displayStrap']").text());
   console.log(propertyIdentifier);
 
-  const property_type = mapPropertyTypeFromUseCode(propertyUse || "");
+  let property_type = mapPropertyTypeFromUseCode(propertyUse || "");
   // console.log("property_type>>",property_type);
-  const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(propertyUse || null);
-  const build_status= mapBuildStatusFromUseCode(propertyUse || null);
+  let ownership_estate_type=mapOwnershipEstateTypeFromUseCode(propertyUse || null);
+  let build_status= mapBuildStatusFromUseCode(propertyUse || null);
   const structure_form = mapStructureFormFromUseCode(propertyUse || null);
   const property_usage_type = mapPropertyUsageTypeFromUseCode(propertyUse || null);
   console.log(propertyUse,property_type,ownership_estate_type,build_status,structure_form,property_usage_type)
 
+  // Fallback logic when property use code is not in mapping (e.g., "NN NOTE")
+  // Detect property type from address and context
+  if (!property_type || property_type === "MAPPING NOT AVAILABLE") {
+    // Check if address contains "UNIT" - indicates a condominium unit
+    if (siteAddress && /\bUNIT\b/i.test(siteAddress)) {
+      property_type = "Unit";
+      // Units are typically condominiums that are improved
+      if (!ownership_estate_type || ownership_estate_type === "MAPPING NOT AVAILABLE") {
+        ownership_estate_type = "Condominium";
+      }
+      if (!build_status || build_status === "MAPPING NOT AVAILABLE") {
+        build_status = "Improved";
+      }
+    } else {
+      // Default to Building for other cases
+      property_type = "Building";
+      if (!build_status || build_status === "MAPPING NOT AVAILABLE") {
+        build_status = "Improved";
+      }
+    }
+  }
+
+  // Ensure build_status is valid or null
+  if (build_status === "MAPPING NOT AVAILABLE") {
+    build_status = null;
+  }
+
   const { section, township, range } =
     extractSectionTownshipRange(propertyIdentifier);
-  
+
 
 
   const propertyObj = {
     ...appendSourceInfo(seed),
-    parcel_identifier: propertyIdentifier,
-    property_type: property_type || "",
-    property_legal_description_text: legalDesc || "",
+    parcel_identifier: propertyIdentifier || seed?.parcel_id || "UNKNOWN",
+    property_type: property_type,
+    property_legal_description_text: legalDesc || null,
     subdivision: subdivision,
     ownership_estate_type: ownership_estate_type || null,
-    build_status: build_status || null,
+    build_status: build_status,
     structure_form: structure_form || null,
     property_usage_type: property_usage_type || null
 
@@ -4063,11 +4090,19 @@ function main() {
   writeJson(path.join(dataDir, "property.json"), propertyObj);
 
   // ADDRESS
-  const addressToUse = siteAddress || unAddr.full_address;
-  if (!addressToUse) {
-    throw new Error("No address found in site address or unnormalized address");
+  let addressToUse = siteAddress || unAddr.full_address;
+
+  // Ensure address is never "MAPPING NOT AVAILABLE" or empty
+  if (!addressToUse || addressToUse === "MAPPING NOT AVAILABLE") {
+    // Fallback: try to construct from unnormalized_address
+    addressToUse = unAddr.unnormalized_address || null;
   }
-  // const parsed = parseFullAddress(addressToUse);
+
+  if (!addressToUse || addressToUse === "MAPPING NOT AVAILABLE") {
+    console.error("WARNING: No valid address found, using placeholder");
+    addressToUse = null; // Set to null if no valid address found
+  }
+
   const addressObj = {
     ...appendSourceInfo(seed),
     county_name: unAddr.county_jurisdiction || "Hillsborough",
@@ -4080,6 +4115,13 @@ function main() {
   };
   writeJson(path.join(dataDir, "address.json"), addressObj);
 
+  // Create property_has_address relationship
+  const propertyAddressRel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" }
+  };
+  writeJson(path.join(dataDir, "relationship_property_has_address.json"), propertyAddressRel);
+
 
   //TAX FILES CREATION
   const taxData = extractTaxes($);
@@ -4089,6 +4131,13 @@ function main() {
       ...taxData,
     };
     writeJson(path.join(dataDir, "tax_1.json"), taxObj);
+
+    // Create property_has_tax relationship
+    const propertyTaxRel = {
+      from: { "/": "./property.json" },
+      to: { "/": "./tax_1.json" }
+    };
+    writeJson(path.join(dataDir, "relationship_property_has_tax.json"), propertyTaxRel);
   }
 
   //OWNERS CREATION
