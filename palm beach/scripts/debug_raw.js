@@ -12698,6 +12698,160 @@ function forceNullRelationshipPlaceholders(filePath) {
   writeJSON(filePath, payload);
 }
 
+// Final guardrail to pick a single address branch. Prefer the raw branch whenever
+// any unnormalized string exists; otherwise use a fully populated normalized
+// branch. Always hydrate the schema surface so oneOf never complains about
+// missing required properties and strip relationships/UR placeholders.
+function finalizePreferredAddressBranch(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const snapshot = readJSONIfExists(addressPath) || {};
+  const fallbackSources = Array.isArray(options.fallbackSources)
+    ? options.fallbackSources.filter((src) => src && typeof src === "object")
+    : [];
+
+  const rawCandidate = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      snapshot.unnormalized_address,
+      ...(Array.isArray(options.rawCandidates) ? options.rawCandidates : []),
+    ]),
+  );
+
+  const resolvedRequestId = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      snapshot.request_identifier,
+      options.requestIdentifier,
+      ...fallbackSources.map((src) => src && src.request_identifier),
+    ]),
+  );
+  const resolvedSourceHttp = resolveSourceHttpRequest(
+    snapshot.source_http_request,
+    options.sourceHttpRequest,
+    ...fallbackSources.map((src) => src && src.source_http_request),
+  );
+
+  if (rawCandidate) {
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        rawOut[field] = rawCandidate;
+        return;
+      }
+      if (field === "request_identifier") {
+        rawOut[field] = resolvedRequestId === undefined ? null : resolvedRequestId;
+        return;
+      }
+      if (field === "source_http_request") {
+        rawOut[field] = prepareSourceHttpRequest(resolvedSourceHttp) || null;
+        return;
+      }
+      let value = snapshot[field];
+      if (value === undefined) {
+        for (const src of fallbackSources) {
+          if (
+            src &&
+            Object.prototype.hasOwnProperty.call(src, field)
+          ) {
+            value = src[field];
+            break;
+          }
+        }
+      }
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        rawOut[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      rawOut[field] = value === undefined ? null : value;
+    });
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
+    }
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rawOut.state_code) &&
+      !hasMeaningfulAddressValue(rawOut.country_code)
+    ) {
+      rawOut.country_code = "US";
+    }
+    writeJSON(addressPath, applyNullAddressRelationships(rawOut));
+    return;
+  }
+
+  const normalizedSurface =
+    (typeof ensureNormalizedAddressSchemaSurface === "function" &&
+      ensureNormalizedAddressSchemaSurface({ ...snapshot })) ||
+    { ...snapshot };
+  const normalizedReady =
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (normalizedReady) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      if (field === "request_identifier") {
+        normalizedOut[field] = resolvedRequestId === undefined ? null : resolvedRequestId;
+        return;
+      }
+      if (field === "source_http_request") {
+        normalizedOut[field] = prepareSourceHttpRequest(resolvedSourceHttp) || null;
+        return;
+      }
+      let value = normalizedSurface[field];
+      if (value === undefined) {
+        for (const src of fallbackSources) {
+          if (
+            src &&
+            Object.prototype.hasOwnProperty.call(src, field)
+          ) {
+            value = src[field];
+            break;
+          }
+        }
+      }
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        normalizedOut[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      normalizedOut[field] = value === undefined ? null : value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")) {
+      delete normalizedOut.unnormalized_address;
+    }
+    writeJSON(addressPath, applyNullAddressRelationships(normalizedOut));
+    return;
+  }
+
+  removeFileIfExists(addressPath);
+}
+
 // Remove any locally generated relationship stubs so validation never sees UR placeholders.
 function scrubAutogeneratedRelationshipFiles(directories = []) {
   (Array.isArray(directories) ? directories : [directories])
@@ -42112,6 +42266,29 @@ async function main() {
       removeFileIfExists(addressOutputPath);
     }
   }
+
+  finalizePreferredAddressBranch(addressOutputPath, {
+    rawCandidates: [
+      finalRawCandidate,
+      unAddr && unAddr.unnormalized_address,
+      unAddr && unAddr.full_address,
+      siteLocationLine,
+      combinedModelAddress,
+      addressLineCombined,
+    ],
+    fallbackSources: [unAddr, seed],
+    requestIdentifier: resolveFirstNonEmptyString([
+      trimmedRequestIdentifier,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ]),
+    sourceHttpRequest:
+      sourceHttpCandidate ||
+      (seed && seed.source_http_request) ||
+      (unAddr && unAddr.source_http_request),
+  });
+
+  scrubAutogeneratedRelationshipFiles([dataDir, relationshipsDir]);
 
   forceNullRelationshipPlaceholders(propertyFilePath);
   if (fs.existsSync(propertyFilePath)) {
