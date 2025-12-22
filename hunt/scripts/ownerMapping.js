@@ -220,14 +220,14 @@ function sanitizeMiddleName(middle) {
 }
 
 function titleCaseName(name) {
-  if (!name || typeof name !== 'string') return null;
+  if (!name || typeof name !== 'string') return "";
   const trimmed = name.trim();
-  if (trimmed === '') return null;
+  if (trimmed === '') return "";
 
   // Remove special separator characters (hyphens, slashes, pipes, plus signs) that might be used to separate multiple people
   // Keep legitimate name characters like apostrophes (O'Brien) and spaces
   const cleaned = trimmed.replace(/[-\/\|+]/g, ' ').replace(/\s+/g, ' ').trim();
-  if (cleaned === '') return null;
+  if (cleaned === '') return "";
 
   // Convert to title case: First letter uppercase, rest lowercase
   // Pattern for first/last names: ^[A-Z][a-z]*([ ',][A-Za-z][a-z]*)*$
@@ -239,7 +239,7 @@ function titleCaseName(name) {
 
   // Validate against the required pattern (no hyphens, slashes, pipes, or plus signs allowed)
   if (!/^[A-Z][a-z]*([ ',][A-Za-z][a-z]*)*$/.test(titleCased)) {
-    return null;
+    return "";
   }
 
   return titleCased;
@@ -615,11 +615,11 @@ function parsePersonsFromString(raw) {
   return owners
     .filter((owner) => owner.type === "person")
     .map((owner) => ({
-      first_name: owner.first_name || null,
-      last_name: owner.last_name || null,
+      first_name: owner.first_name || "",
+      last_name: owner.last_name || "",
       middle_name: owner.middle_name || null,
-      prefix_name: owner.prefix_name || null,
-      suffix_name: owner.suffix_name || null,
+      prefix_name: owner.prefix_name || "",
+      suffix_name: owner.suffix_name || "",
       birth_date: null,
       us_citizenship_status: null,
       veteran_status: null,

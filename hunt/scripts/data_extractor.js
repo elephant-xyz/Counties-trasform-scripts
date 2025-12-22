@@ -108,11 +108,11 @@ function splitHyphenatedFirstNames(raw) {
   const lastName = ownerParser.titleCaseName(lastNameToken);
 
   return firstNames.map((first) => ({
-    first_name: ownerParser.titleCaseName(first),
-    last_name: lastName,
+    first_name: ownerParser.titleCaseName(first) || "",
+    last_name: lastName || "",
     middle_name: middleName,
-    prefix_name: null,
-    suffix_name: suffixName,
+    prefix_name: "",
+    suffix_name: suffixName || "",
     birth_date: null,
     us_citizenship_status: null,
     veteran_status: null,
@@ -120,7 +120,7 @@ function splitHyphenatedFirstNames(raw) {
 }
 
 function validateSuffixName(suffix) {
-  if (!suffix || suffix.trim() === "") return null;
+  if (!suffix || suffix.trim() === "") return "";
 
   // Valid suffix values from the schema enum
   const validSuffixes = [
@@ -136,43 +136,13 @@ function validateSuffixName(suffix) {
     valid.toLowerCase() === cleaned.toLowerCase()
   );
 
-  // Return the properly formatted suffix if valid, otherwise null
-  return match || null;
+  // Return the properly formatted suffix if valid, otherwise empty string
+  return match || "";
 }
 
 function parsePersonNames(nameStr) {
   if (!nameStr || nameStr.trim() === "") return [];
-  const persons = ownerParser.parsePersonsFromString(nameStr);
-
-  // Validate and fix person objects to ensure first_name and last_name are never null
-  return persons.map(person => {
-    let first = person.first_name;
-    let last = person.last_name;
-    let mid = person.middle_name;
-
-    // Ensure first_name and last_name are non-null strings
-    // Use fallbacks similar to buildOwners logic
-    if (!first || first === "" || typeof first !== "string") {
-      first = last || mid || "Unknown";
-    }
-    if (!last || last === "" || typeof last !== "string") {
-      last = first || mid || "Unknown";
-    }
-
-    return {
-      ...person,
-      first_name: first,
-      last_name: last,
-    };
-  }).filter(person =>
-    // Only include persons with valid first_name and last_name
-    person.first_name &&
-    typeof person.first_name === "string" &&
-    person.first_name !== "" &&
-    person.last_name &&
-    typeof person.last_name === "string" &&
-    person.last_name !== ""
-  );
+  return ownerParser.parsePersonsFromString(nameStr);
 }
 
 
@@ -1380,11 +1350,11 @@ function buildOwners(ownerJsonPath) {
             seen.add(key);
             persons.push({
               birth_date: null,
-              first_name: first,
-              last_name: last,
+              first_name: first || "",
+              last_name: last || "",
               middle_name: mid,
-              prefix_name: null,
-              suffix_name: null,
+              prefix_name: "",
+              suffix_name: "",
               us_citizenship_status: null,
               veteran_status: null,
             });
