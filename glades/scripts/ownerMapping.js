@@ -171,6 +171,8 @@ function classifyOwner(raw) {
       first_name: first,
       last_name: last,
       middle_name: middle ? middle : null,
+      prefix_name: null,
+      suffix_name: null,
     };
     return { valid: true, owner: person };
   }

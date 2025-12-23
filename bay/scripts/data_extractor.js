@@ -1319,10 +1319,16 @@ function writeSalesDeedsFilesAndRelationships($, requestIdentifier) {
     /^file_\d+\.json$/i,
     /^relationship_sales_deed_\d+\.json$/i,
     /^relationship_deed_file_\d+\.json$/i,
-    /^relationship_sales_history_.*\.json$/i,
+    /^relationship_sales_history_\d+_has_deed\.json$/i,
+    /^relationship_sales_history_\d+_buyer_(person|company)_\d+\.json$/i,
     /^relationship_sales_person_\d+\.json$/i,
     /^relationship_sales_company_\d+\.json$/i,
     /^relationship_property_has_sales_history_.*\.json$/i,
+    /^person_\d+\.json$/i,
+    /^company_\d+\.json$/i,
+    /^mailing_address\.json$/i,
+    /^relationship_person_has_mailing_address_\d+\.json$/i,
+    /^relationship_company_has_mailing_address_\d+\.json$/i,
   ];
 
   try {
@@ -1492,26 +1498,66 @@ function normalizeNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+const VALID_SPACE_TYPES = new Set([
+  "Building", "Living Room", "Family Room", "Great Room", "Dining Room", "Office Room",
+  "Conference Room", "Class Room", "Plant Floor", "Kitchen", "Breakfast Nook", "Pantry",
+  "Primary Bedroom", "Secondary Bedroom", "Guest Bedroom", "Children's Bedroom", "Nursery",
+  "Full Bathroom", "Three-Quarter Bathroom", "Half Bathroom / Powder Room", "En-Suite Bathroom",
+  "Jack-and-Jill Bathroom", "Primary Bathroom", "Laundry Room", "Mudroom", "Closet", "Bedroom",
+  "Walk-in Closet", "Mechanical Room", "Storage Room", "Server/IT Closet", "Home Office",
+  "Library", "Den", "Study", "Media Room / Home Theater", "Game Room", "Home Gym", "Music Room",
+  "Craft Room / Hobby Room", "Prayer Room / Meditation Room", "Safe Room / Panic Room",
+  "Wine Cellar", "Bar Area", "Greenhouse", "Attached Garage", "Detached Garage", "Carport",
+  "Workshop", "Storage Loft", "Porch", "Screened Porch", "Sunroom", "Deck", "Patio", "Pergola",
+  "Balcony", "Terrace", "Gazebo", "Pool House", "Outdoor Kitchen", "Lobby / Entry Hall",
+  "Common Room", "Utility Closet", "Elevator Lobby", "Mail Room", "Janitor's Closet", "Pool Area",
+  "Indoor Pool", "Outdoor Pool", "Hot Tub / Spa Area", "Shed", "Lanai", "Open Porch",
+  "Enclosed Porch", "Attic", "Enclosed Cabana", "Attached Carport", "Detached Carport",
+  "Detached Utility Closet", "Jacuzzi", "Courtyard", "Open Courtyard", "Screen Porch (1-Story)",
+  "Screen Enclosure (2-Story)", "Screen Enclosure (3-Story)", "Screen Enclosure (Custom)",
+  "Lower Garage", "Lower Screened Porch", "Stoop",
+  "Floor", "Basement", "Sub-Basement", "Living Area", "Barn"
+]);
+
+function validateSpaceType(spaceType) {
+  if (!spaceType || typeof spaceType !== "string") return null;
+  const trimmed = spaceType.trim();
+  if (!trimmed || !VALID_SPACE_TYPES.has(trimmed)) return null;
+  return trimmed;
+}
+
 function mapExtraFeatureToSpaceType(feature) {
   const code = (feature && feature.code) ? String(feature.code).trim() : "";
   const descRaw = feature && feature.description ? feature.description : "";
   const desc = descRaw.toUpperCase();
 
+  let spaceType = null;
+
   if (desc.includes("POOL") || code === "0280") {
-    if (desc.includes("SPA")) return "Hot Tub / Spa Area";
-    return "Outdoor Pool";
-  }
-  if (desc.includes("PATIO")) return "Patio";
-  if (desc.includes("PORCH")) {
-    if (desc.includes("SCREEN")) return "Screened Porch";
-    if (desc.includes("OPEN")) return "Open Porch";
-    if (desc.includes("ENCLOSED")) return "Enclosed Porch";
-    return "Porch";
-  }
-  if (desc.includes("DECK")) return "Deck";
-  if (desc.includes("CARPORT")) return "Carport";
-  if (desc.includes("GARAGE")) return "Attached Garage";
-  if (
+    if (desc.includes("SPA")) {
+      spaceType = "Hot Tub / Spa Area";
+    } else {
+      spaceType = "Outdoor Pool";
+    }
+  } else if (desc.includes("PATIO")) {
+    spaceType = "Patio";
+  } else if (desc.includes("PORCH")) {
+    if (desc.includes("SCREEN")) {
+      spaceType = "Screened Porch";
+    } else if (desc.includes("OPEN")) {
+      spaceType = "Open Porch";
+    } else if (desc.includes("ENCLOSED")) {
+      spaceType = "Enclosed Porch";
+    } else {
+      spaceType = "Porch";
+    }
+  } else if (desc.includes("DECK")) {
+    spaceType = "Deck";
+  } else if (desc.includes("CARPORT")) {
+    spaceType = "Carport";
+  } else if (desc.includes("GARAGE")) {
+    spaceType = "Attached Garage";
+  } else if (
     desc.includes("STORAGE") ||
     desc.includes("UTILITY") ||
     desc.includes("UDU") ||
@@ -1519,12 +1565,16 @@ function mapExtraFeatureToSpaceType(feature) {
     desc.includes("UDG") ||
     desc.includes("UDS")
   ) {
-    return "Storage Room";
+    spaceType = "Storage Room";
+  } else if (desc.includes("CABANA")) {
+    spaceType = "Enclosed Cabana";
+  } else if (desc.includes("OFFICE")) {
+    spaceType = "Office Room";
+  } else if (desc.includes("BALCONY")) {
+    spaceType = "Balcony";
   }
-  if (desc.includes("CABANA")) return "Enclosed Cabana";
-  if (desc.includes("OFFICE")) return "Office Room";
-  if (desc.includes("BALCONY")) return "Balcony";
-  return null;
+
+  return validateSpaceType(spaceType);
 }
 
 function writeLayoutsUtilitiesStructures(layoutEntry, utilityRecord, structureRecord, propertyMapping, parcelId) {
@@ -1570,6 +1620,19 @@ function writeLayoutsUtilitiesStructures(layoutEntry, utilityRecord, structureRe
   let layoutCounter = 0;
 
   function writeLayoutFile(layoutData) {
+    // Validate space_type before writing
+    if (!layoutData || !layoutData.space_type) {
+      console.error(`ERROR: Attempting to write layout with null/missing space_type`);
+      return null;
+    }
+    const validatedSpaceType = validateSpaceType(layoutData.space_type);
+    if (!validatedSpaceType) {
+      console.error(`ERROR: Attempting to write layout with invalid space_type: "${layoutData.space_type}"`);
+      return null;
+    }
+    // Ensure the space_type is the validated version (trimmed, etc.)
+    layoutData.space_type = validatedSpaceType;
+
     layoutCounter += 1;
     const filename = `layout_${layoutCounter}.json`;
     writeJSON(path.join(dataDir, filename), layoutData);
@@ -1587,7 +1650,7 @@ function writeLayoutsUtilitiesStructures(layoutEntry, utilityRecord, structureRe
         : building.heated_area_sq_ft,
     );
     const buildingLayout = createLayoutBase();
-    buildingLayout.space_type = "Building";
+    buildingLayout.space_type = validateSpaceType("Building");
     buildingLayout.space_type_index = `${buildingIdx}`;
     buildingLayout.building_number = buildingNumber;
     buildingLayout.total_area_sq_ft = totalArea;
@@ -1597,6 +1660,10 @@ function writeLayoutsUtilitiesStructures(layoutEntry, utilityRecord, structureRe
     buildingLayout.size_square_feet = totalArea;
     buildingLayout.is_finished = true;
     const buildingLayoutId = writeLayoutFile(buildingLayout);
+    if (!buildingLayoutId) {
+      console.error(`ERROR: Failed to write building layout for building ${buildingNumber}`);
+      return;
+    }
 
     buildingLayouts.push({
       layoutId: buildingLayoutId,
@@ -1617,25 +1684,29 @@ function writeLayoutsUtilitiesStructures(layoutEntry, utilityRecord, structureRe
 
     rooms.forEach((room) => {
       if (!room || !room.type) return;
+      const validatedType = validateSpaceType(room.type);
+      if (!validatedType) return;
       const count = Number(room.count) || 0;
       if (count <= 0) return;
       for (let i = 0; i < count; i += 1) {
         const roomLayout = createLayoutBase();
-        roomLayout.space_type = room.type;
-        roomLayout.space_type_index = nextIndexForType(room.type);
+        roomLayout.space_type = validatedType;
+        roomLayout.space_type_index = nextIndexForType(validatedType);
         roomLayout.building_number = buildingNumber;
         roomLayout.is_finished = true;
         const childLayoutId = writeLayoutFile(roomLayout);
-        writeJSON(
-          path.join(
-            dataDir,
-            `relationship_layout_${buildingLayoutId}_has_layout_${childLayoutId}.json`,
-          ),
-          {
-            from: { "/": `./layout_${buildingLayoutId}.json` },
-            to: { "/": `./layout_${childLayoutId}.json` },
-          },
-        );
+        if (childLayoutId) {
+          writeJSON(
+            path.join(
+              dataDir,
+              `relationship_layout_${buildingLayoutId}_has_layout_${childLayoutId}.json`,
+            ),
+            {
+              from: { "/": `./layout_${buildingLayoutId}.json` },
+              to: { "/": `./layout_${childLayoutId}.json` },
+            },
+          );
+        }
       }
     });
 
@@ -1667,7 +1738,7 @@ function writeLayoutsUtilitiesStructures(layoutEntry, utilityRecord, structureRe
       featureLayout.livable_area_sq_ft = null;
       featureLayout.heated_area_sq_ft = null;
       const layoutId = writeLayoutFile(featureLayout);
-      if (buildingCountTotal === 1) {
+      if (layoutId && buildingCountTotal === 1) {
         writeJSON(
           path.join(
             dataDir,
@@ -1877,10 +1948,18 @@ function normalizeOwnerKey(value) {
 
 function cleanOwnerRawString(value) {
   if (value == null) return "";
-  return String(value)
+  let cleaned = String(value)
     .replace(/\*/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/\([^)]*\)/g, ""); // Remove parenthetical content (e.g., "(INCL 3016-000)")
+
+  // Remove ownership fractions and qualifiers like "1/3 INT.", "1/2 INTEREST", etc.
+  cleaned = cleaned
+    .replace(/,\s*\d+\/\d+\s+(INT\.?|INTEREST|UNDIVIDED|UND\.?|INTST\.?).*$/i, "")
+    .replace(/\s+\d+\/\d+\s+(INT\.?|INTEREST|UNDIVIDED|UND\.?|INTST\.?).*$/i, "")
+    .replace(/,\s*(ETAL|ET\s*AL\.?|ET\s*UX\.?|ETUX).*$/i, "")
+    .replace(/\s+(ETAL|ET\s*AL\.?|ET\s*UX\.?|ETUX).*$/i, "");
+
+  return cleaned.replace(/\s+/g, " ").trim();
 }
 
 function hasMeaningfulOwnerName(value) {
@@ -1912,8 +1991,13 @@ function splitOwnerRawNames(raw) {
   const replaced = cleaned
     .replace(/\s+\/\s+/g, "|")
     .replace(/\s+&\s+/g, "|")
+    .replace(/&/g, "|")
     .replace(/,\s+AND\s+/gi, "|")
-    .replace(/\s+AND\s+/gi, "|");
+    .replace(/\s+AND\s+/gi, "|")
+    .replace(/\s+WIFE\s+/gi, "|")
+    .replace(/\s+HUSBAND\s+/gi, "|")
+    .replace(/\s+H\/W\s+/gi, "|")
+    .replace(/\s+W\/H\s+/gi, "|");
   return replaced
     .split("|")
     .map((part) => cleanOwnerRawString(part))
@@ -2069,10 +2153,21 @@ function guessOwnerTypeFromRaw(raw) {
     " TR ",
     " HOA",
     " MORTGAGE",
+    "ADMIN",
+    "ADMINISTRATOR",
+    "V.A.",
+    "V A ",
+    " CREDIT UNION",
+    " UNION",
   ];
   if (companyIndicators.some((indicator) => cleaned.includes(indicator)))
     return "company";
   if (/\d/.test(cleaned)) return "company";
+
+  // Check for multiple abbreviations (e.g., "V.A." or "U.S.A.")
+  // Pattern: single letters followed by periods
+  if (/\b[A-Z]\.[A-Z]\.?/.test(cleaned)) return "company";
+
   return "person";
 }
 
@@ -2102,46 +2197,151 @@ function createPersonFromRaw(raw, parcelId) {
       ...baseFields,
     };
   }
+
+  // Helper function to format suffix according to schema
+  function formatSuffix(suffix) {
+    if (!suffix) return null;
+    const upper = suffix.toUpperCase().replace(/\./g, '');
+    // Map to schema-compliant suffix values
+    const suffixMap = {
+      'JR': 'Jr.',
+      'SR': 'Sr.',
+      'II': 'II',
+      'III': 'III',
+      'IV': 'IV',
+      'V': 'V',
+      'VI': 'VI',
+      'VII': 'VII',
+      'VIII': 'VIII',
+      'IX': 'IX',
+      'X': 'X',
+      'PHD': 'PhD',
+      'MD': 'MD',
+      'ESQ': 'Esq.',
+      'JD': 'JD',
+      'LLM': 'LLM',
+      'MBA': 'MBA',
+      'RN': 'RN',
+      'DDS': 'DDS',
+      'DVM': 'DVM',
+      'CFA': 'CFA',
+      'CPA': 'CPA',
+      'PE': 'PE',
+      'PMP': 'PMP',
+    };
+    return suffixMap[upper] || null;
+  }
+
+  // Helper function to detect and extract suffix
+  function extractSuffix(parts) {
+    if (parts.length === 0) return { parts, suffix: null };
+    const lastPart = parts[parts.length - 1].toUpperCase().replace(/\./g, '');
+    const suffixes = ['JR', 'SR', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+    // Also filter out common Latin abbreviations that are not part of names
+    const latinAbbreviations = ['ET', 'UX', 'UXOR', 'ETUX', 'ETAL', 'AL'];
+    if (suffixes.includes(lastPart)) {
+      return {
+        parts: parts.slice(0, -1),
+        suffix: formatSuffix(lastPart) // Format suffix according to schema
+      };
+    }
+    // Remove Latin abbreviations but don't treat them as suffixes
+    if (latinAbbreviations.includes(lastPart)) {
+      return {
+        parts: parts.slice(0, -1),
+        suffix: null
+      };
+    }
+    return { parts, suffix: null };
+  }
+
   if (cleaned.includes(",")) {
     const [lastRaw, restRaw] = cleaned.split(",", 2);
     const restParts = restRaw.trim().split(/\s+/).filter(Boolean);
-    const first = restParts[0] ? titleCaseName(restParts[0]) : null;
+    const { parts: nameParts, suffix } = extractSuffix(restParts);
+
+    // If after extracting suffix, no name parts remain, it means the format is "First Middle Last, Suffix"
+    // not "Last, First". In this case, parse the first part as "First Middle Last"
+    if (nameParts.length === 0) {
+      const fullNameParts = lastRaw.trim().split(/\s+/).filter(Boolean);
+      if (fullNameParts.length === 1) {
+        return {
+          first_name: titleCaseName(fullNameParts[0]),
+          middle_name: null,
+          last_name: null,
+          ...baseFields,
+          suffix_name: suffix,
+        };
+      } else if (fullNameParts.length === 2) {
+        return {
+          first_name: titleCaseName(fullNameParts[0]),
+          middle_name: null,
+          last_name: titleCaseName(fullNameParts[1]),
+          ...baseFields,
+          suffix_name: suffix,
+        };
+      } else {
+        // 3+ parts: First Middle... Last
+        const first = titleCaseName(fullNameParts[0]);
+        const last = titleCaseName(fullNameParts[fullNameParts.length - 1]);
+        const middle = titleCaseMiddleName(fullNameParts.slice(1, -1).join(" "));
+        return {
+          first_name: first,
+          middle_name: middle || null,
+          last_name: last,
+          ...baseFields,
+          suffix_name: suffix,
+        };
+      }
+    }
+
+    // Standard "Last, First Middle" format
+    const first = nameParts[0] ? titleCaseName(nameParts[0]) : null;
     let middle = null;
-    if (restParts.length > 1) {
-      middle = titleCaseName(restParts.slice(1).join(" "));
+    if (nameParts.length > 1) {
+      middle = titleCaseMiddleName(nameParts.slice(1).join(" "));
     }
     return {
       first_name: first,
       middle_name: middle,
       last_name: lastRaw ? titleCaseName(lastRaw) : null,
       ...baseFields,
+      suffix_name: suffix,
     };
   }
+  // Names without commas are in "First Middle Last" order
   const parts = cleaned.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) {
+  const { parts: nameParts, suffix } = extractSuffix(parts);
+
+  if (nameParts.length === 1) {
     return {
-      first_name: titleCaseName(parts[0]),
+      first_name: titleCaseName(nameParts[0]),
       middle_name: null,
       last_name: null,
       ...baseFields,
+      suffix_name: suffix,
     };
   }
-  if (parts.length === 2) {
+  if (nameParts.length === 2) {
+    // "First Last" order
     return {
-      first_name: titleCaseName(parts[1]),
+      first_name: titleCaseName(nameParts[0]),
       middle_name: null,
-      last_name: titleCaseName(parts[0]),
+      last_name: titleCaseName(nameParts[1]),
       ...baseFields,
+      suffix_name: suffix,
     };
   }
-  const first = titleCaseName(parts[1]);
-  const last = titleCaseName(parts[0]);
-  const middle = titleCaseName(parts.slice(2).join(" "));
+  // "First Middle Last" order (3+ parts)
+  const first = titleCaseName(nameParts[0]);
+  const last = titleCaseName(nameParts[nameParts.length - 1]);
+  const middle = titleCaseMiddleName(nameParts.slice(1, -1).join(" "));
   return {
     first_name: first,
     middle_name: middle || null,
     last_name: last,
     ...baseFields,
+    suffix_name: suffix,
   };
 }
 
@@ -2166,6 +2366,23 @@ function ensureOwnerRefFromRaw(raw, parcelId) {
   const ownerType = guessOwnerTypeFromRaw(raw);
   if (ownerType === "person") {
     const personObj = createPersonFromRaw(raw, parcelId);
+    // Validate that person has valid first_name and last_name before creating
+    // Both must be non-null, non-empty strings that match the required pattern
+    if (!personObj || !personObj.first_name || !personObj.last_name) {
+      return null;
+    }
+    if (typeof personObj.first_name !== 'string' || typeof personObj.last_name !== 'string') {
+      return null;
+    }
+    // Require both first_name and last_name to have at least 2 characters
+    if (personObj.first_name.length < 2 || personObj.last_name.length < 2) {
+      return null;
+    }
+    // Filter out invalid surnames that are actually qualifiers
+    const invalidSurnames = ['Wife', 'Husband', 'Etal', 'Trustee', 'Estate', 'Trust'];
+    if (invalidSurnames.includes(personObj.last_name)) {
+      return null;
+    }
     people.push(personObj);
     const idx = people.length;
     writeJSON(path.join("data", `person_${idx}.json`), personObj);
@@ -2239,43 +2456,195 @@ function findPersonIndexByName(first, last) {
 function findCompanyIndexByName(name) {
   const raw = (name || "").trim();
   const tn = raw.toUpperCase();
+
+  // Try exact match
   for (let i = 0; i < companies.length; i++) {
     if ((companies[i].name || "").trim() === tn) return i + 1;
   }
+
+  // Try normalized variant match
   const normalized = normalizeOwnerKey(raw);
   if (normalized && ownerVariantMap.has(normalized)) {
     const entry = ownerVariantMap.get(normalized);
     if (entry.type === "company") return entry.index;
   }
+
+  // Try canonical key match (only if it points to a company)
   const canonical = buildCanonicalOwnerKey(raw);
   if (canonical && ownerCanonicalMap.has(canonical)) {
     const entry = ownerCanonicalMap.get(canonical);
     if (entry.type === "company") return entry.index;
   }
+
+  // Fallback: fuzzy match by comparing canonical keys
+  // This handles cases where the canonical key is registered for a person
+  // but we're looking for a company with similar name
+  if (canonical) {
+    for (let i = 0; i < companies.length; i++) {
+      const companyCanonical = buildCanonicalOwnerKey(companies[i].name || "");
+      if (companyCanonical === canonical) {
+        return i + 1;
+      }
+    }
+  }
+
   return null;
 }
 
 function titleCaseName(s) {
-  if (!s) return s;
-  return s
-    .toLowerCase()
-    .split(/\s+/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  if (!s) return null;
+  const trimmed = String(s).trim();
+  if (!trimmed) return null;
+
+  // Split by separators while preserving them
+  const parts = trimmed.toLowerCase().split(/([ \-',.])/);
+  let result = '';
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!part) continue;
+
+    // If it's a separator, just add it
+    if (/^[ \-',.]$/.test(part)) {
+      result += part;
+      continue;
+    }
+
+    // If it's a word, capitalize first letter
+    if (part.length > 0) {
+      result += part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    }
+  }
+
+  if (!result || result.length === 0) return null;
+
+  // Normalize multiple consecutive separators (e.g., " -" → "-")
+  // This handles cases like "Flynn -J" which should become "Flynn-J"
+  result = result.replace(/([ \-',.])(?=[ \-',.])/g, '');
+
+  // Remove trailing separators (e.g., "Flynn-" → "Flynn", "H." → "H")
+  while (/[ \-',.]$/.test(result)) {
+    result = result.slice(0, -1);
+  }
+
+  // Remove leading separators (edge case safety)
+  while (/^[ \-',.]/.test(result)) {
+    result = result.slice(1);
+  }
+
+  if (!result || result.length === 0) return null;
+
+  // Validate against the required pattern
+  if (!/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) return null;
+
+  return result;
+}
+
+function titleCaseMiddleName(s) {
+  if (!s) return null;
+  const trimmed = String(s).trim();
+  if (!trimmed) return null;
+
+  // Split by separators while preserving them
+  const parts = trimmed.split(/([ \-',.])/);
+  let result = '';
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!part) continue;
+
+    // If it's a separator, just add it
+    if (/^[ \-',.]$/.test(part)) {
+      result += part;
+      continue;
+    }
+
+    // For middle names, capitalize first letter but preserve case for rest
+    // This allows initials like "J.R." to work
+    if (part.length > 0) {
+      const lower = part.toLowerCase();
+      result += lower.charAt(0).toUpperCase() + lower.slice(1);
+    }
+  }
+
+  if (!result || result.length === 0) return null;
+
+  // Remove leading separators
+  while (/^[ \-',.]/.test(result)) {
+    result = result.slice(1);
+  }
+
+  // Remove trailing separators
+  while (/[ \-',.]$/.test(result)) {
+    result = result.slice(0, -1);
+  }
+
+  // Normalize multiple consecutive separators (e.g., "John  Doe" → "John Doe")
+  result = result.replace(/([ \-',.])(?=[ \-',.])/g, '');
+
+  // Remove any trailing separators created by normalization
+  while (/[ \-',.]$/.test(result)) {
+    result = result.slice(0, -1);
+  }
+
+  // Remove any leading separators created by normalization
+  while (/^[ \-',.]/.test(result)) {
+    result = result.slice(1);
+  }
+
+  // Final empty check after all processing
+  if (!result || result.length === 0) return null;
+
+  // Validate against the middle name pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+
+  return result;
 }
 
 function writePersonCompaniesSalesRelationships(
   parcelId,
   sales,
-  hasOwnerMailingAddress,
+  mailingAddressData,
 ) {
   const owners = readJSON(path.join("owners", "owner_data.json"));
-  const key = `property_${parcelId}`;
-  const record = owners && owners[key] ? owners[key] : null;
+
+  // Try to find owner data with multiple parcelId formats
+  let record = null;
+  if (owners) {
+    // Try as-is
+    let key = `property_${parcelId}`;
+    record = owners[key] || null;
+
+    // Try with dashes removed
+    if (!record && parcelId) {
+      const noDashes = String(parcelId).replace(/[-]/g, "");
+      key = `property_${noDashes}`;
+      record = owners[key] || null;
+    }
+
+    // Try with dashes added (format: 00000-000-000)
+    if (!record && parcelId) {
+      const withDashes = String(parcelId).replace(/[-]/g, "");
+      if (withDashes.length === 11) {
+        const formatted = `${withDashes.slice(0, 5)}-${withDashes.slice(5, 8)}-${withDashes.slice(8, 11)}`;
+        key = `property_${formatted}`;
+        record = owners[key] || null;
+      }
+    }
+  }
+
   const ownersByDate =
     record && record.owners_by_date && typeof record.owners_by_date === "object"
       ? record.owners_by_date
       : {};
+
+  // Remove records with keys starting with 'unknown_date_'
+  Object.keys(ownersByDate).forEach(key => {
+    if (key.startsWith('unknown_date_')) {
+      delete ownersByDate[key];
+    }
+  });
+
   const personMap = new Map();
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
@@ -2295,17 +2664,34 @@ function writePersonCompaniesSalesRelationships(
       }
     });
   });
-  people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? titleCaseName(p.first_name) : null,
-    middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-    last_name: p.last_name ? titleCaseName(p.last_name) : null,
-    birth_date: null,
-    prefix_name: null,
-    suffix_name: null,
-    us_citizenship_status: null,
-    veteran_status: null,
-    request_identifier: parcelId,
-  }));
+  people = Array.from(personMap.values())
+    .map((p) => {
+      const firstName = p.first_name ? titleCaseName(p.first_name) : null;
+      const lastName = p.last_name ? titleCaseName(p.last_name) : null;
+      const middleName = p.middle_name ? titleCaseMiddleName(p.middle_name) : null;
+
+      // Validate that both first_name and last_name are valid strings
+      if (!firstName || !lastName) return null;
+      if (typeof firstName !== 'string' || typeof lastName !== 'string') return null;
+      // Require first_name to have at least 2 chars and last_name to have at least 2 chars
+      if (firstName.length < 2 || lastName.length < 2) return null;
+      // Filter out invalid surnames that are actually qualifiers
+      const invalidSurnames = ['Wife', 'Husband', 'Etal', 'Trustee', 'Estate', 'Trust'];
+      if (invalidSurnames.includes(lastName)) return null;
+
+      return {
+        first_name: firstName,
+        middle_name: middleName,
+        last_name: lastName,
+        birth_date: null,
+        prefix_name: null,
+        suffix_name: null,
+        us_citizenship_status: null,
+        veteran_status: null,
+        request_identifier: parcelId,
+      };
+    })
+    .filter((p) => p !== null);
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
@@ -2471,10 +2857,12 @@ function writePersonCompaniesSalesRelationships(
     });
   });
 
-  if (hasOwnerMailingAddress) {
+  // Only create mailing_address.json if we have current owners to reference it
+  if (mailingAddressData) {
     const mailingRelationshipPatterns = [
       /^relationship_person_has_mailing_address_\d+\.json$/i,
       /^relationship_company_has_mailing_address_\d+\.json$/i,
+      /^mailing_address\.json$/i,
     ];
     try {
       fs.readdirSync("data").forEach((f) => {
@@ -2489,6 +2877,11 @@ function writePersonCompaniesSalesRelationships(
     let relCompanyCounter = 0;
     const seenMailingPerson = new Set();
     const seenMailingCompany = new Set();
+
+    // Collect owners that will reference the mailing address
+    const personsWithMailing = [];
+    const companiesWithMailing = [];
+
     currentOwner
     .filter((o) => o.type === "person")
     .forEach((o) => {
@@ -2496,6 +2889,34 @@ function writePersonCompaniesSalesRelationships(
       if (pIdx && !seenMailingPerson.has(pIdx)) {
         seenMailingPerson.add(pIdx);
         usedPersonIdx.add(pIdx);
+        personsWithMailing.push(pIdx);
+      }
+    });
+
+    currentOwner
+    .filter((o) => o.type === "company")
+    .forEach((o) => {
+      const cIdx = findCompanyIndexByName(o.name);
+      if (cIdx && !seenMailingCompany.has(cIdx)) {
+        seenMailingCompany.add(cIdx);
+        usedCompanyIdx.add(cIdx);
+        companiesWithMailing.push(cIdx);
+      }
+    });
+
+    // Only create mailing_address.json if there are owners to reference it
+    if (personsWithMailing.length > 0 || companiesWithMailing.length > 0) {
+      const mailingAddressObj = {
+        latitude: null,
+        longitude: null,
+        unnormalized_address: mailingAddressData.mailingAddress,
+        source_http_request: mailingAddressData.sourceHttpRequest,
+        request_identifier: mailingAddressData.requestIdentifier,
+      };
+      writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
+
+      // Create relationships for persons
+      personsWithMailing.forEach((pIdx) => {
         relPersonCounter++;
         writeJSON(
           path.join(
@@ -2507,15 +2928,10 @@ function writePersonCompaniesSalesRelationships(
             to: { "/": `./mailing_address.json` },
           },
         );
-      }
-    });
-    currentOwner
-    .filter((o) => o.type === "company")
-    .forEach((o) => {
-      const cIdx = findCompanyIndexByName(o.name);
-      if (cIdx && !seenMailingCompany.has(cIdx)) {
-        seenMailingCompany.add(cIdx);
-        usedCompanyIdx.add(cIdx);
+      });
+
+      // Create relationships for companies
+      companiesWithMailing.forEach((cIdx) => {
         relCompanyCounter++;
         writeJSON(
           path.join(
@@ -2527,8 +2943,8 @@ function writePersonCompaniesSalesRelationships(
             to: { "/": `./mailing_address.json` },
           },
         );
-      }
-    });
+      });
+    }
   }
 
   removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx);
@@ -2604,7 +3020,17 @@ function attemptWriteAddress(
   mailingAddress,
   propertySeed,
 ) {
-  let hasOwnerMailingAddress = false;
+  // Store mailing address data for later use, but don't write file yet
+  const mailingAddressData = mailingAddress ? {
+    mailingAddress,
+    sourceHttpRequest: (propertySeed && propertySeed.source_http_request) ||
+      (unnorm && unnorm.source_http_request) ||
+      null,
+    requestIdentifier: (propertySeed && propertySeed.request_identifier) ||
+      (unnorm && unnorm.request_identifier) ||
+      null,
+  } : null;
+
   const unnormSafe = unnorm || {};
   const inputCounty = (unnormSafe.county_jurisdiction || "").trim();
   const county_name = inputCounty || null;
@@ -2617,17 +3043,6 @@ function attemptWriteAddress(
     (unnormSafe && unnormSafe.request_identifier) ||
     null;
   const country_code = (unnormSafe && unnormSafe.country_code) || "US";
-  if (mailingAddress) {
-    const mailingAddressObj = {
-      latitude: null,
-      longitude: null,
-      unnormalized_address: mailingAddress,
-      source_http_request: sourceHttpRequest,
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
-    hasOwnerMailingAddress = true;
-  }
   if (siteAddress) {
     const addressObj = {
       unnormalized_address: siteAddress,
@@ -2678,7 +3093,7 @@ function attemptWriteAddress(
       to: { "/": "./geometry.json" },
     });
   }
-  return hasOwnerMailingAddress;
+  return mailingAddressData;
 }
 
 function main() {
@@ -2721,7 +3136,7 @@ function main() {
   const secTwpRng = extractSecTwpRng($);
   const addressText = extractAddressText($);
   const mailingAddress = extractOwnerMailingAddress($);
-  const hasOwnerMailingAddress = attemptWriteAddress(
+  const mailingAddressData = attemptWriteAddress(
     unnormalized,
     secTwpRng,
     addressText,
@@ -2745,7 +3160,7 @@ function main() {
       parcelId,
     );
 
-    writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress);
+    writePersonCompaniesSalesRelationships(parcelId, sales, mailingAddressData);
   }
 }
 

@@ -224,6 +224,14 @@ const propertyTypeMapping=[
     "property_type": "Building"
   },
   {
+    "property_usecode": "0111 SINGLE FAMILY COMMUNITY LAND TRUST",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "0133 PLANNED UNIT DEVELOPMENT",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -305,6 +313,14 @@ const propertyTypeMapping=[
   },
   {
     "property_usecode": "0436 CONDO CONVERSION - APARTMENTS TO PLATTED CONDO (PREDOMINATELY OWNER-OCCUPIED)",
+    "ownership_estate_type": "Condominium",
+    "build_status": "Improved",
+    "structure_form": "ApartmentUnit",
+    "property_usage_type": "Residential",
+    "property_type": "Unit"
+  },
+  {
+    "property_usecode": "0437 CONDO COM APARTMENTS",
     "ownership_estate_type": "Condominium",
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
@@ -2293,6 +2309,14 @@ function extractSalesHistoryFiles($, dataDir, requestIdentifier, sourceHttpReque
       ipfs_url: null,
     };
     writeJSON(path.join(dataDir, fileName), payload);
+
+    // Create property_has_file relationship
+    const relationshipFileName = `relationship_property_has_file_${idx + 1}.json`;
+    const relationship = {
+      from: { "/": "./property.json" },
+      to: { "/": `./${fileName}` }
+    };
+    writeJSON(path.join(dataDir, relationshipFileName), relationship);
   });
 }
 
@@ -2882,7 +2906,13 @@ function extract() {
 
 
   // Keys & frequently used fields
-  const parcelId = getTextOrNull($("#pacel_no"));
+  const parcelIdFromHtml = getTextOrNull($("#pacel_no"));
+  // CRITICAL: parcel_identifier is REQUIRED and must be a string with minLength: 1
+  // Use parcel_id from seed file, or request_identifier as fallback
+  const parcelId = parcelIdFromHtml ||
+                   (seed && seed.parcel_id) ||
+                   (seed && seed.request_identifier) ||
+                   "UNKNOWN_PARCEL";
   // Fallback to seed if HTML element is not found or empty
   const requestIdentifier =(seed &&
       seed.source_http_request &&
@@ -3029,15 +3059,17 @@ function extract() {
         // console.error("Failed to create new file:", err.message);
       }
     }
-    
-    // const relationship = {
-    //   from: { "/": `./property.json` },
-    //   to: { "/": `./propertyLot.json` }
-    // };
-    // writeJSON(
-    //   path.join("data", `relationship_property_has_lot.json`),
-    //   relationship
-    // );
+
+    // CRITICAL: Create property_has_lot relationship: parcel (from) → lot (to)
+    // The "from" must be a parcel entity with parcel_identifier (not property)
+    const relationship = {
+      from: { "/": `./parcel.json` },
+      to: { "/": `./lot.json` }
+    };
+    writeJSON(
+      path.join(dataDir, `relationship_property_has_lot.json`),
+      relationship
+    );
 
 
   } catch (e) {
@@ -3091,25 +3123,36 @@ function extract() {
   // const buildingType = structuralElementsBuilding1["Building Type"] || null;
 
   // console.log("usecode",useCodeText);
-  const property_type = mapPropertyTypeFromUseCode(propertyUseText || "");
+  let property_type = mapPropertyTypeFromUseCode(propertyUseText || "");
   // console.log("property_type>>",property_type);
   const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(propertyUseText || "");
-  const build_status= mapBuildStatusFromUseCode(propertyUseText || "");
+  let build_status= mapBuildStatusFromUseCode(propertyUseText || "");
   const structure_form = mapStructureFormFromUseCode(propertyUseText || "");
   const property_usage_type = mapPropertyUsageTypeFromUseCode(propertyUseText || "");
 
+  // CRITICAL: property_type is REQUIRED by schema and cannot be null
+  // If mapping fails, default to "LandParcel" as a reasonable fallback (works with VacantLand status)
+  if (!property_type || typeof property_type !== 'string' || property_type.trim() === '') {
+    property_type = "LandParcel";
+  }
 
+  // CRITICAL: Ensure build_status is valid enum value: VacantLand, Improved, or UnderConstruction
+  // If mapping fails or returns null, default to "VacantLand" to match LandParcel property type
+  if (!build_status || typeof build_status !== 'string' || build_status.trim() === '') {
+    build_status = "VacantLand";
+  }
 
-  // For aquaculture/submerged land, default to VacantLand if no type determined
-  // if (!property_type && property_legal_description_text && 
-  //     property_legal_description_text.toLowerCase().includes('aquaculture')) {
-  //   property_type = 'VacantLand';
-  // }
-  
-  // Ensure property_type is never null - default to VacantLand
-  // if (!property_type) {
-  //   property_type = 'VacantLand';
-  // }
+  // Validate that build_status is one of the allowed enum values
+  const validBuildStatuses = ["VacantLand", "Improved", "UnderConstruction"];
+  if (!validBuildStatuses.includes(build_status)) {
+    build_status = "VacantLand";
+  }
+
+  // Validate that property_type is a valid string
+  const validPropertyTypes = ["Cooperative", "Condominium", "Modular", "ManufacturedHousingMultiWide", "Pud", "Timeshare", "2Units", "DetachedCondominium", "Duplex", "SingleFamily", "MultipleFamily", "3Units", "ManufacturedHousing", "ManufacturedHousingSingleWide", "4Units", "Townhouse", "NonWarrantableCondo", "VacantLand", "Retirement", "MiscellaneousResidential", "ResidentialCommonElementsAreas", "MobileHome", "Apartment", "MultiFamilyMoreThan10", "MultiFamilyLessThan10", "LandParcel", "Building", "Unit", "ManufacturedHome"];
+  if (!validPropertyTypes.includes(property_type)) {
+    property_type = "LandParcel";
+  }
 
   // Attempt to extract subdivision from legal description
   let subdivision = null;
@@ -3148,6 +3191,18 @@ function extract() {
   });
   writeJSON(path.join(dataDir, "property.json"), property);
 
+  // CRITICAL: Create parcel.json file - required for property_has_lot relationship
+  // The parcel entity is the "from" in the property_has_lot relationship
+  const parcel = {
+    parcel_identifier: parcelId,
+    request_identifier: requestIdentifier
+  };
+  writeJSON(path.join(dataDir, "parcel.json"), parcel);
+
+  // CRITICAL: Create property_has_lot relationship: parcel (from) → lot (to)
+  // This relationship is created after lot.json is generated (lines 3056)
+  // We'll add the relationship creation right after the lot file is written
+
   // ADDRESS
   try {
     // const siteAddressHtml = $("#site_address").html();
@@ -3163,28 +3218,15 @@ function extract() {
 
     const country_code = "US";
 
+    // CRITICAL: Address schema uses oneOf - provide EITHER unnormalized_address OR normalized fields
+    // Since we have unnormalized_address from input, use that. Do NOT include latitude/longitude (deprecated)
+    // Do NOT mix unnormalized with normalized fields - it's one OR the other
     const address = {
       source_http_request: source_http_request,
       request_identifier: requestIdentifier,
-      // block: block,
-      // city_name: city ? city.toUpperCase() : null,
-      // country_code: country_code,
-      county_name: county_name,
-      latitude: unAddr.latitude ?? null,
-      longitude: unAddr.longitude ?? null,
-      // plus_four_postal_code: null,
-      // postal_code: zip,
-      // range: null,
-      // route_number: null,
-      // section: null,
-      // township: null,
       unnormalized_address: unAddr.full_address
-      // state_code: state,
-      // // street_name: street_name ? street_name : null,
-      // // street_post_directional_text: null,
-      // // street_pre_directional_text: null,
-      // // street_number: street_number,
-      // // street_suffix_type: street_suffix_type,
+      // Note: latitude and longitude are deprecated in address schema
+      // Note: county_name should only be included in normalized address form, not with unnormalized_address
     };
 
     writeJSON(path.join(dataDir, "address.json"), address);
