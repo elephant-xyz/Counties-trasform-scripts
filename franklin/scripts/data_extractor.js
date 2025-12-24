@@ -2,6 +2,9 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const SCRIPT_DIR = __dirname;
+const WORKING_DIR = process.cwd();
+
 const propertyTypeMapping = [
   {
     "property_usecode": "019604 BARBER SHOP",
@@ -2223,6 +2226,259 @@ function parseCurrencyToNumber(str) {
   return rounded;
 
 }
+
+// ============================================================================
+// CSV and Polygon Geometry Helpers (for Elephant Geometry with polygon array)
+// ============================================================================
+
+const NORMALIZE_EOL_REGEX = /\r\n/g;
+
+/**
+ * Parse CSV content into rows (array of arrays).
+ */
+function parseCsv(content) {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let insideQuotes = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    const nextChar = content[i + 1];
+
+    if (char === '"') {
+      if (insideQuotes && nextChar === '"') {
+        current += '"';
+        i++;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+    } else if (char === ',' && !insideQuotes) {
+      row.push(current);
+      current = '';
+    } else if (char === '\n' && !insideQuotes) {
+      row.push(current);
+      rows.push(row);
+      row = [];
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  if (current || row.length) {
+    row.push(current);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+/**
+ * Parse a polygon string (either raw JSON coordinates or GeoJSON object) into a Polygon/MultiPolygon.
+ */
+function parsePolygon(value) {
+  if (!value) {
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (isGeoJsonGeometry(parsed)) {
+    return parsed;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return null;
+  }
+
+  const depth = coordinatesDepth(parsed);
+  if (depth === 4) {
+    return { type: 'MultiPolygon', coordinates: parsed };
+  }
+
+  if (depth === 3) {
+    return { type: 'Polygon', coordinates: parsed };
+  }
+
+  if (depth === 2) {
+    return { type: 'Polygon', coordinates: [parsed] };
+  }
+
+  return null;
+}
+
+function coordinatesDepth(arr, depth = 0) {
+  if (!Array.isArray(arr) || !arr.length) return depth;
+  return coordinatesDepth(arr[0], depth + 1);
+}
+
+function isGeoJsonGeometry(value) {
+  return (
+    value &&
+    typeof value === 'object' &&
+    (value.type === 'Polygon' || value.type === 'MultiPolygon') &&
+    Array.isArray(value.coordinates)
+  );
+}
+
+function toNumber(value) {
+  if (value == null || value === '') {
+    return null;
+  }
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
+}
+
+/**
+ * Minimal Geometry model that mirrors the Elephant Geometry class.
+ */
+class Geometry {
+  constructor({ latitude, longitude, polygon, request_identifier }) {
+    this.latitude = latitude ?? null;
+    this.longitude = longitude ?? null;
+    this.polygon = polygon ?? null;
+    this.request_identifier = request_identifier ?? null;
+  }
+
+  /**
+   * Build a Geometry instance from a CSV record.
+   */
+  static fromRecord(record) {
+    return new Geometry({
+      latitude: toNumber(record.latitude),
+      longitude: toNumber(record.longitude),
+      polygon: parsePolygon(record.parcel_polygon),
+      request_identifier: record.request_identifier || null
+    });
+  }
+}
+
+/**
+ * Split MultiPolygons into separate Polygon geometries.
+ */
+function splitGeometry(record) {
+  const baseGeometry = Geometry.fromRecord(record);
+  const { polygon } = baseGeometry;
+
+  if (!polygon || polygon.type !== 'MultiPolygon') {
+    return [baseGeometry];
+  }
+
+  return polygon.coordinates.map((coords, index) => {
+    const identifier = baseGeometry.request_identifier
+      ? `${baseGeometry.request_identifier}#${index + 1}`
+      : null;
+
+    return new Geometry({
+      latitude: baseGeometry.latitude,
+      longitude: baseGeometry.longitude,
+      polygon: {
+        type: 'Polygon',
+        coordinates: coords,
+      },
+      request_identifier: identifier,
+    });
+  });
+}
+
+/**
+ * Load CSV content from input.csv or seed.csv in working/scripts/parent directories.
+ */
+function loadGeometryCsvContent() {
+  const parentDir = path.dirname(SCRIPT_DIR);
+  const candidates = [
+    path.join(WORKING_DIR, "input.csv"),
+    path.join(SCRIPT_DIR, "input.csv"),
+    path.join(parentDir, "input.csv"),
+    path.join(WORKING_DIR, "seed.csv"),
+    path.join(SCRIPT_DIR, "seed.csv"),
+    path.join(parentDir, "seed.csv"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        return fs.readFileSync(candidate, "utf8");
+      } catch (err) {
+        console.warn(`Unable to read geometry CSV at ${candidate}: ${err.message}`);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Read the provided CSV content and return Geometry instances.
+ */
+function createGeometryInstances(csvContent) {
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const [header, ...dataRows] = rows;
+  const records = dataRows.map((row) =>
+    header.reduce((acc, col, idx) => {
+      acc[col] = row[idx] || '';
+      return acc;
+    }, {})
+  );
+
+  return records.flatMap((record) => splitGeometry(record));
+}
+
+/**
+ * Write geometry_parcel_<index>.json and relationship_parcel_to_geometry_parcel_<index>.json files.
+ * @param {Geometry[]} geometries - Array of Geometry instances
+ */
+function createGeometryClass(geometries) {
+  if (!geometries || !geometries.length) {
+    return;
+  }
+
+  geometries.forEach((geom, geomIndex) => {
+    // Build Elephant Geometry payload with polygon array
+    const geometry = {
+      latitude: geom.latitude ?? null,
+      longitude: geom.longitude ?? null,
+    };
+
+    if (geom.polygon && Array.isArray(geom.polygon.coordinates)) {
+      const exteriorRing = geom.polygon.coordinates[0] || [];
+      const polygon = exteriorRing.map((coordinate) => ({
+        longitude: coordinate[0],
+        latitude: coordinate[1],
+      }));
+      if (polygon.length) {
+        geometry.polygon = polygon;
+      }
+    }
+
+    const geometryFile = `geometry_parcel_${geomIndex}.json`;
+    const relationshipFile = `relationship_parcel_has_geometry_parcel_${geomIndex}.json`;
+
+    writeJSON(path.join("data", geometryFile), geometry);
+
+    const relationship = {
+      from: { "/": "./parcel.json" },
+      to: { "/": `./${geometryFile}` },
+    };
+    writeJSON(path.join("data", relationshipFile), relationship);
+  });
+}
+
+// ============================================================================
+// End of CSV and Polygon Geometry Helpers
+// ============================================================================
+
 function throwEnumError(value, pathStr) {
   throw new Error(
     JSON.stringify({
@@ -3037,24 +3293,43 @@ function main() {
   writeJSON(path.join("data", "address.json"), address);
   console.log(address)
 
-  // Create geometry.json
-  const geometry = {
-    source_http_request: {
-      method: "GET",
-      url: seed.source_http_request.url
-    },
-    request_identifier: parcelIdentifier || seed.parcel_id || "",
-    latitude: unAddr.latitude ?? null,
-    longitude: unAddr.longitude ?? null
-  };
-  writeJSON(path.join("data", "geometry.json"), geometry);
+  // Create geometry with polygon support from CSV if available
+  const geometryCsv = loadGeometryCsvContent();
+  let geometryCreated = false;
 
-  // Create relationship between address and geometry
-  const relAddressGeometry = {
-    from: { "/": "./address.json" },
-    to: { "/": "./geometry.json" }
-  };
-  writeJSON(path.join("data", "relationship_address_has_geometry.json"), relAddressGeometry);
+  if (geometryCsv) {
+    try {
+      const instances = createGeometryInstances(geometryCsv);
+      if (instances.length) {
+        createGeometryClass(instances);
+        geometryCreated = true;
+        console.log(`Created ${instances.length} geometry_parcel_<index>.json files from CSV`);
+      }
+    } catch (err) {
+      console.warn(`Unable to build geometry from CSV: ${err.message}`);
+    }
+  }
+
+  // Fall back to single point geometry if no CSV geometry was created
+  if (!geometryCreated) {
+    const geometry = {
+      source_http_request: {
+        method: "GET",
+        url: seed.source_http_request.url
+      },
+      request_identifier: parcelIdentifier || seed.parcel_id || "",
+      latitude: unAddr.latitude ?? null,
+      longitude: unAddr.longitude ?? null
+    };
+    writeJSON(path.join("data", "geometry.json"), geometry);
+
+    // Create relationship between address and geometry
+    const relAddressGeometry = {
+      from: { "/": "./address.json" },
+      to: { "/": "./geometry.json" }
+    };
+    writeJSON(path.join("data", "relationship_address_has_geometry.json"), relAddressGeometry);
+  }
 
   // Create relationship between property and address
   const relPropertyAddress = {
