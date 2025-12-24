@@ -1246,7 +1246,7 @@ function extractTaxes($) {
 }
 
 function mapDeedCode(code) {
-  if (!code) return {};
+  if (!code) return "Miscellaneous";
   const u = code.trim().toUpperCase();
   if (u === "CT") return "Contract for Deed";
   if (u === "WD") return "Warranty Deed";
@@ -1724,24 +1724,29 @@ function main() {
     // Relationship sales -> owner (company or person) using first sale
     if (sales.length > 0) {
       if (ownerFiles.companyFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_history_1_buyer_company_1.json"), {
-          from: { "/": "./sales_history_1.json" },
-          to: { "/": `./${ownerFiles.companyFiles[0]}` },
+        // Create relationships for ALL company files, not just the first one
+        ownerFiles.companyFiles.forEach((companyFile, index) => {
+          const companyCounter = index + 1;
+          writeJson(path.join(dataDir, `relationship_sales_history_1_buyer_company_${companyCounter}.json`), {
+            from: { "/": "./sales_history_1.json" },
+            to: { "/": `./${companyFile}` },
+          });
+          if (mailingAddressObj && index === 0) {
+            // Only create mailing address relationship for the first company
+            // Write the mailing_address.json file here
+            writeJson(path.join(dataDir, "mailing_address.json"), mailingAddressObj);
+            writeJson(
+              path.join(
+                dataDir,
+                `relationship_company_has_mailing_address.json`,
+              ),
+              {
+                from: { "/": `./${companyFile}` },
+                to: { "/": `./mailing_address.json` },
+              },
+            );
+          }
         });
-        if (mailingAddressObj) {
-          // Write the mailing_address.json file here
-          writeJson(path.join(dataDir, "mailing_address.json"), mailingAddressObj);
-          writeJson(
-            path.join(
-              dataDir,
-              `relationship_company_has_mailing_address.json`,
-            ),
-            {
-              from: { "/": `./${ownerFiles.companyFiles[0]}` },
-              to: { "/": `./mailing_address.json` },
-            },
-          );
-        }
       } else if (ownerFiles.personFiles.length > 0) {
         // Create relationships for ALL person files, not just the first one
         ownerFiles.personFiles.forEach((personFile, index) => {

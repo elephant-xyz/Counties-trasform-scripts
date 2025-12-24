@@ -2505,113 +2505,46 @@ function writeJson(filePath, obj) {
 }
 
 
-function mapPropertyTypeFromUseCode(code) {
+function mapFromUseCode(code, lookup) {
   if (!code && code !== 0) return null;
   const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
   if (!normalizedInput) return null;
   
-  // Try exact match first
-  if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
-    return propertyTypeByUseCode[normalizedInput];
-  }
-  
-  // Try partial match on numeric code
+  // Try numeric prefix match first
   const numericMatch = normalizedInput.match(/^\d{4}/);
   if (numericMatch) {
     const numericCode = numericMatch[0];
-    for (const key in propertyTypeByUseCode) {
+    for (const key in lookup) {
       if (key.startsWith(numericCode)) {
-        return propertyTypeByUseCode[key];
+        return lookup[key];
       }
     }
   }
+  
+  // Try exact match second
+  if (lookup[normalizedInput]) return lookup[normalizedInput];
+  
   return null;
 }
 
-
+function mapPropertyTypeFromUseCode(code) {
+  return mapFromUseCode(code, propertyTypeByUseCode);
+}
 
 function mapOwnershipEstateTypeFromUseCode(code) {
-  if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  
-  if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
-    return ownershipEstateTypeByUseCode[normalizedInput];
-  }
-  
-  const numericMatch = normalizedInput.match(/^\d{4}/);
-  if (numericMatch) {
-    const numericCode = numericMatch[0];
-    for (const key in ownershipEstateTypeByUseCode) {
-      if (key.startsWith(numericCode)) {
-        return ownershipEstateTypeByUseCode[key];
-      }
-    }
-  }
-  return null;
+  return mapFromUseCode(code, ownershipEstateTypeByUseCode);
 }
 
 function mapBuildStatusFromUseCode(code) {
-  if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  
-  if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
-    return buildStatusByUseCode[normalizedInput];
-  }
-  
-  const numericMatch = normalizedInput.match(/^\d{4}/);
-  if (numericMatch) {
-    const numericCode = numericMatch[0];
-    for (const key in buildStatusByUseCode) {
-      if (key.startsWith(numericCode)) {
-        return buildStatusByUseCode[key];
-      }
-    }
-  }
-  return null;
+  return mapFromUseCode(code, buildStatusByUseCode);
 }
 
 function mapStructureFormFromUseCode(code) {
-  if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  
-  if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
-    return structureFormByUseCode[normalizedInput];
-  }
-  
-  const numericMatch = normalizedInput.match(/^\d{4}/);
-  if (numericMatch) {
-    const numericCode = numericMatch[0];
-    for (const key in structureFormByUseCode) {
-      if (key.startsWith(numericCode)) {
-        return structureFormByUseCode[key];
-      }
-    }
-  }
-  return null;
+  return mapFromUseCode(code, structureFormByUseCode);
 }
 
 function mapPropertyUsageTypeFromUseCode(code) {
-  if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  
-  if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
-    return propertyUsageTypeByUseCode[normalizedInput];
-  }
-  
-  const numericMatch = normalizedInput.match(/^\d{4}/);
-  if (numericMatch) {
-    const numericCode = numericMatch[0];
-    for (const key in propertyUsageTypeByUseCode) {
-      if (key.startsWith(numericCode)) {
-        return propertyUsageTypeByUseCode[key];
-      }
-    }
-  }
-  return null;
+  return mapFromUseCode(code, propertyUsageTypeByUseCode);
 }
 
 function cleanText(value) {
@@ -2742,9 +2675,9 @@ function extractSalesHistoryEntries($) {
         instrument_number: instrumentNumber,
       },
       file: {
-        original_url: instrumentLink || bookLink || null,
         book,
         page,
+        link: bookLink,
       },
     });
   });
@@ -2786,10 +2719,27 @@ function writeSalesHistoryArtifacts($, seed, dataDir, appendSourceInfo) {
       relSD,
     );
 
+    // Build file name from book/page if available
+    let fileName = "Deed Document";
+    if (entry.file.book && entry.file.page) {
+      fileName = `Deed ${entry.file.book}/${entry.file.page}`;
+    } else if (entry.file.book) {
+      fileName = `Deed ${entry.file.book}`;
+    }
+
+    // Only include original_url if it's a valid absolute URL, otherwise set to null
+    let originalUrl = null;
+    if (entry.file.link && /^https?:\/\//i.test(entry.file.link)) {
+      originalUrl = entry.file.link;
+    }
+
     const fileObj = {
       ...appendSourceInfo(seed),
       document_type: "Title",
-      original_url: entry.file.original_url ?? null,
+      file_format: null,
+      ipfs_url: null,
+      name: fileName,
+      original_url: originalUrl,
     };
     writeJson(path.join(dataDir, fileFile), fileObj);
 
@@ -3289,6 +3239,13 @@ function normalizeCompanyKey(o) {
   return name || null;
 }
 
+function isValidFirstOrLastName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  return /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(trimmed);
+}
 
 // function parseFullAddress(full) {
 //   // Example: "7405 MIRACLE LN ODESSA, FL 33556-4117"
@@ -4077,47 +4034,75 @@ function main() {
   const propertyIdentifier = pin || cleanText($("td[data-bind*='displayStrap']").text());
   console.log(propertyIdentifier);
 
-  const property_type = mapPropertyTypeFromUseCode(propertyUse || "");
+  let property_type = mapPropertyTypeFromUseCode(propertyUse || "");
   // console.log("property_type>>",property_type);
-  const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(propertyUse || "");
-  const build_status= mapBuildStatusFromUseCode(propertyUse || "");
-  const structure_form = mapStructureFormFromUseCode(propertyUse || "");
-  const property_usage_type = mapPropertyUsageTypeFromUseCode(propertyUse || "");
+  let ownership_estate_type=mapOwnershipEstateTypeFromUseCode(propertyUse || null);
+  let build_status= mapBuildStatusFromUseCode(propertyUse || null);
+  const structure_form = mapStructureFormFromUseCode(propertyUse || null);
+  const property_usage_type = mapPropertyUsageTypeFromUseCode(propertyUse || null);
   console.log(propertyUse,property_type,ownership_estate_type,build_status,structure_form,property_usage_type)
+
+  // Fallback logic when property use code is not in mapping (e.g., "NN NOTE")
+  // Detect property type from address and context
+  if (!property_type || property_type === "MAPPING NOT AVAILABLE") {
+    // Check if address contains "UNIT" - indicates a condominium unit
+    if (siteAddress && /\bUNIT\b/i.test(siteAddress)) {
+      property_type = "Unit";
+      // Units are typically condominiums that are improved
+      if (!ownership_estate_type || ownership_estate_type === "MAPPING NOT AVAILABLE") {
+        ownership_estate_type = "Condominium";
+      }
+      if (!build_status || build_status === "MAPPING NOT AVAILABLE") {
+        build_status = "Improved";
+      }
+    } else {
+      // Default to Building for other cases
+      property_type = "Building";
+      if (!build_status || build_status === "MAPPING NOT AVAILABLE") {
+        build_status = "Improved";
+      }
+    }
+  }
+
+  // Ensure build_status is valid or null
+  if (build_status === "MAPPING NOT AVAILABLE") {
+    build_status = null;
+  }
 
   const { section, township, range } =
     extractSectionTownshipRange(propertyIdentifier);
-  
-  if (!property_type) {
-    const error = {
-      type: "error",
-      message: `Unable to map property type from property use code.`,
-      path: "property.property_type",
-    };
-    writeJson(path.join(dataDir, "error_property_type.json"), error);
-  }
+
+
 
   const propertyObj = {
     ...appendSourceInfo(seed),
-    parcel_identifier: propertyIdentifier,
+    parcel_identifier: propertyIdentifier || seed?.parcel_id || "UNKNOWN",
     property_type: property_type,
-    property_legal_description_text: legalDesc || "",
+    property_legal_description_text: legalDesc || null,
     subdivision: subdivision,
-    ownership_estate_type: ownership_estate_type,
+    ownership_estate_type: ownership_estate_type || null,
     build_status: build_status,
-    structure_form:structure_form,
-    property_usage_type:property_usage_type
+    structure_form: structure_form || null,
+    property_usage_type: property_usage_type || null
 
   };
   console.log(propertyObj);
   writeJson(path.join(dataDir, "property.json"), propertyObj);
 
   // ADDRESS
-  const addressToUse = siteAddress || unAddr.full_address;
-  if (!addressToUse) {
-    throw new Error("No address found in site address or unnormalized address");
+  let addressToUse = siteAddress || unAddr.full_address;
+
+  // Ensure address is never "MAPPING NOT AVAILABLE" or empty
+  if (!addressToUse || addressToUse === "MAPPING NOT AVAILABLE") {
+    // Fallback: try to construct from unnormalized_address
+    addressToUse = unAddr.unnormalized_address || null;
   }
-  // const parsed = parseFullAddress(addressToUse);
+
+  if (!addressToUse || addressToUse === "MAPPING NOT AVAILABLE") {
+    console.error("WARNING: No valid address found, using placeholder");
+    addressToUse = null; // Set to null if no valid address found
+  }
+
   const addressObj = {
     ...appendSourceInfo(seed),
     county_name: unAddr.county_jurisdiction || "Hillsborough",
@@ -4130,15 +4115,12 @@ function main() {
   };
   writeJson(path.join(dataDir, "address.json"), addressObj);
 
-
-  //Mailing address file creation
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    latitude: null,
-    longitude: null,
-    unnormalized_address: mailingAddress
+  // Create property_has_address relationship
+  const propertyAddressRel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" }
   };
-  writeJson(path.join(dataDir, "mailing_address.json"), mailingAddressOutput);
+  writeJson(path.join(dataDir, "relationship_property_has_address.json"), propertyAddressRel);
 
 
   //TAX FILES CREATION
@@ -4149,6 +4131,13 @@ function main() {
       ...taxData,
     };
     writeJson(path.join(dataDir, "tax_1.json"), taxObj);
+
+    // Create property_has_tax relationship
+    const propertyTaxRel = {
+      from: { "/": "./property.json" },
+      to: { "/": "./tax_1.json" }
+    };
+    writeJson(path.join(dataDir, "relationship_property_has_tax.json"), propertyTaxRel);
   }
 
   //OWNERS CREATION
@@ -4186,20 +4175,32 @@ function main() {
   });
   // console.log(uniquePersons,uniqueCompanies)
   // Create person files
-  uniquePersons.forEach((entry, idx) => {
+  let personIdx = 0;
+  uniquePersons.forEach((entry) => {
     const o = entry.o;
+
+    // Validate first_name and last_name before creating person
+    const firstName = o.first_name || "";
+    const lastName = o.last_name || "";
+
+    if (!isValidFirstOrLastName(firstName) || !isValidFirstOrLastName(lastName)) {
+      console.log(`Skipping person with invalid name: first="${firstName}", last="${lastName}"`);
+      return; // Skip this person
+    }
+
+    personIdx++;
     const person = {
       ...appendSourceInfo(seed),
       birth_date: null,
-      first_name: o.first_name || "",
-      last_name: o.last_name || "",
+      first_name: firstName,
+      last_name: lastName,
       middle_name: o.middle_name || null,
       prefix_name: o.prefix_name,
       suffix_name: o.suffix_name,
       us_citizenship_status: null,
       veteran_status: null,
     };
-    const pFile = `person_${idx + 1}.json`;
+    const pFile = `person_${personIdx}.json`;
     writeJson(path.join(dataDir, pFile), person);
     personFilesByKey[entry.key] = pFile;
   });
@@ -4217,39 +4218,65 @@ function main() {
   });
 
   //OWNERS TO MAILING ADDRESS RELATIONSHIP FILE.
-  let relIdx=0
-  currentOwners.forEach((o) => {
-    // console.log("relIdx",relIdx);
-    if (o && o.type === "person") {
-      const key = normalizeOwnerKey(o);
-      const pf = personFilesByKey[key];
-      if (pf) {
-        relIdx += 1;
-        const rel = {
-          from: { "/": `./${pf}` },
-          to: { "/": "./mailing_address.json" },
-        };
-        writeJson(
-          path.join(dataDir, `relationship_person_has_mailing_address_${relIdx}.json`),
-          rel,
-        );
+  // Only create mailing_address.json if there are owners with valid files to reference it
+  if (currentOwners.length > 0) {
+    // First, check if at least one owner has a valid file
+    const hasValidOwnerFile = currentOwners.some((o) => {
+      if (o && o.type === "person") {
+        const key = normalizeOwnerKey(o);
+        return personFilesByKey[key] !== undefined;
+      } else if (o && o.type === "company") {
+        const key = normalizeCompanyKey(o);
+        return companyFilesByKey[key] !== undefined;
       }
-    } else if (o && o.type === "company") {
-      const key = normalizeCompanyKey(o);
-      const cf = companyFilesByKey[key];
-      if (cf) {
-        relIdx += 1;
-        const rel = {
-          from: { "/": `./${cf}` },
-          to: { "/": "./mailing_address.json" },
-        };
-        writeJson(
-          path.join(dataDir, `relationship_company_has_mailing_address${relIdx}.json`),
-          rel,
-        );
-      }
+      return false;
+    });
+
+    // Only create mailing_address.json if at least one relationship will be created
+    if (hasValidOwnerFile) {
+      const mailingAddressOutput = {
+        ...appendSourceInfo(seed),
+        latitude: null,
+        longitude: null,
+        unnormalized_address: mailingAddress
+      };
+      writeJson(path.join(dataDir, "mailing_address.json"), mailingAddressOutput);
+
+      let relIdx=0
+      currentOwners.forEach((o) => {
+        // console.log("relIdx",relIdx);
+        if (o && o.type === "person") {
+          const key = normalizeOwnerKey(o);
+          const pf = personFilesByKey[key];
+          if (pf) {
+            relIdx += 1;
+            const rel = {
+              from: { "/": `./${pf}` },
+              to: { "/": "./mailing_address.json" },
+            };
+            writeJson(
+              path.join(dataDir, `relationship_person_has_mailing_address_${relIdx}.json`),
+              rel,
+            );
+          }
+        } else if (o && o.type === "company") {
+          const key = normalizeCompanyKey(o);
+          const cf = companyFilesByKey[key];
+          if (cf) {
+            relIdx += 1;
+            const rel = {
+              from: { "/": `./${cf}` },
+              to: { "/": "./mailing_address.json" },
+            };
+            writeJson(
+              path.join(dataDir, `relationship_company_has_mailing_address${relIdx}.json`),
+              rel,
+            );
+          }
+        }
+      });
     }
-  });  
+  }  
 
   //------Structure (owners/structures_data.json)---------------
   createStructureFiles(seed,propertyIdentifier);

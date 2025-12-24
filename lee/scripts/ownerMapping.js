@@ -25,6 +25,41 @@ const titleCaseWord = (w) => {
 };
 const titleCase = (s) => normSpace(s).split(" ").map(titleCaseWord).join(" ");
 
+/**
+ * Format a name to match the pattern ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+ * This ensures the name starts with uppercase and follows with lowercase,
+ * with special characters (space, hyphen, apostrophe, comma, period) followed by proper casing
+ */
+const formatNameToPattern = (s) => {
+    if (!s) return "";
+    const cleaned = normSpace(s);
+    if (!cleaned) return "";
+
+    // Split on special characters while keeping them
+    const parts = cleaned.split(/([ \-',.]+)/);
+    let result = "";
+
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (!part) continue;
+
+        // If it's a separator (space, hyphen, etc.), normalize to single character
+        // Pattern requires exactly one separator character, not multiple
+        if (/^[ \-',.]+$/.test(part)) {
+            // Take only the first separator character to match the pattern
+            result += part.charAt(0);
+            continue;
+        }
+
+        // It's a word - capitalize first letter, lowercase the rest
+        if (part.length > 0) {
+            result += part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+        }
+    }
+
+    return result;
+};
+
 const cleanOwnerString = (s) => {
     let t = s || "";
     t = t.replace(/^FOR\s+/i, ""); // remove leading 'FOR '
@@ -188,9 +223,9 @@ const parsePerson = (name) => {
         const middle = parts.join(" ") || null;
         if (last && first)
             return {
-                first_name: titleCase(first),
-                last_name: titleCase(last),
-                middle_name: middle ? titleCase(middle) : null,
+                first_name: formatNameToPattern(first),
+                last_name: formatNameToPattern(last),
+                middle_name: middle ? formatNameToPattern(middle) : null,
             };
         return null;
     }
@@ -203,9 +238,9 @@ const parsePerson = (name) => {
             const first = parts[1];
             const middle = parts.slice(2).join(" ") || null;
             return {
-                first_name: titleCase(first),
-                last_name: titleCase(last),
-                middle_name: middle ? titleCase(middle) : null,
+                first_name: formatNameToPattern(first),
+                last_name: formatNameToPattern(last),
+                middle_name: middle ? formatNameToPattern(middle) : null,
             };
         }
         return null;
@@ -218,9 +253,9 @@ const parsePerson = (name) => {
         const last = parts[parts.length - 1];
         const middle = parts.slice(1, -1).join(" ") || null;
         return {
-            first_name: titleCase(first),
-            last_name: titleCase(last),
-            middle_name: middle ? titleCase(middle) : null,
+            first_name: formatNameToPattern(first),
+            last_name: formatNameToPattern(last),
+            middle_name: middle ? formatNameToPattern(middle) : null,
         };
     }
     return null;

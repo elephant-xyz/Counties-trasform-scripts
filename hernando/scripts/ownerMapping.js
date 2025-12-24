@@ -427,9 +427,9 @@ function cap(s) {
     .split(/\s+/)
     .map((w) =>
       w
-        .split(/([-'])/)
+        .split(/([-',.])/)
         .map((part) =>
-          part === "-" || part === "'"
+          part === "-" || part === "'" || part === "," || part === "."
             ? part
             : part.length
             ? part[0].toUpperCase() + part.slice(1).toLowerCase()

@@ -39,10 +39,68 @@ function toCurrencyNumber(n) {
   return Math.round(num * 100) / 100;
 }
 
+function cleanNameString(s) {
+  if (!s) return null;
+  const str = String(s).trim();
+  if (!str) return null;
+
+  // Remove digits and any characters that are not letters or allowed separators (space, hyphen, apostrophe, comma, period)
+  const cleaned = str.replace(/[^a-zA-Z\s\-',.]/g, '');
+
+  // Remove multiple consecutive separators
+  const normalized = cleaned.replace(/[\s\-',.]+/g, (match) => {
+    // Keep only the first separator character
+    return match.charAt(0);
+  });
+
+  const trimmed = normalized.trim();
+  return trimmed || null;
+}
+
 function properCaseName(s) {
   if (!s) return s;
-  const lower = s.toLowerCase();
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
+
+  // Convert to string and trim whitespace
+  const str = String(s).trim();
+  if (!str) return str;
+
+  // Normalize whitespace (replace multiple spaces with single space)
+  const normalized = str.replace(/\s+/g, ' ');
+
+  // Split on word boundaries (spaces, hyphens, apostrophes) while preserving separators
+  const words = normalized.split(/(\s+|[-',.])/);
+
+  // Capitalize each word segment (non-separator parts)
+  const result = words.map((word, index) => {
+    // If it's a separator or empty, keep as-is
+    if (!word || /^[\s\-',.]$/.test(word)) {
+      return word;
+    }
+
+    // Capitalize first letter, lowercase the rest
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }).join('');
+
+  // Remove trailing separators (apostrophes, hyphens, commas, periods) and trim
+  return result.replace(/[\s\-',.]+$/, '').trim();
+}
+
+function isValidName(s) {
+  if (!s) return false;
+  const str = String(s).trim();
+  if (!str) return false;
+  // Pattern: must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, or periods
+  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  return namePattern.test(str);
+}
+
+function isValidFirstOrLastName(s) {
+  if (!s) return false;
+  const str = String(s).trim();
+  if (!str) return false;
+  // Pattern from Elephant schema: must start with uppercase letter, followed by lowercase letters, then optional (separator + letter + lowercase letters)
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  return namePattern.test(str);
 }
 
 function normalizeLookupString(value) {
@@ -61,6 +119,90 @@ function pickFirstString(source, keys) {
     const str = String(raw).trim();
     if (str) return str;
   }
+  return null;
+}
+
+function normalizeSuffix(suffix) {
+  if (!suffix) return null;
+  const s = String(suffix).trim().toUpperCase();
+  if (!s) return null;
+
+  // Mapping of common variations to allowed enum values
+  const suffixMap = {
+    "JR": "Jr.",
+    "JR.": "Jr.",
+    "JUNIOR": "Jr.",
+    "SR": "Sr.",
+    "SR.": "Sr.",
+    "SENIOR": "Sr.",
+    "II": "II",
+    "2ND": "II",
+    "SECOND": "II",
+    "III": "III",
+    "3RD": "III",
+    "THIRD": "III",
+    "IV": "IV",
+    "4TH": "IV",
+    "FOURTH": "IV",
+    "PHD": "PhD",
+    "PH.D.": "PhD",
+    "PH.D": "PhD",
+    "MD": "MD",
+    "M.D.": "MD",
+    "M.D": "MD",
+    "ESQ": "Esq.",
+    "ESQ.": "Esq.",
+    "ESQUIRE": "Esq.",
+    "JD": "JD",
+    "J.D.": "JD",
+    "J.D": "JD",
+    "LLM": "LLM",
+    "LL.M.": "LLM",
+    "LL.M": "LLM",
+    "MBA": "MBA",
+    "M.B.A.": "MBA",
+    "M.B.A": "MBA",
+    "RN": "RN",
+    "R.N.": "RN",
+    "R.N": "RN",
+    "DDS": "DDS",
+    "D.D.S.": "DDS",
+    "D.D.S": "DDS",
+    "DVM": "DVM",
+    "D.V.M.": "DVM",
+    "D.V.M": "DVM",
+    "CFA": "CFA",
+    "C.F.A.": "CFA",
+    "C.F.A": "CFA",
+    "CPA": "CPA",
+    "C.P.A.": "CPA",
+    "C.P.A": "CPA",
+    "PE": "PE",
+    "P.E.": "PE",
+    "P.E": "PE",
+    "PMP": "PMP",
+    "P.M.P.": "PMP",
+    "P.M.P": "PMP",
+    "EMERITUS": "Emeritus",
+    "RET": "Ret.",
+    "RET.": "Ret.",
+    "RETIRED": "Ret.",
+  };
+
+  const mapped = suffixMap[s];
+  if (mapped) return mapped;
+
+  // If already in correct format, return as-is
+  const allowedValues = [
+    "Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM",
+    "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."
+  ];
+
+  for (const allowed of allowedValues) {
+    if (allowed.toUpperCase() === s) return allowed;
+  }
+
+  // Return null if no match found - validation will catch this
   return null;
 }
 
@@ -715,6 +857,10 @@ function cleanupLegacyArtifacts() {
     /^relationship_sales_history_\d+_has_deed_\d+\.json$/i, // Specific for sales history to deed
     // New cleanup for the strict naming convention
     /^relationship_.*_has_.*_\d+\.json$/i, // Catch any relationship file with an index
+    /^layout_data\.json$/i,
+    /^utilities_data\.json$/i,
+    /^utility_data\.json$/i,
+    /^structure_data\.json$/i,
   ]);
 }
 
@@ -937,7 +1083,7 @@ const propertyMapping = [
     "build_status": "Improved", // Sign site/Cell Tower implies improvement
     "structure_form": null,
     "property_usage_type": "Residential", // Context implies it's on residential land
-    "property_type": "Other" // Or "Structure" if that's an option
+    "property_type": "Building"
   },
   {
     "dor_code": "0040", // New
@@ -1275,7 +1421,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Commercial",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "1012", // New
@@ -1283,7 +1429,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Commercial",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "1013", // New
@@ -1965,7 +2111,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Industrial",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "4012", // New
@@ -1973,7 +2119,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Industrial",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "4013", // New
@@ -2683,7 +2829,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "87",
@@ -2699,7 +2845,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "88",
@@ -2715,7 +2861,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "89",
@@ -2739,7 +2885,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "90",
@@ -2763,7 +2909,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Utility",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "92",
@@ -2821,7 +2967,7 @@ const propertyMapping = [
     "build_status": null, // Can be vacant or improved
     "structure_form": null,
     "property_usage_type": "CentrallyAssessed",
-    "property_type": "Other" // Or "LandParcel", "Building" depending on context
+    "property_type": "Building" // Or "LandParcel", "Building" depending on context
   },
 
   // NON-AGRICULTURAL ACREAGE
@@ -2839,7 +2985,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Unknown",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "9950", // New
@@ -2862,6 +3008,234 @@ const propertyMapping = [
 const propertyMappingMap = new Map(
   propertyMapping.map((item) => [item.dor_code, item]),
 );
+
+const PROPERTY_TYPE_ALLOWED_VALUES = new Set([
+  "Cooperative",
+  "Condominium",
+  "Modular",
+  "ManufacturedHousingMultiWide",
+  "Pud",
+  "Timeshare",
+  "2Units",
+  "DetachedCondominium",
+  "Duplex",
+  "SingleFamily",
+  "MultipleFamily",
+  "3Units",
+  "ManufacturedHousing",
+  "ManufacturedHousingSingleWide",
+  "4Units",
+  "Townhouse",
+  "NonWarrantableCondo",
+  "VacantLand",
+  "Retirement",
+  "MiscellaneousResidential",
+  "ResidentialCommonElementsAreas",
+  "MobileHome",
+  "Apartment",
+  "MultiFamilyMoreThan10",
+  "MultiFamilyLessThan10",
+  "LandParcel",
+  "Building",
+  "Unit",
+  "ManufacturedHome",
+]);
+
+const BUILD_STATUS_ALLOWED_VALUES = new Set([
+  "VacantLand",
+  "Improved",
+  "UnderConstruction",
+]);
+
+const PROPERTY_USAGE_ALLOWED_VALUES = new Set([
+  "Residential",
+  "Commercial",
+  "Industrial",
+  "Agricultural",
+  "Recreational",
+  "Conservation",
+  "Retirement",
+  "ResidentialCommonElementsAreas",
+  "DrylandCropland",
+  "HayMeadow",
+  "CroplandClass2",
+  "CroplandClass3",
+  "TimberLand",
+  "GrazingLand",
+  "OrchardGroves",
+  "Poultry",
+  "Ornamentals",
+  "Church",
+  "PrivateSchool",
+  "PrivateHospital",
+  "HomesForAged",
+  "NonProfitCharity",
+  "MortuaryCemetery",
+  "ClubsLodges",
+  "SanitariumConvalescentHome",
+  "CulturalOrganization",
+  "Military",
+  "ForestParkRecreation",
+  "PublicSchool",
+  "PublicHospital",
+  "GovernmentProperty",
+  "RetailStore",
+  "DepartmentStore",
+  "Supermarket",
+  "ShoppingCenterRegional",
+  "ShoppingCenterCommunity",
+  "OfficeBuilding",
+  "MedicalOffice",
+  "TransportationTerminal",
+  "Restaurant",
+  "FinancialInstitution",
+  "ServiceStation",
+  "AutoSalesRepair",
+  "MobileHomePark",
+  "WholesaleOutlet",
+  "Theater",
+  "Entertainment",
+  "Hotel",
+  "RaceTrack",
+  "GolfCourse",
+  "LightManufacturing",
+  "HeavyManufacturing",
+  "LumberYard",
+  "PackingPlant",
+  "Cannery",
+  "MineralProcessing",
+  "Warehouse",
+  "OpenStorage",
+  "Utility",
+  "RiversLakes",
+  "SewageDisposal",
+  "Railroad",
+  "TransitionalProperty",
+  "ReferenceParcel",
+  "NurseryGreenhouse",
+  "AgriculturalPackingFacility",
+  "LivestockFacility",
+  "Aquaculture",
+  "VineyardWinery",
+  "DataCenter",
+  "TelecommunicationsFacility",
+  "SolarFarm",
+  "WindFarm",
+  "NativePasture",
+  "ImprovedPasture",
+  "Rangeland",
+  "PastureWithTimber",
+  "Unknown",
+]);
+
+const PROPERTY_USAGE_FALLBACK_MAP = {
+  ResidentialWaterfront: "Residential",
+  PlannedUnitDevelopment: "Residential",
+  AgriculturalResidential: "Agricultural",
+  ResidentialGolfCourse: "GolfCourse",
+  Office: "OfficeBuilding",
+  MultiFamily: "Residential",
+  ConvenienceStore: "RetailStore",
+  ConvenienceStoreWithGas: "ServiceStation",
+  DiscountStore: "RetailStore",
+  ShoppingCenterPower: "ShoppingCenterCommunity",
+  ShoppingCenterTown: "ShoppingCenterCommunity",
+  MixedUse: "Commercial",
+  FlexSpace: "Commercial",
+  VeterinaryClinic: "MedicalOffice",
+  CommunicationFacility: "TelecommunicationsFacility",
+  FastFoodRestaurant: "Restaurant",
+  RepairServiceShop: "AutoSalesRepair",
+  DryCleanerLaundromat: "Commercial",
+  AutoService: "AutoSalesRepair",
+  CarWash: "AutoSalesRepair",
+  AutoDealership: "AutoSalesRepair",
+  MarineSalesRepair: "AutoSalesRepair",
+  VehicleSales: "AutoSalesRepair",
+  VehicleRental: "AutoSalesRepair",
+  ParkingLot: "Commercial",
+  NightclubBar: "Entertainment",
+  RecreationalFacility: "Recreational",
+  HealthFitnessClub: "Recreational",
+  Camp: "Recreational",
+  Motel: "Hotel",
+  LuxuryHotel: "Hotel",
+  ExtendedStayHotel: "Hotel",
+  BedAndBreakfast: "Hotel",
+  MiniWarehouse: "Warehouse",
+  FoodProcessing: "Industrial",
+  HorseFarm: "LivestockFacility",
+  DairyFarm: "LivestockFacility",
+  Institutional: "GovernmentProperty",
+  DaycarePreschool: "PrivateSchool",
+  GroupHome: "HomesForAged",
+  RehabilitationFacility: "SanitariumConvalescentHome",
+  Cemetery: "MortuaryCemetery",
+  ClubLodge: "ClubsLodges",
+  VolunteerFireDepartment: "GovernmentProperty",
+  PublicCollege: "PublicSchool",
+  Airport: "TransportationTerminal",
+  WasteManagement: "SewageDisposal",
+  CentrallyAssessed: "Unknown",
+};
+
+function sanitizePropertyUsageType(value) {
+  if (!value) return null;
+  if (PROPERTY_USAGE_ALLOWED_VALUES.has(value)) return value;
+  const remapped = PROPERTY_USAGE_FALLBACK_MAP[value];
+  if (remapped && PROPERTY_USAGE_ALLOWED_VALUES.has(remapped)) return remapped;
+  return "Unknown";
+}
+
+function isPositiveNumber(value) {
+  if (value === null || value === undefined) return false;
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0;
+}
+
+function resolvePropertyType(rawType, hasImprovements) {
+  const normalized =
+    typeof rawType === "string" ? rawType.trim() : null;
+  if (normalized && PROPERTY_TYPE_ALLOWED_VALUES.has(normalized)) {
+    return normalized;
+  }
+  return hasImprovements ? "Building" : "LandParcel";
+}
+
+function resolveBuildStatus(rawStatus, hasImprovements) {
+  const normalized =
+    typeof rawStatus === "string" ? rawStatus.trim() : null;
+  if (normalized && BUILD_STATUS_ALLOWED_VALUES.has(normalized)) {
+    return normalized;
+  }
+  if (hasImprovements) return "Improved";
+  return "VacantLand";
+}
+
+function normalizeBoolean(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed) return null;
+    if (["y", "yes", "true", "1", "required"].includes(trimmed)) return true;
+    if (["n", "no", "false", "0", "not required"].includes(trimmed)) return false;
+  }
+  return null;
+}
+
+function formatAreaValue(value) {
+  if (!Number.isFinite(value)) return null;
+  if (value <= 0) return null;
+  const rounded = Math.round(value);
+  const str = String(rounded);
+  if (/\d{2,}/.test(str)) return str;
+  return str.padStart(2, "0");
+}
 
 // Function to get property mapping based on DOR code
 function getPropertyMapping(dorCode) {
@@ -2904,8 +3278,12 @@ function main() {
   cleanupLegacyArtifacts();
 
   const input = readInputHtml();
-  const unaddr = readJSON("unnormalized_address.json");
-  const propSeed = readJSON("property_seed.json");
+  const unaddr = fs.existsSync("unnormalized_address.json")
+    ? readJSON("unnormalized_address.json")
+    : {};
+  const propSeed = fs.existsSync("property_seed.json")
+    ? readJSON("property_seed.json")
+    : {};
 
   const ownersPath = path.join("owners", "owner_data.json");
   const utilitiesPath = path.join("owners", "utilities_data.json");
@@ -2947,11 +3325,48 @@ function main() {
   const yearTokens = parseYearTokens(bldg ? bldg.yearBlt : null);
   const builtYear = yearTokens.built;
   const effectiveBuiltYear = yearTokens.effective;
+  const hasBuildingDetails =
+    Array.isArray(input.buildingDetails) &&
+    input.buildingDetails.some((detail) => {
+      if (!detail) return false;
+      return [
+        detail.livingArea,
+        detail.baseArea,
+        detail.grossArea,
+        detail.totalArea,
+        detail.heatedArea,
+        detail.adjustedArea,
+      ].some(isPositiveNumber);
+    });
+  const hasStructureRecords =
+    !!(
+      structureData &&
+      ((Array.isArray(structureData) && structureData.length > 0) ||
+        (Array.isArray(structureData.structures) &&
+          structureData.structures.length > 0))
+    );
+  const hasImprovements =
+    isPositiveNumber(livable) ||
+    isPositiveNumber(gross) ||
+    hasBuildingDetails ||
+    hasStructureRecords;
 
   // Apply property mapping using input.dor
   const mappedProperty = getPropertyMapping(input.dor);
+  const resolvedPropertyType = resolvePropertyType(
+    mappedProperty ? mappedProperty.property_type : null,
+    hasImprovements,
+  );
+  const resolvedBuildStatus = resolveBuildStatus(
+    mappedProperty ? mappedProperty.build_status : null,
+    hasImprovements,
+  );
 
   const propertyFileName = "property.json";
+  const propertyUsageRaw = mappedProperty
+    ? mappedProperty.property_usage_type
+    : null;
+  const propertyUsageType = sanitizePropertyUsageType(propertyUsageRaw);
   const propertyObj = {
     parcel_identifier: parcelNumber,
     property_legal_description_text: legal,
@@ -2959,20 +3374,18 @@ function main() {
     property_effective_built_year: Number.isFinite(effectiveBuiltYear)
       ? effectiveBuiltYear
       : null,
-    // MODIFIED: Convert numeric area fields to string
-    livable_floor_area: Number.isFinite(livable) ? String(livable) : null,
-    area_under_air: Number.isFinite(livable) ? String(livable) : null,
-    total_area: Number.isFinite(gross) ? String(gross) : null,
-    property_type: mappedProperty ? mappedProperty.property_type : null,
+    // MODIFIED: Convert numeric area fields to strings that satisfy schema pattern
+    livable_floor_area: formatAreaValue(livable),
+    area_under_air: formatAreaValue(livable),
+    total_area: formatAreaValue(gross),
+    property_type: resolvedPropertyType,
     number_of_units_type: "One", // Default, can be updated based on more specific logic if needed
     ownership_estate_type: mappedProperty
       ? mappedProperty.ownership_estate_type
       : null,
-    build_status: mappedProperty ? mappedProperty.build_status : null,
+    build_status: resolvedBuildStatus,
     structure_form: mappedProperty ? mappedProperty.structure_form : null,
-    property_usage_type: mappedProperty
-      ? mappedProperty.property_usage_type
-      : null,
+    property_usage_type: propertyUsageType,
     zoning: input.zoning || null,
     subdivision: input.subName || input.platName || null,
     number_of_units: 1,
@@ -3035,40 +3448,40 @@ function main() {
     
   });
 
-  const situsAddressRaw = unaddr.full_address || input.situsAddress || "";
-  const situsAddress = parseAddressComponents(
-    situsAddressRaw,
-    input.mailingAddress || "",
-  );
+  const situsAddressCandidate = pickFirstString(input, [
+    "situsAddress",
+    "siteAddress",
+    "siteAddr",
+    "propertyAddress",
+    "physicalAddress",
+    "locationAddress",
+    "address",
+  ]);
+  let unnormalizedSitusAddress =
+    normalizeAddressString(situsAddressCandidate) || null;
+  if (!unnormalizedSitusAddress) {
+    const unaddrFallback = pickFirstString(unaddr || {}, [
+      "full_address",
+      "unnormalized_address",
+      "address",
+      "siteAddress",
+    ]);
+    const fallbackNormalized = normalizeAddressString(unaddrFallback);
+    unnormalizedSitusAddress = fallbackNormalized || null;
+  }
+  const addressSourceRequest =
+    (unaddr && unaddr.source_http_request) ||
+    (propSeed && propSeed.source_http_request) ||
+    (input && input.source_http_request) ||
+    null;
+
   const addressFileName = "address.json";
   const addressObj = {
-    street_number: situsAddress ? situsAddress.streetNumber : null,
-    street_pre_directional_text: situsAddress
-      ? situsAddress.streetPreDirectional
-      : null,
-    street_name: situsAddress ? situsAddress.streetName : null,
-    street_suffix_type: situsAddress ? situsAddress.streetSuffix : null,
-    street_post_directional_text: situsAddress
-      ? situsAddress.streetPostDirectional
-      : null,
-    unit_identifier: null,
-    city_name: situsAddress ? situsAddress.city : null,
-    municipality_name: null,
-    state_code: situsAddress ? situsAddress.state : null,
-    postal_code: situsAddress ? situsAddress.postal_code : null, // Use postal_code from parsed object
-    plus_four_postal_code: situsAddress ? situsAddress.plus4 : null,
+    unnormalized_address: unnormalizedSitusAddress,
+    source_http_request: addressSourceRequest || null,
+    request_identifier: requestIdentifier,
     county_name: "Seminole",
     country_code: "US",
-    latitude: typeof unaddr.latitude === "number" ? unaddr.latitude : null,
-    longitude: typeof unaddr.longitude === "number" ? unaddr.longitude : null,
-    route_number: null,
-    township: null,
-    range: null,
-    section: null,
-    block: null,
-    lot: null,
-    // unnormalized_address: normalizeAddressString(situsAddressRaw) || null,
-    request_identifier: requestIdentifier,
   };
   fs.writeFileSync(
     path.join("data", addressFileName),
@@ -3076,32 +3489,13 @@ function main() {
   );
 
 
+  // Parse mailing address but don't create file yet - will only create if there are owners to link it to
   let mailingAddressFile = null;
   const mailingAddressRaw = input.mailingAddress || "";
   const mailingAddressParsed = parseAddressComponents(
     mailingAddressRaw,
     mailingAddressRaw,
   );
-  if (
-    mailingAddressParsed &&
-    (mailingAddressParsed.streetNumber ||
-      mailingAddressParsed.streetName ||
-      mailingAddressParsed.city ||
-      mailingAddressParsed.state ||
-      mailingAddressParsed.postal_code) // Use postal_code here
-  ) {
-    mailingAddressFile = "mailing_address.json";
-    const mailingAddressObj = {
-      unnormalized_address: normalizeAddressString(mailingAddressRaw) || null,
-      request_identifier: requestIdentifier,
-      latitude : null,
-      longitude : null,
-    };
-    fs.writeFileSync(
-      path.join("data", mailingAddressFile),
-      JSON.stringify(mailingAddressObj, null, 2),
-    );
-  }
   const primaryLand =
     Array.isArray(input.landDetails) && input.landDetails.length
       ? input.landDetails[0]
@@ -3120,11 +3514,11 @@ function main() {
     lot_type: mapLotType(primaryLand && primaryLand.method, lotAcre),
     lot_length_feet:
       primaryLand && Number.isFinite(primaryLand.landDepth)
-        ? Number(primaryLand.landDepth)
+        ? Math.round(Number(primaryLand.landDepth))
         : null,
     lot_width_feet:
       primaryLand && Number.isFinite(primaryLand.landFrontage)
-        ? Number(primaryLand.landFrontage)
+        ? Math.round(Number(primaryLand.landFrontage))
         : null,
     lot_area_sqft: lotAreaSqft,
     landscaping_features: null,
@@ -3144,7 +3538,16 @@ function main() {
     JSON.stringify(lotObj, null, 2),
   );
 
-
+  // Create relationship between property and lot
+  const lotRelationshipFileName = createRelationshipFileName(propertyFileName, lotFileName);
+  const lotRelationship = {
+    from: { "/": `./${propertyFileName}` },
+    to: { "/": `./${lotFileName}` },
+  };
+  fs.writeFileSync(
+    path.join("data", lotRelationshipFileName),
+    JSON.stringify(lotRelationship, null, 2),
+  );
 
   if (Array.isArray(input.parcelValueHistory)) {
     input.parcelValueHistory.forEach((row, idx) => {
@@ -3282,15 +3685,36 @@ function main() {
 
       for (const owner of currOwners) {
         if (owner.type === "person") {
+          // Clean and validate first and last names
+          const firstNameCleaned = cleanNameString(owner.first_name || null);
+          const lastNameCleaned = cleanNameString(owner.last_name || null);
+
+          if (!firstNameCleaned || !lastNameCleaned) {
+            // Skip this person if first or last name is missing after cleaning
+            continue;
+          }
+
+          const firstNameProper = properCaseName(firstNameCleaned);
+          const lastNameProper = properCaseName(lastNameCleaned);
+
+          // Validate that names match the required pattern
+          if (!isValidFirstOrLastName(firstNameProper) || !isValidFirstOrLastName(lastNameProper)) {
+            // Skip this person if names don't match the pattern
+            continue;
+          }
+
           personIndex += 1;
           const personFileName = `person_${personIndex}.json`;
+          const middleNameCleaned = cleanNameString(owner.middle_name || null);
+          const middleNameRaw = middleNameCleaned ? properCaseName(middleNameCleaned) : null;
+          const middleNameValid = middleNameRaw && isValidName(middleNameRaw) ? middleNameRaw : null;
           const personRecord = {
             birth_date: null,
-            first_name: properCaseName(owner.first_name || null),
-            last_name: properCaseName(owner.last_name || null),
-            middle_name: owner.middle_name || null,
+            first_name: firstNameProper,
+            last_name: lastNameProper,
+            middle_name: middleNameValid,
             prefix_name: null,
-            suffix_name: owner.suffix_name || null,
+            suffix_name: normalizeSuffix(owner.suffix_name),
             us_citizenship_status: null,
             veteran_status: null,
             request_identifier: requestIdentifier,
@@ -3356,7 +3780,28 @@ function main() {
         });
       }
 
-      if (mailingAddressFile) {
+      // Create mailing address file only if there are owners to link it to
+      if (
+        (personEntries.length > 0 || companyEntries.length > 0) &&
+        mailingAddressParsed &&
+        (mailingAddressParsed.streetNumber ||
+          mailingAddressParsed.streetName ||
+          mailingAddressParsed.city ||
+          mailingAddressParsed.state ||
+          mailingAddressParsed.postal_code)
+      ) {
+        mailingAddressFile = "mailing_address.json";
+        const mailingAddressObj = {
+          unnormalized_address: normalizeAddressString(mailingAddressRaw) || null,
+          request_identifier: requestIdentifier,
+          latitude: null,
+          longitude: null,
+        };
+        fs.writeFileSync(
+          path.join("data", mailingAddressFile),
+          JSON.stringify(mailingAddressObj, null, 2),
+        );
+
         personEntries.forEach((entry) => {
           const rel = {
             from: { "/": `./${entry.file}` },
@@ -3784,7 +4229,40 @@ function main() {
           JSON.stringify(relObj, null, 2),
         );
       });
+
+      // Link any unused utilities directly to property
+      utilityOutputs.forEach((entry, idx) => {
+        if (usedUtilityIndexes.has(idx)) return;
+        const relObj = {
+          from: { "/": "./property.json" },
+          to: { "/": `./${entry.fileName}` },
+        };
+        const relationshipFileName = createRelationshipFileName(
+          "property.json",
+          entry.fileName,
+        );
+        fs.writeFileSync(
+          path.join("data", relationshipFileName),
+          JSON.stringify(relObj, null, 2),
+        );
+      });
     }
+  } else {
+    // No layout data - link all utilities directly to property
+    utilityOutputs.forEach((entry) => {
+      const relObj = {
+        from: { "/": "./property.json" },
+        to: { "/": `./${entry.fileName}` },
+      };
+      const relationshipFileName = createRelationshipFileName(
+        "property.json",
+        entry.fileName,
+      );
+      fs.writeFileSync(
+        path.join("data", relationshipFileName),
+        JSON.stringify(relObj, null, 2),
+      );
+    });
   }
 
   structureOutputs.forEach((entry, idx) => {
@@ -3804,14 +4282,17 @@ function main() {
   });
 
   const floodZoneRaw = String(input.floodZone || "").trim();
-  let floodInsuranceRequired = null;
+  let floodInsuranceRequired = normalizeBoolean(input.floodInsuranceRequired);
   if (floodZoneRaw) {
     const normalizedZone = floodZoneRaw.toUpperCase();
     if (normalizedZone === "NO" || normalizedZone === "NONE" || normalizedZone === "X") {
       floodInsuranceRequired = false;
-    } else {
+    } else if (floodInsuranceRequired === null) {
       floodInsuranceRequired = true;
     }
+  }
+  if (floodInsuranceRequired === null) {
+    floodInsuranceRequired = false;
   }
 
   const floodFileName = "flood_storm_information.json";
@@ -3829,6 +4310,17 @@ function main() {
   fs.writeFileSync(
     path.join("data", floodFileName),
     JSON.stringify(floodObj, null, 2),
+  );
+  const floodRelationship = {
+    from: { "/": `./${propertyFileName}` },
+    to: { "/": `./${floodFileName}` },
+  };
+  fs.writeFileSync(
+    path.join(
+      "data",
+      createRelationshipFileName(propertyFileName, floodFileName),
+    ),
+    JSON.stringify(floodRelationship, null, 2),
   );
 
 
@@ -3873,7 +4365,14 @@ function main() {
       JSON.stringify(fileObj, null, 2),
     );
 
-
+    const fileRelationship = {
+      from: { "/": `./property.json` },
+      to: { "/": `./${fileFileName}` },
+    };
+    fs.writeFileSync(
+      path.join("data", createRelationshipFileName("property.json", fileFileName)),
+      JSON.stringify(fileRelationship, null, 2),
+    );
   });
 }
 
