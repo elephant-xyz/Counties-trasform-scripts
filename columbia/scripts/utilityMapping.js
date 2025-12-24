@@ -213,16 +213,7 @@ function extractExtraFeatures($) {
 
 function buildUtilityFromFeature(feature) {
   const description = feature.description || "";
-  const util = {
-    feature_code: feature.code,
-    feature_description: description,
-    feature_year_built: feature.year_built,
-    feature_units: feature.units,
-    feature_dimensions: feature.dimensions,
-    feature_value_dollars: feature.value_dollars,
-    feature_area_square_feet: feature.area_square_feet ?? null,
-    public_utility_type_other_description: description || null,
-  };
+  const util = {};
 
   if (/SEPTIC/i.test(description)) {
     util.sewer_type = "Septic";
@@ -231,16 +222,13 @@ function buildUtilityFromFeature(feature) {
     util.water_source_type = "Well";
   }
   if (/IRRIGATION|SPRINK/i.test(description)) {
-    util.public_utility_type = "Irrigation";
+    util.public_utility_type = "WaterAvailable";
   } else if (/ELECTRIC|POWER|TRANSFORMER|GENERATOR/i.test(description)) {
-    util.public_utility_type = "Electric";
+    util.public_utility_type = "ElectricityAvailable";
   } else if (/GAS/i.test(description)) {
-    util.public_utility_type = "Gas";
+    util.public_utility_type = "NaturalGasAvailable";
   } else if (/WATER/i.test(description)) {
-    util.public_utility_type = util.public_utility_type || "Water";
-  }
-  if (/PUMP/i.test(description)) {
-    util.utility_component = "Pump";
+    util.public_utility_type = util.public_utility_type || "WaterAvailable";
   }
 
   return util;
@@ -256,9 +244,9 @@ function main() {
     (feature) => feature.category === "utility",
   );
 
-  const extraUtilities = extraFeatures.map((feature) =>
-    Object.assign({}, buildUtilityObject(), buildUtilityFromFeature(feature)),
-  );
+  // Do not create extra_utilities as they are not properly linked in the datagroup
+  // Features like SEPTIC and WELL should be captured in property-level fields instead
+  const extraUtilities = [];
 
   const outputDir = path.resolve("owners");
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });

@@ -456,6 +456,8 @@ function mapContractorType(value) {
 const LAYOUT_FIELD_SET = new Set(LAYOUT_FIELDS);
 const UTILITY_FIELD_SET = new Set(UTILITY_FIELDS);
 
+const WRITTEN_DATA_FILES = new Set();
+
 function readText(p) {
   return fs.readFileSync(p, "utf8");
 }
@@ -468,6 +470,22 @@ function ensureDir(p) {
 function writeJson(p, obj) {
   ensureDir(path.dirname(p));
   fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8");
+  try {
+    const relToData = path.relative("data", p);
+    if (
+      relToData &&
+      !relToData.startsWith("..") &&
+      !path.isAbsolute(relToData)
+    ) {
+      const parts = relToData.split(path.sep).filter(Boolean);
+      const fileName = parts[parts.length - 1] || null;
+      if (fileName && !fileName.startsWith("relationship_")) {
+        WRITTEN_DATA_FILES.add(fileName);
+      }
+    }
+  } catch (trackErr) {
+    // Ignore tracking issues; they do not block primary execution.
+  }
 }
 
 function toISODate(mdY) {
@@ -495,12 +513,18 @@ function parseCurrencyToNumber(text) {
   if (cleaned === "") return null;
   const num = parseFloat(cleaned);
   if (isNaN(num)) return null;
-  return Math.round(num * 100) / 100;
+  // Currency must be positive (>= 0)
+  if (num < 0) return null;
+  // Round to exactly 2 decimal places to avoid floating point precision issues
+  return parseFloat(num.toFixed(2));
 }
 
 const COMPANY_HINTS = [
   " LLC",
   " L.L.C",
+  " L.C.",
+  " L.C",
+  " LC",
   " INC",
   " CORPORATION",
   " CORP",
@@ -558,6 +582,29 @@ function isCompanyName(raw) {
   return COMPANY_HINTS.some((hint) => normalized.includes(hint.trim().toUpperCase()));
 }
 
+const PERSON_FRAGMENT_BLOCKLIST = new Set([
+  "sons",
+  "heirs",
+  "estate",
+  "est",
+  "trust",
+  "trustee",
+  "associates",
+]);
+
+function splitPartySegments(raw) {
+  const cleaned = normalizePartyName(raw);
+  if (!cleaned) return [];
+  if (isCompanyName(cleaned)) {
+    return [cleaned];
+  }
+  const parts = cleaned
+    .split(/\s*&\s*|\s+AND\s+|\s*\+\s*|;/i)
+    .map((p) => normalizePartyName(p))
+    .filter(Boolean);
+  return parts.length ? parts : [cleaned];
+}
+
 function parsePersonNameComponents(raw) {
   const cleaned = normalizePartyName(raw);
   if (!cleaned) return null;
@@ -577,6 +624,14 @@ function parsePersonNameComponents(raw) {
       last = tokens[0];
       first = tokens[1];
       if (tokens.length > 2) middle = tokens.slice(2).join(" ");
+      // If the parsed first name is a single letter, this is likely a person fragment
+      // (e.g., "PAMELA J" after "NELSON, ROBERT E & PAMELA J")
+      // Return null to let inferPersonWithFallback handle it with the fallback last name
+      if (first.length === 1) {
+        return null;
+      }
+    } else {
+      return null;
     }
   }
   if (!first || !last) return null;
@@ -587,13 +642,58 @@ function parsePersonNameComponents(raw) {
   };
 }
 
-function classifyParty(raw) {
+function isLikelyPersonFragment(raw) {
+  const cleaned = normalizePartyName(raw);
+  if (!cleaned) return false;
+  if (cleaned.includes(",")) return false;
+  if (isCompanyName(cleaned)) return false;
+  if (/[^a-z\s\-',.]/i.test(cleaned)) return false;
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  if (!tokens.length || tokens.length > 3) return false;
+  const normalized = tokens.map((t) => t.replace(/\.$/, "").toLowerCase());
+  if (normalized.some((t) => PERSON_FRAGMENT_BLOCKLIST.has(t))) return false;
+  return tokens.every((t) => /^[A-Za-z][A-Za-z'.-]*\.?$/.test(t));
+}
+
+function inferPersonWithFallback(raw, fallbackLast) {
+  if (!fallbackLast) return null;
+  if (!isLikelyPersonFragment(raw)) return null;
+  const tokens = normalizePartyName(raw).split(/\s+/).filter(Boolean);
+  if (!tokens.length) return null;
+  const first = tokens[0];
+  const middle = tokens.length > 1 ? tokens.slice(1).join(" ") : null;
+  return {
+    first_name: first,
+    middle_name: middle || null,
+    last_name: fallbackLast,
+  };
+}
+
+function classifySingleParty(raw, fallbackLastName = null) {
   const cleaned = normalizePartyName(raw);
   if (!cleaned) return null;
+
+  // Skip placeholder names that are not real entities
+  const cleanedLower = cleaned.toLowerCase();
+  if (
+    cleanedLower.includes("see file") ||
+    cleanedLower.includes("see deed") ||
+    cleanedLower.includes("see document") ||
+    cleanedLower.includes("unknown") ||
+    cleanedLower.includes("not available") ||
+    cleanedLower === "seller" ||
+    cleanedLower === "buyer" ||
+    cleanedLower === "grantor" ||
+    cleanedLower === "grantee"
+  ) {
+    return null;
+  }
+
   if (isCompanyName(cleaned)) {
     return { type: "company", name: cleaned };
   }
-  const person = parsePersonNameComponents(cleaned);
+  let person = parsePersonNameComponents(cleaned);
+  if (!person) person = inferPersonWithFallback(cleaned, fallbackLastName);
   if (person) {
     return { type: "person", ...person };
   }
@@ -601,6 +701,23 @@ function classifyParty(raw) {
     return { type: "company", name: cleaned };
   }
   return null;
+}
+
+function classifyParties(raw) {
+  const segments = splitPartySegments(raw);
+  if (!segments.length) return [];
+  const parties = [];
+  let fallbackLast = null;
+  segments.forEach((segment) => {
+    const party = classifySingleParty(segment, fallbackLast);
+    if (party) {
+      parties.push(party);
+      if (party.type === "person" && party.last_name) {
+        fallbackLast = party.last_name;
+      }
+    }
+  });
+  return parties;
 }
 
 function extractDeedReference(bookPageText, href) {
@@ -663,6 +780,29 @@ function writeRelationshipFiles(relations, buildFileName) {
   });
 }
 
+function updateDatagroupFiles(mutator) {
+  const dataDir = path.resolve("data");
+  if (!fs.existsSync(dataDir)) return;
+  fs.readdirSync(dataDir).forEach((name) => {
+    if (!name.toLowerCase().endsWith(".json")) return;
+    const fullPath = path.join(dataDir, name);
+    let parsed;
+    try {
+      const raw = fs.readFileSync(fullPath, "utf8");
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      return;
+    }
+    if (!parsed || typeof parsed !== "object") return;
+    if (!parsed.relationships || typeof parsed.relationships !== "object") return;
+    const changed = mutator(parsed);
+    if (changed) {
+      const payload = JSON.stringify(parsed, null, 2);
+      fs.writeFileSync(fullPath, payload, "utf8");
+    }
+  });
+}
+
 const buildDefaultRelationshipFileName = (rel) => {
   const fromPath = rel?.from?.["/"];
   const toPath = rel?.to?.["/"];
@@ -675,11 +815,105 @@ const buildDefaultRelationshipFileName = (rel) => {
 
 function titleCaseName(s) {
   if (s == null) return null;
-  s = String(s).toLowerCase();
-  return s.replace(
-    /(^|[\s\-\'])([a-z])/g,
-    (m, p1, p2) => p1 + p2.toUpperCase(),
+  s = String(s).trim();
+  if (!s) return null;
+
+  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
+  s = s.replace(/[^a-zA-Z\s\-',.]/g, '');
+  if (!s) return null;
+
+  // Remove leading/trailing separators and collapse multiple spaces
+  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '').replace(/\s+/g, ' ');
+  if (!s) return null;
+
+  s = s.toLowerCase();
+
+  // Apply title casing: uppercase letter after start or after a separator
+  const result = s.replace(
+    /(^|[\s\-',.])([a-z])/g,
+    (m, p1, p2) => p1 + p2.toUpperCase()
   );
+
+  // Remove any consecutive separators (reduce to single space)
+  let cleaned = result;
+  while (/[\s\-',.]{2,}/.test(cleaned)) {
+    cleaned = cleaned.replace(/[\s\-',.]{2,}/g, ' ');
+  }
+  cleaned = cleaned.trim();
+
+  // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  if (!cleaned || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(cleaned)) return null;
+  return cleaned;
+}
+
+function cleanMiddleName(s) {
+  if (s == null) return null;
+  s = String(s).trim();
+  if (!s) return null;
+
+  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
+  s = s.replace(/[^a-zA-Z\s\-',.]/g, "");
+  if (!s) return null;
+
+  // Remove leading/trailing separators and collapse multiple spaces
+  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, "").replace(/\s+/g, " ");
+  if (!s) return null;
+
+  const lower = s.toLowerCase();
+  const parts = [];
+  let currentWord = "";
+  let lastWasSeparator = false;
+
+  for (let i = 0; i < lower.length; i++) {
+    const char = lower[i];
+    if (/[\s\-',.]/.test(char)) {
+      if (currentWord) {
+        parts.push({ type: "word", value: currentWord });
+        currentWord = "";
+      }
+      if (!lastWasSeparator) {
+        parts.push({ type: "sep", value: char });
+        lastWasSeparator = true;
+      }
+    } else {
+      currentWord += char;
+      lastWasSeparator = false;
+    }
+  }
+  if (currentWord) {
+    parts.push({ type: "word", value: currentWord });
+  }
+
+  let result = "";
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.type === "word") {
+      result += part.value.charAt(0).toUpperCase() + part.value.slice(1);
+    } else {
+      result += part.value;
+    }
+  }
+
+  result = result.trim().replace(/\s+/g, " ");
+  result = result.replace(/[\s\-',.]+$/g, "");
+  result = result.replace(/^[\s\-',.]+/g, "");
+
+  if (!result) return null;
+
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+
+  for (let i = 0; i < result.length; i++) {
+    const char = result[i];
+    const code = char.charCodeAt(0);
+    const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    const isSeparator =
+      char === " " || char === "-" || char === "'" || char === "," || char === ".";
+    if (!isLetter && !isSeparator) {
+      return null;
+    }
+  }
+
+  return result;
 }
 
 function getValueByStrong($, label) {
@@ -1413,11 +1647,16 @@ function cleanNum(text) {
 
 function parseSquareFeetValue(value) {
   if (value == null) return null;
-  if (typeof value === "number") return value;
-  const cleaned = String(value).replace(/[^0-9.]/g, "");
-  if (cleaned === "") return null;
-  const num = parseFloat(cleaned);
-  return Number.isNaN(num) ? null : num;
+  let numeric = null;
+  if (typeof value === "number") {
+    numeric = value;
+  } else {
+    const cleaned = String(value).replace(/[^0-9.]/g, "");
+    if (cleaned === "") return null;
+    numeric = parseFloat(cleaned);
+  }
+  if (!Number.isFinite(numeric)) return null;
+  return Math.round(numeric);
 }
 
 function main() {
@@ -1509,7 +1748,8 @@ function main() {
       null,
   };
   const mailingAddressFile = "mailing_address.json";
-  writeJson(path.join("data", mailingAddressFile), mailingAddressOut);
+  // Conditionally write mailing_address.json only if it will be referenced by relationships
+  // (moved to after relationship filtering to avoid unused file)
 
   const geometryOut = {
     latitude: latitude ?? null,
@@ -1525,16 +1765,11 @@ function main() {
   };
   writeJson(path.join("data", "geometry.json"), geometryOut);
 
-  const relAddressGeometry = [
-    {
-      from: { "/": "./address.json" },
-      to: { "/": "./geometry.json" },
-    },
-  ];
-  writeJson(
-    path.join("data", "relationship_address_geometry.json"),
-    relAddressGeometry,
-  );
+  const relAddressGeometry = {
+    from: { "/": "./address.json" },
+    to: { "/": "./geometry.json" },
+  };
+  writeJson(path.join("data", "relationship_address_geometry.json"), relAddressGeometry);
 
   // Property
   const parcelId =
@@ -1564,6 +1799,11 @@ function main() {
     getValueByStrong($, "Total Finished Area") ||
     getValueByStrong($, "Finished Area") ||
     null;
+  const livableSqftValue = parseSquareFeetValue(livable);
+  livable =
+    livableSqftValue != null && livableSqftValue >= 10
+      ? Math.round(livableSqftValue)
+      : null;
   const yearBuiltText = getValueByStrong($, "Year Built");
   const yearBuilt = yearBuiltText
     ? parseInt(yearBuiltText.replace(/[^0-9]/g, ""), 10)
@@ -1595,6 +1835,7 @@ function main() {
 
   const neighborhood = getValueByStrong($, "Neighborhood");
 
+  const livableText = livable != null ? String(livable) : null;
   const propertyOut = {
     parcel_identifier: parcelId,
     property_type: propertyCodeMapping.property_type,
@@ -1604,8 +1845,8 @@ function main() {
     structure_form: propertyCodeMapping.structure_form ?? null,
     property_structure_built_year: yearBuilt || null,
     property_effective_built_year: null,
-    livable_floor_area: livable || null,
-    area_under_air: livable || null,
+    livable_floor_area: livableText,
+    area_under_air: livableText,
     total_area: null,
     number_of_units: numUnits || null,
     number_of_units_type: unitsType,
@@ -1737,7 +1978,10 @@ function main() {
     const idx = persons.length + 1;
     const first = titleCaseName(p.first_name);
     const last = titleCaseName(p.last_name);
-    const middle = p.middle_name ? titleCaseName(p.middle_name) : null;
+    let middle = p.middle_name ? cleanMiddleName(p.middle_name) : null;
+    // Ensure first and last names are valid after title casing
+    if (!first || !last) return null;
+    // Middle name is already validated by cleanMiddleName (returns null if invalid)
     const personObj = {
       birth_date: null,
       first_name: first,
@@ -1854,7 +2098,6 @@ function main() {
         file_format: null,
         ipfs_url: null,
         name: name,
-        original_url: row.link,
       };
       filesOut.push({ file: `file_${fileIndex}.json`, data: fileObj });
       relDeedFile.push({
@@ -1863,8 +2106,8 @@ function main() {
       });
     }
 
-    const party = classifyParty(row.grantor);
-    if (party) {
+    const parties = classifyParties(row.grantor);
+    parties.forEach((party) => {
       if (party.type === "person") {
         const file = addPerson(party);
         if (file) {
@@ -1876,7 +2119,7 @@ function main() {
           saleGrantorCompanies.push({ saleIndex, file });
         }
       }
-    }
+    });
   });
 
   salesHistoryOut.forEach((s) => writeJson(path.join("data", s.file), s.data));
@@ -1900,27 +2143,43 @@ function main() {
     });
   });
   const currentOwners = ownersByDate["current"] || [];
-  const currentOwnerPersonFiles = [];
-  const currentOwnerCompanyFiles = [];
-  currentOwners.forEach((o) => {
+  let latestOwners = currentOwners;
+  if (!latestOwners.length) {
+    const datedEntries = Object.entries(ownersByDate)
+      .filter(
+        ([key, value]) =>
+          key !== "current" &&
+          Array.isArray(value) &&
+          value.length &&
+          !Number.isNaN(Date.parse(key)),
+      )
+      .map(([key, value]) => ({ key, value, ts: Date.parse(key) }))
+      .sort((a, b) => b.ts - a.ts);
+    if (datedEntries.length) {
+      latestOwners = datedEntries[0].value;
+    }
+  }
+  const latestOwnerPersonFiles = [];
+  const latestOwnerCompanyFiles = [];
+  latestOwners.forEach((o) => {
     if (o.type === "person") {
       const file = addPerson(o);
-      if (file) currentOwnerPersonFiles.push(file);
+      if (file) latestOwnerPersonFiles.push(file);
     } else if (o.type === "company" && o.name) {
       const file = ensureCompany(o.name);
-      if (file) currentOwnerCompanyFiles.push(file);
+      if (file) latestOwnerCompanyFiles.push(file);
     }
   });
 
   const mailingPersonRelationships = [];
   const mailingCompanyRelationships = [];
-  Array.from(new Set(currentOwnerPersonFiles)).forEach((file) => {
+  Array.from(new Set(latestOwnerPersonFiles)).forEach((file) => {
     mailingPersonRelationships.push({
       from: { "/": `./${file}` },
       to: { "/": `./${mailingAddressFile}` },
     });
   });
-  Array.from(new Set(currentOwnerCompanyFiles)).forEach((file) => {
+  Array.from(new Set(latestOwnerCompanyFiles)).forEach((file) => {
     mailingCompanyRelationships.push({
       from: { "/": `./${file}` },
       to: { "/": `./${mailingAddressFile}` },
@@ -1965,29 +2224,27 @@ function main() {
   if (latestIdx >= 0) {
     const sObj = salesHistoryOut[latestIdx];
     const companiesHere = currentOwners.filter((o) => o.type === "company");
-    if (companiesHere.length) {
-      companiesHere.forEach((c) => {
-        const cFile = companyMap.get(companyKey(c.name));
-        if (cFile) {
-          relSalesCompanies.push({
-            to: { "/": `./${cFile}` },
+    companiesHere.forEach((c) => {
+      const cFile = companyMap.get(companyKey(c.name));
+      if (cFile) {
+        relSalesCompanies.push({
+          to: { "/": `./${cFile}` },
+          from: { "/": `./${sObj.file}` },
+        });
+      }
+    });
+
+    currentOwners
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
+        const file = personMap.get(personKey(o));
+        if (file) {
+          relSalesPersons.push({
+            to: { "/": `./${file}` },
             from: { "/": `./${sObj.file}` },
           });
         }
       });
-    } else {
-      currentOwners
-        .filter((o) => o.type === "person")
-        .forEach((o) => {
-          const file = personMap.get(personKey(o));
-          if (file) {
-            relSalesPersons.push({
-              to: { "/": `./${file}` },
-              from: { "/": `./${sObj.file}` },
-            });
-          }
-        });
-    }
   }
 
   // Chain-based buyers: for each non-latest sale, link to next sale's sellers (owners_by_date at next sale date), but avoid linking when next seller equals current seller (no transfer)
@@ -2023,8 +2280,50 @@ function main() {
     });
   }
 
-  persons.forEach((p) => writeJson(path.join("data", p.file), p.data));
-  companies.forEach((c) => writeJson(path.join("data", c.file), c.data));
+  const personFilesWithSalesRelation = new Set(
+    relSalesPersons
+      .map((rel) => rel?.to?.["/"])
+      .filter(Boolean)
+      .map((relPath) => path.basename(relPath)),
+  );
+  const companyFilesWithSalesRelation = new Set(
+    relSalesCompanies
+      .map((rel) => rel?.to?.["/"])
+      .filter(Boolean)
+      .map((relPath) => path.basename(relPath)),
+  );
+
+  const personsToWrite = persons.filter((p) =>
+    personFilesWithSalesRelation.has(p.file),
+  );
+  const companiesToWrite = companies.filter((c) =>
+    companyFilesWithSalesRelation.has(c.file),
+  );
+
+  const mailingPersonRelationshipsFiltered = mailingPersonRelationships.filter(
+    (rel) => {
+      const fromPath = rel?.from?.["/"];
+      if (!fromPath) return false;
+      const fileName = path.basename(fromPath);
+      return personFilesWithSalesRelation.has(fileName);
+    },
+  );
+
+  const mailingCompanyRelationshipsFiltered =
+    mailingCompanyRelationships.filter((rel) => {
+      const fromPath = rel?.from?.["/"];
+      if (!fromPath) return false;
+      const fileName = path.basename(fromPath);
+      return companyFilesWithSalesRelation.has(fileName);
+    });
+
+  // Only write mailing_address.json if it will be referenced by at least one relationship
+  if (mailingPersonRelationshipsFiltered.length > 0 || mailingCompanyRelationshipsFiltered.length > 0) {
+    writeJson(path.join("data", mailingAddressFile), mailingAddressOut);
+  }
+
+  personsToWrite.forEach((p) => writeJson(path.join("data", p.file), p.data));
+  companiesToWrite.forEach((c) => writeJson(path.join("data", c.file), c.data));
 
   writeRelationshipFiles(relSalesHistoryDeed, (rel) => {
     const fromPath = rel?.from?.["/"];
@@ -2062,16 +2361,16 @@ function main() {
     return `relationship_sales_history_${saleIdx}_company_${companyIdx}.json`;
   });
 
-  writeRelationshipFiles(mailingPersonRelationships, (rel) => {
-    const toPath = rel?.to?.["/"];
-    const personIdx = getIndexFromRelPath(toPath, "person_");
+  writeRelationshipFiles(mailingPersonRelationshipsFiltered, (rel) => {
+    const fromPath = rel?.from?.["/"];
+    const personIdx = getIndexFromRelPath(fromPath, "person_");
     if (!personIdx) return null;
     return `relationship_person_${personIdx}_has_mailing_address.json`;
   });
 
-  writeRelationshipFiles(mailingCompanyRelationships, (rel) => {
-    const toPath = rel?.to?.["/"];
-    const companyIdx = getIndexFromRelPath(toPath, "company_");
+  writeRelationshipFiles(mailingCompanyRelationshipsFiltered, (rel) => {
+    const fromPath = rel?.from?.["/"];
+    const companyIdx = getIndexFromRelPath(fromPath, "company_");
     if (!companyIdx) return null;
     return `relationship_company_${companyIdx}_has_mailing_address.json`;
   });
@@ -2822,6 +3121,47 @@ const layoutFilesOut = [];
     propertyHasStructureRels,
     buildDefaultRelationshipFileName,
   );
+
+  const propertyFactSheetRel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./fact_sheet.json" },
+  };
+  writeJson(
+    path.join("data", "relationship_property_fact_sheet.json"),
+    propertyFactSheetRel,
+  );
+
+  const factSheetRelations = [];
+  WRITTEN_DATA_FILES.forEach((fileName) => {
+    if (!fileName || fileName === "fact_sheet.json") return;
+    factSheetRelations.push({
+      from: { "/": `./${fileName}` },
+      to: { "/": "./fact_sheet.json" },
+    });
+  });
+  writeRelationshipFiles(factSheetRelations, (rel) => {
+    const fromPath = rel?.from?.["/"];
+    if (!fromPath) return null;
+    const fromBase = path.basename(fromPath).replace(/\.json$/i, "");
+    if (!fromBase) return null;
+    return `relationship_${fromBase}_to_fact_sheet.json`;
+  });
+
+  updateDatagroupFiles((doc) => {
+    if (!doc.relationships || typeof doc.relationships !== "object")
+      return false;
+    const relPath = "./relationship_property_fact_sheet.json";
+    const existing = doc.relationships.property_has_fact_sheet;
+    let alreadySet = false;
+    if (Array.isArray(existing)) {
+      alreadySet = existing.some((entry) => entry && entry["/"] === relPath);
+    } else if (existing && typeof existing === "object") {
+      alreadySet = existing["/"] === relPath;
+    }
+    if (alreadySet) return false;
+    doc.relationships.property_has_fact_sheet = { "/": relPath };
+    return true;
+  });
 }
 
 try {

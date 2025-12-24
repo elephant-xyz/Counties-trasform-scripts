@@ -401,13 +401,29 @@ function mapImprovementAction(description) {
   return null;
 }
 
-async function removeExisting(pattern) {
+async function removeExisting(...patterns) {
+  const compiled =
+    patterns.length === 1 && Array.isArray(patterns[0])
+      ? patterns[0]
+      : patterns;
+  if (!compiled || compiled.length === 0) return;
+
   try {
     const files = await fsp.readdir("data");
-    const targets = files.filter((f) => pattern.test(f));
-    await Promise.all(
-      targets.map((f) => fsp.unlink(path.join("data", f)).catch(() => {})),
-    );
+    const removals = [];
+    for (const fileName of files) {
+      for (const pattern of compiled) {
+        if (pattern && pattern.test && pattern.test(fileName)) {
+          removals.push(
+            fsp.unlink(path.join("data", fileName)).catch(() => {}),
+          );
+          break;
+        }
+      }
+    }
+    if (removals.length) {
+      await Promise.all(removals);
+    }
   } catch {}
 }
 
@@ -1393,6 +1409,21 @@ function normalizePropertyMapping(rawMapping) {
   return normalized;
 }
 
+const PROPERTY_TYPE_MAPPING_CACHE = new Map();
+
+function getNormalizedPropertyMapping(code) {
+  if (!code) return null;
+  if (PROPERTY_TYPE_MAPPING_CACHE.size === 0) {
+    for (const item of propertyTypeMapping) {
+      const match = item.st_lucie_property_type.match(/^(\d{4})/);
+      if (!match) continue;
+      const normalized = normalizePropertyMapping(item);
+      PROPERTY_TYPE_MAPPING_CACHE.set(match[1], normalized);
+    }
+  }
+  return PROPERTY_TYPE_MAPPING_CACHE.get(code) || null;
+}
+
 function mapPropertyType(stLuciePropertyType) {
   // Extract only the number part from the st_lucie_property_type string
   const codeMatch = stLuciePropertyType ? stLuciePropertyType.match(/^(\d{4})/) : null;
@@ -1400,16 +1431,23 @@ function mapPropertyType(stLuciePropertyType) {
 
   if (!code) return {}; // Return empty object if no code found
 
-  // Find mapping by matching the extracted code with the start of the mapping's st_lucie_property_type
-  const mapping = propertyTypeMapping.find(
-    (item) => item.st_lucie_property_type.startsWith(code)
-  );
-  return normalizePropertyMapping(mapping);
+  const mapping = getNormalizedPropertyMapping(code);
+  return mapping ? { ...mapping } : {};
 }
 
 async function main() {
   ensureDirSync("data");
   await removeExisting(/^error\.json$/);
+
+  const pendingWrites = [];
+  const scheduleWrite = (fileName, data) => {
+    pendingWrites.push(
+      fsp.writeFile(
+        path.join("data", fileName),
+        JSON.stringify(data, null, 2),
+      ),
+    );
+  };
 
   const inputHtmlRaw = await fsp.readFile("input.html", "utf8");
 
@@ -1445,8 +1483,10 @@ async function main() {
   const sourceHttpRequest = baseRequestData.source_http_request || null;
   const sourceHttpRequestUrl = sourceHttpRequest ? sourceHttpRequest.url : null;
 
-  await removeExisting(/^property_improvement_.*\.json$/);
-  await removeExisting(/^relationship_property_has_property_improvement_.*\.json$/);
+  await removeExisting([
+    /^property_improvement_.*\.json$/,
+    /^relationship_property_has_property_improvement_.*\.json$/,
+  ]);
   const propertyImprovementRecords = [];
 
 
@@ -1455,6 +1495,8 @@ async function main() {
   let secTownRange = null;
   let jurisdiction = null;
   let parcelIdentifierDashed = null; // Also extract parcel ID from HTML
+  let zoningVal = null;
+  let landUseCodeText = null;
 
   // Declare these variables at a higher scope
   let township = null;
@@ -1462,195 +1504,87 @@ async function main() {
   let section = null;
 
   if (!isMulti) {
-    $("article#property-identification table.container tr").each((i, tr) => {
+    const propertyRows = $("article#property-identification table.container tr").toArray();
+    for (const tr of propertyRows) {
       const th = textClean($(tr).find("th").text());
+      if (!th) continue;
+      const tdText = textClean($(tr).find("td").text());
       if (/Site Address/i.test(th)) {
-        siteAddress = textClean($(tr).find("td").text());
+        siteAddress = tdText;
       } else if (/Sec\/Town\/Range/i.test(th)) {
-        secTownRange = textClean($(tr).find("td").text());
+        secTownRange = tdText;
       } else if (/Jurisdiction/i.test(th)) {
-        jurisdiction = textClean($(tr).find("td").text());
+        jurisdiction = tdText;
       } else if (/Parcel ID/i.test(th)) {
-        parcelIdentifierDashed = textClean($(tr).find("td").text());
+        parcelIdentifierDashed = tdText;
+      } else if (/Zoning/i.test(th)) {
+        zoningVal = tdText;
+      } else if (/Land Use Code/i.test(th)) {
+        landUseCodeText = tdText;
       }
-    });
+    }
   }
 
   let finalAddressOutput = {
     source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
     request_identifier: baseRequestData.request_identifier || null,
     county_name:"St. Lucie",
-    latitude: unnormalizedAddressData ? unnormalizedAddressData.latitude ?? null : null,
-    longitude: unnormalizedAddressData ? unnormalizedAddressData.longitude ?? null : null,
-    // Initialize all structured fields to null as per schema
-    city_name: null,
-    country_code: null,
-    postal_code: null,
-    plus_four_postal_code: null,
-    state_code: null,
-    street_number: null,
-    street_name: null,
-    street_post_directional_text: null,
-    street_pre_directional_text: null,
-    street_suffix_type: null,
-    unit_identifier: null,
-    route_number: null,
-    township: null, // Now correctly referenced
-    range: null,    // Now correctly referenced
-    section: null,  // Now correctly referenced
-    block: null,
+    country_code: "US",
   };
 
-  if (siteAddress && siteAddress.toLowerCase() !== "tbd") {
-    // Use unnormalizedAddressData.full_address for city, state, zip if available,
-    // otherwise try to parse from siteAddress.
-    let cityStateZipPart = null;
-    if (unnormalizedAddressData && unnormalizedAddressData.full_address) {
-      const parts = unnormalizedAddressData.full_address.split(',');
-      if (parts.length > 1) {
-        cityStateZipPart = parts.slice(1).join(',').trim();
-      }
-    } else {
-      const parts = siteAddress.split(',');
-      if (parts.length > 1) {
-        cityStateZipPart = parts.slice(1).join(',').trim();
-      }
-    }
+  const isValidSiteAddress = siteAddress && siteAddress.toLowerCase() !== "tbd";
+  const cleanSiteAddress = isValidSiteAddress ? siteAddress : null;
 
-    let streetNumber = null;
-    let streetPreDirectionalText = null;
-    let streetName = null;
-    let streetSuffixType = null;
-    let streetPostDirectionalText = null;
-    let city_name = null;
-    let state_code = null;
-    let postal_code = null;
-    let plus_four_postal_code = null;
-
-    // Parse street number, pre-directional, street name, post-directional, suffix from siteAddress
-    // Example: "1133 SW INGRASSINA AVE"
-    const streetPartMatch = siteAddress.match(/^(\d+)\s+((?:N|S|E|W|NE|NW|SE|SW)\s+)?(.+?)(?:\s+([A-Z]{2,}))?$/i);
-
-    if (streetPartMatch) {
-      streetNumber = streetPartMatch[1];
-      streetPreDirectionalText = streetPartMatch[2] ? streetPartMatch[2].trim().toUpperCase() : null;
-      let tempStreetName = streetPartMatch[3].trim();
-      let potentialSuffixOrPostDirectional = streetPartMatch[4] ? streetPartMatch[4].toUpperCase() : null;
-
-      // Common street suffix types (can be expanded)
-      const suffixMap = {
-        "ST": "St", "AVE": "Ave", "RD": "Rd", "DR": "Dr", "BLVD": "Blvd",
-        "LN": "Ln", "CT": "Ct", "CIR": "Cir", "PL": "Pl", "WAY": "Way",
-        "TER": "Ter", "PKWY": "Pkwy", "HWY": "Hwy", "SQ": "Sq", "TRL": "Trl",
-        "ALY": "Aly", "CV": "Cv", "EXPY": "Expy", "FRY": "Fry", "JCT": "Jct",
-        "MTN": "Mtn", "OVAL": "Oval", "PASS": "Pass", "PIKE": "Pike",
-        "PLZ": "Plz", "PT": "Pt", "RMP": "Ramp", "RDG": "Rdg", "RIV": "Riv",
-        "ROW": "Row", "RTE": "Rte", "SHR": "Shr", "SPG": "Spg", "SPUR": "Spur",
-        "UN": "Un", "VIS": "Vis", "VW": "Vw", "XING": "Xing", "EXT": "Ext",
-        "GLN": "Gln", "GRN": "Grn", "HTS": "Hts", "IS": "Is", "LNDG": "Lndg",
-        "LGT": "Lgt", "LCK": "Lck", "MDW": "Mdw", "MNR": "Mnr", "PR": "Pr",
-        "TRCE": "Trce", "VLG": "Vlg", "WLS": "Wls", "WALK": "Walk", "COR": "Cor",
-        "FRK": "Frk", "FRD": "Frd", "BRG": "Brg", "BRK": "Brk", "CLF": "Clf",
-        "CYN": "Cyn", "DL": "Dl", "DM": "Dm", "FLT": "Flt", "FLD": "Fld",
-        "FRST": "Frst", "GRV": "Grv", "HBR": "Hbr", "HL": "Hl", "HVN": "Hvn",
-        "INLT": "Inlt", "KY": "Ky", "LF": "Lf", "LOOP": "Loop", "MALL": "Mall",
-        "ML": "Ml", "NCK": "Nck", "ORCH": "Orch", "PSGE": "Psge", "RADL": "Radl",
-        "RPD": "Rpd", "RST": "Rst", "SHL": "Shl", "SKWY": "Skwy", "SMT": "Smt",
-        "STRA": "Stra", "STRM": "Strm", "TRFY": "Trfy", "TUNL": "Tunl",
-        "VLY": "Vly", "WALL": "Wall", "BYU": "Byu", "CPE": "Cpe", "CRK": "Crk",
-        "CRSE": "Crse", "CRST": "Crst", "DV": "Dv", "FALL": "Fall", "FT": "Ft",
-        "GTWY": "Gtwy", "LKS": "Lks", "LODG": "Ldg", "MWS": "Mews", "OPAS": "Opas",
-        "UPAS": "Upas", "PNE": "Pne", "RUN": "Run", "SPS": "Spgs", "SPUR": "Spur",
-        "TRLR": "Trlr", "TRWY": "Trwy", "VIA": "Via", "XRD": "Xrd", "BCH": "Bch",
-        "BGS": "Bgs", "BLF": "Blf", "BTM": "Btm", "CLB": "Clb", "CMN": "Cmn",
-        "CTS": "Cts", "DLS": "Dls", "DRS": "Drs", "EST": "Est", "FLS": "Fls",
-        "FRDS": "Frds", "FRGS": "Frgs", "GDNS": "Gdns", "GLNS": "Glns",
-        "GRNS": "Grns", "GRVS": "Grvs", "HBRS": "Hbrs", "HLS": "Hls",
-        "HVNS": "Hvns", "INLTS": "Inlts", "KNL": "Knl", "KNLS": "Knls",
-        "KYS": "Kys", "LGS": "Lgs", "LGTS": "Lgts", "LCKS": "Lcks",
-        "MDWS": "Mdw", "MLS": "Mls", "MNRS": "Mnr",
-        "MTNS": "Mtns", "NWS": "Nws", "PLNS": "Plns", "PNES": "Pnes", "PRTS": "Prts",
-        "PTS": "Pt", "RDGS": "Rdgs", "RPDS": "Rpds", "SHLS": "Shl",
-        "SHRS": "Shrs", "SPS": "Spgs", "SQS": "Sqs", "STS": "Sts",
-        "TRLS": "Trls", "VLS": "Vls", "VLGS": "Vlgs", "VWS": "Vws",
-        "WLS": "Wls", "WAYS": "Ways", "XRDS": "Xrds", "BYP": "Byp", "CMNS": "Cmns",
-        "CRKS": "Crks", "CRSS": "Crss",
-        "EXPS": "Exps", "FRYS": "Frys", "GTWYS": "Gtwys", "JCTS": "Jct",
-        "MTWYS": "Mtwys", "PKWYS": "Pkwys", "PLZS": "Plzs", "RMPS": "Rmps",
-        "RDGS": "Rdgs", "RIVS": "Rivs", "ROWS": "Rows", "RTES": "Rtes",
-        "SHRS": "Shrs", "SPS": "Spgs", "SQS": "Sqs", "STS": "Sts",
-        "TRLS": "Trls", "VLS": "Vls", "VLGS": "Vlgs", "VWS": "Vws",
-        "WLS": "Wls", "WAYS": "Ways", "XRDS": "Xrds"
-      };
-
-      let foundSuffix = false;
-      if (potentialSuffixOrPostDirectional) {
-        if (suffixMap[potentialSuffixOrPostDirectional]) {
-          streetSuffixType = suffixMap[potentialSuffixOrPostDirectional];
-          foundSuffix = true;
-        } else if (["N", "S", "E", "W", "NE", "NW", "SE", "SW"].includes(potentialSuffixOrPostDirectional)) {
-          streetPostDirectionalText = potentialSuffixOrPostDirectional;
-        }
-      }
-      streetName = tempStreetName;
-    }
-
-    // Parse city, state, zip from cityStateZipPart
-    if (cityStateZipPart) {
-      const cityStateZipMatch = cityStateZipPart.match(/^([\w\s\-\']+),\s*([A-Z]{2})\s+(\d{5})(?:-(\d{4}))?$/i);
-      if (cityStateZipMatch) {
-        city_name = cityStateZipMatch[1].toUpperCase();
-        state_code = cityStateZipMatch[2].toUpperCase();
-        postal_code = cityStateZipMatch[3];
-        plus_four_postal_code = cityStateZipMatch[4] || null;
+  let fallbackAddress = null;
+  if (!cleanSiteAddress && unnormalizedAddressData) {
+    const fallbackCandidates = [
+      unnormalizedAddressData.unnormalized_address,
+      unnormalizedAddressData.full_address,
+      unnormalizedAddressData.address,
+      unnormalizedAddressData.site_address,
+      unnormalizedAddressData.siteAddress,
+    ];
+    for (const candidate of fallbackCandidates) {
+      if (typeof candidate !== "string") continue;
+      const cleanedCandidate = textClean(candidate);
+      if (cleanedCandidate) {
+        fallbackAddress = cleanedCandidate;
+        break;
       }
     }
-
-    // Parse Sec/Town/Range
-    // Sample: "25/37S/39E"
-    if (secTownRange) { // This block is now correctly using the declared variables
-      const strMatch = secTownRange.match(/^(\d+)\/(\d+[NS])\/(\d+[EW])$/i);
-      if (strMatch) {
-        section = strMatch[1];
-        township = strMatch[2];
-        range = strMatch[3];
-      }
-    }
-
-    // Populate finalAddressOutput with parsed structured data
-    finalAddressOutput.city_name = city_name;
-    finalAddressOutput.country_code = "US"; // Assuming US for now
-    finalAddressOutput.postal_code = postal_code;
-    finalAddressOutput.plus_four_postal_code = plus_four_postal_code;
-    finalAddressOutput.state_code = state_code;
-    finalAddressOutput.street_number = streetNumber;
-    finalAddressOutput.street_name = streetName;
-    finalAddressOutput.street_post_directional_text = streetPostDirectionalText;
-    finalAddressOutput.street_pre_directional_text = streetPreDirectionalText;
-    finalAddressOutput.street_suffix_type = streetSuffixType;
-    finalAddressOutput.township = township; // Now correctly referenced
-    finalAddressOutput.range = range;    // Now correctly referenced
-    finalAddressOutput.section = section;  // Now correctly referenced
-    // unit_identifier, route_number, block remain null as they are not in the sample HTML
   }
-  // We are explicitly NOT adding unnormalized_address.
 
-  await fsp.writeFile(
-    path.join("data", "address.json"),
-    JSON.stringify(finalAddressOutput, null, 2),
-  );
+  const addressToUse = cleanSiteAddress || fallbackAddress;
+  if (addressToUse) {
+    finalAddressOutput.unnormalized_address = addressToUse;
+  }
+
+  // Parse Sec/Town/Range
+  // Sample: "25/37S/39E"
+  if (secTownRange) {
+    const strMatch = secTownRange.match(/^(\d+)\/(\d+[NS])\/(\d+[EW])$/i);
+    if (strMatch) {
+      section = strMatch[1];
+      township = strMatch[2];
+      range = strMatch[3];
+    }
+  }
+
+  // Add section, township, range to the address output if available
+  if (section) finalAddressOutput.section = section;
+  if (township) finalAddressOutput.township = township;
+  if (range) finalAddressOutput.range = range;
+
+  scheduleWrite("address.json", finalAddressOutput);
 
   // --- Parcel extraction ---
   // parcelIdentifierDashed is already extracted from HTML
   const parcelOut = {
     source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
     request_identifier: baseRequestData.request_identifier || null,
-    parcel_identifier: parcelIdentifierDashed || null,
+    parcel_identifier: parcelIdentifierDashed || baseRequestData.request_identifier,
   };
-  await fsp.writeFile(
-    path.join("data", "parcel.json"),
-    JSON.stringify(parcelOut, null, 2),
-  );
+  scheduleWrite("parcel.json", parcelOut);
 
   // --- Property extraction ---
   let propertyOut = null;
@@ -1665,45 +1599,23 @@ async function main() {
       legalDescription = textClean(p.text());
     }
 
-    // Zoning
-    let zoningVal = null;
-    $("article#property-identification table.container tr").each((i, tr) => {
-      const th = textClean($(tr).find("th").text());
-      const td = textClean($(tr).find("td").text());
-      if (/Zoning/i.test(th)) zoningVal = td;
-    });
-
-    // Land Use Code
-    let landUseCodeText = null;
-    $("article#property-identification table.container tr").each((i, tr) => {
-      const th = textClean($(tr).find("th").text());
-      const td = textClean($(tr).find("td").text());
-      if (/Land Use Code/i.test(th))
-        landUseCodeText = td;
-    });
-
-    // Building Type from HTML (This is not directly used in the mapping, but kept for completeness if needed elsewhere)
+    // Building Type and Number of Units from HTML
     let buildingType = null;
-    $("article#building-info table.container tr").each((i, tr) => {
-      const th = textClean($(tr).find("th").text());
-      const td = textClean($(tr).find("td").text());
-      if (/Building Type/i.test(th)) {
-        buildingType = td;
-      }
-    });
-
-    const mappedPropertyDetails = mapPropertyType(landUseCodeText);
-
-    // Number of Units
     let numberOfUnits = null;
-    $("article#building-info table.container tr").each((i, tr) => {
+    const buildingRows = $("article#building-info table.container tr").toArray();
+    for (const tr of buildingRows) {
       const th = textClean($(tr).find("th").text());
-      if (/Number of Units/i.test(th)) {
-        const v = textClean($(tr).find("td").text());
-        const n = parseInt(v.replace(/[^0-9\-]/g, ""), 10);
+      if (!th) continue;
+      const tdText = textClean($(tr).find("td").text());
+      if (/Building Type/i.test(th)) {
+        buildingType = tdText;
+      } else if (/Number of Units/i.test(th)) {
+        const n = parseInt(tdText.replace(/[^0-9\-]/g, ""), 10);
         if (!isNaN(n)) numberOfUnits = n;
       }
-    });
+    }
+
+    const mappedPropertyDetails = mapPropertyType(landUseCodeText);
 
     // Areas from Total Areas table
     let landAcres = null;
@@ -1720,7 +1632,7 @@ async function main() {
     propertyOut = {
       source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
       request_identifier: baseRequestData.request_identifier || null,
-      parcel_identifier: parcelIdentifierDashed || null, // Use the extracted parcel ID
+      parcel_identifier: parcelIdentifierDashed || baseRequestData.request_identifier, // Use the extracted parcel ID
       property_legal_description_text: legalDescription || null,
       property_type: mappedPropertyDetails.property_type || "LandParcel", // Default if not found
       property_usage_type: mappedPropertyDetails.property_usage_type || null,
@@ -1738,10 +1650,7 @@ async function main() {
       historic_designation: false,
     };
 
-    await fsp.writeFile(
-      path.join("data", "property.json"),
-      JSON.stringify(propertyOut, null, 2),
-    );
+    scheduleWrite("property.json", propertyOut);
 
     // Lot data
     const lotOut = {
@@ -1773,10 +1682,7 @@ async function main() {
         lotOut.lot_area_sqft = null;
       }
     }
-    await fsp.writeFile(
-      path.join("data", "lot.json"),
-      JSON.stringify(lotOut, null, 2),
-    );
+    scheduleWrite("lot.json", lotOut);
 
     const permitRows = $("article#permit-info table tbody tr").toArray();
     let propertyImprovementIdx = 0;
@@ -1816,10 +1722,7 @@ async function main() {
         permit_required: true,
       };
 
-      await fsp.writeFile(
-        path.join("data", improvementFile),
-        JSON.stringify(improvementOut, null, 2),
-      );
+      scheduleWrite(improvementFile, improvementOut);
 
       propertyImprovementRecords.push({
         index: propertyImprovementIdx,
@@ -2132,17 +2035,12 @@ async function main() {
     // Extract owner name and mailing address from HTML
     const ownerP = $("article#ownership .bottom-text p").first();
     if (ownerP && ownerP.length) {
-      console.log("--- Mailing Address Debugging ---");
-      console.log("Raw HTML of Ownership P tag:", ownerP.html());
-
       // Replace all <br> tags (with or without attributes) with a newline character
       const htmlContent = ownerP.html();
       const cleanedHtml = htmlContent.replace(/<br[^>]*>/gi, '\n'); 
       
       // Split by newline characters, then clean each line and filter out any empty ones
       const lines = cleanedHtml.split('\n').map(line => textClean(line)).filter(Boolean);
-
-      console.log("Lines after replacing <br> with \\n and cleaning:", lines);
 
       if (lines.length > 0) {
         const normalizedLines = lines.map((line, index) => ({
@@ -2187,14 +2085,41 @@ async function main() {
             ? mailingAddressLines.join(" ").trim()
             : null;
       }
-      console.log("Extracted currentOwnerName:", currentOwnerName);
-      console.log("Extracted mailingAddressText (raw):", mailingAddressText);
     }
 
     // If current owner not found from owner_data.json, create from HTML
     if (!currentOwnerRecord && currentOwnerName) {
-      currentOwnerRecord = ensureOwnerRecordFromName(currentOwnerName);
-      registerPropertyRole(currentOwnerRecord, "current");
+      const ensuredRecord = ensureOwnerRecordFromName(currentOwnerName);
+      if (ensuredRecord) {
+        currentOwnerRecord = ensuredRecord;
+        registerPropertyRole(currentOwnerRecord, "current");
+        // Add to currentOwnerRecordsList to ensure relationships are created
+        const recordId = currentOwnerRecord.id;
+        if (recordId != null && !currentOwnerRecordIds.has(recordId)) {
+          currentOwnerRecordIds.add(recordId);
+          currentOwnerRecordsList.push(currentOwnerRecord);
+          // Also update the display names and aliases
+          if (currentOwnerRecord.aliases && currentOwnerRecord.aliases.size) {
+            for (const aliasKey of currentOwnerRecord.aliases) {
+              currentOwnerAliasKeys.add(aliasKey);
+            }
+          }
+          if (currentOwnerRecord.displayName) {
+            currentOwnerDisplayNames.push(currentOwnerRecord.displayName);
+          }
+          if (currentOwnerRecord.person) {
+            const display = buildPersonDisplayName(currentOwnerRecord.person);
+            if (display) currentOwnerDisplayNames.push(display);
+          }
+          if (currentOwnerRecord.company?.name) {
+            currentOwnerDisplayNames.push(currentOwnerRecord.company.name);
+          }
+          // Update the uppercase list as well
+          currentOwnerDisplayNamesUpper = currentOwnerDisplayNames
+            .filter((name) => typeof name === "string" && name.trim())
+            .map((name) => name.toUpperCase());
+        }
+      }
     } else if (currentOwnerRecord && !currentOwnerName) {
       currentOwnerName = currentOwnerRecord.displayName || null;
     }
@@ -2225,15 +2150,7 @@ async function main() {
         // po_box_number: null,
       };
 
-      console.log("Final Mailing Address Object (unnormalized):", mailingAddressOut);
-
-      await fsp.writeFile(
-        path.join("data", "mailing_address.json"),
-        JSON.stringify(mailingAddressOut, null, 2),
-      );
-      console.log("mailing_address.json created.");
-    } else if (mailingAddressText) {
-      console.log("Mailing address text found but no current owners to link it to. Skipping mailing_address.json creation.");
+      scheduleWrite("mailing_address.json", mailingAddressOut);
     }
 
 
@@ -2295,13 +2212,15 @@ async function main() {
     }
 
 
-    await removeExisting(/^person_.*\.json$/);
-    await removeExisting(/^company_.*\.json$/);
-    await removeExisting(/^relationship_property_has_company_.*\.json$/);
-    await removeExisting(/^relationship_sales_person_.*\.json$/);
-    await removeExisting(/^relationship_sales_company_.*\.json$/);
-    await removeExisting(/^relationship_person_has_mailing_address_.*\.json$/);
-    await removeExisting(/^relationship_company_has_mailing_address_.*\.json$/);
+    await removeExisting([
+      /^person_.*\.json$/,
+      /^company_.*\.json$/,
+      /^relationship_property_has_company_.*\.json$/,
+      /^relationship_sales_person_.*\.json$/,
+      /^relationship_sales_company_.*\.json$/,
+      /^relationship_person_has_mailing_address_.*\.json$/,
+      /^relationship_company_has_mailing_address_.*\.json$/,
+    ]);
 
     // First, identify which owner records will be referenced by relationships
     const referencedOwnerIds = new Set();
@@ -2395,10 +2314,7 @@ async function main() {
           request_identifier: record.person?.request_identifier ?? null,
         };
         const fileName = `person_${personIdx}.json`;
-        await fsp.writeFile(
-          path.join("data", fileName),
-          JSON.stringify(personOut, null, 2),
-        );
+        scheduleWrite(fileName, personOut);
         ownerToFileMap.set(record.id, {
           fileName,
           type: "person",
@@ -2412,10 +2328,7 @@ async function main() {
           request_identifier: record.company?.request_identifier ?? null,
         };
         const fileName = `company_${companyIdx}.json`;
-        await fsp.writeFile(
-          path.join("data", fileName),
-          JSON.stringify(companyOut, null, 2),
-        );
+        scheduleWrite(fileName, companyOut);
         ownerToFileMap.set(record.id, {
           fileName,
           type: "company",
@@ -2441,11 +2354,7 @@ async function main() {
               from: { "/": `./${ownerMeta.fileName}` },
               to: { "/": "./mailing_address.json" },
             };
-            await fsp.writeFile(
-              path.join("data", relFileName),
-              JSON.stringify(relOut, null, 2),
-            );
-            console.log(`Created mailing address relationship: ${relFileName}`);
+            scheduleWrite(relFileName, relOut);
           } else if (ownerMeta.type === "company") {
             relCompanyMailingCounter++;
             const relFileName = `relationship_company_has_mailing_address_${relCompanyMailingCounter}.json`;
@@ -2453,21 +2362,12 @@ async function main() {
               from: { "/": `./${ownerMeta.fileName}` },
               to: { "/": "./mailing_address.json" },
             };
-            await fsp.writeFile(
-              path.join("data", relFileName),
-              JSON.stringify(relOut, null, 2),
-            );
-            console.log(`Created mailing address relationship: ${relFileName}`);
+            scheduleWrite(relFileName, relOut);
           }
         } else {
-          console.log(`Warning: Could not find metadata for owner record ${record.id} to create mailing address relationship.`);
+          // Owner metadata missing; relationship cannot be created.
         }
       }
-    } else {
-      console.log("Mailing address relationships not created. Conditions not met:", {
-        mailingAddressOut: !!mailingAddressOut,
-        currentOwnersCount: currentOwnerRecordsList.length
-      });
     }
 
 
@@ -2488,10 +2388,7 @@ async function main() {
             to: { "/": `./${meta.fileName}` },
             // type: "property_has_company", // Removed 'type' property
           };
-          await fsp.writeFile(
-            path.join("data", relFileName),
-            JSON.stringify(relOut, null, 2),
-          );
+          scheduleWrite(relFileName, relOut);
           companiesWithPropertyRelationships.add(recordId);
         }
       }
@@ -2509,23 +2406,21 @@ async function main() {
             from: { "/": "./property.json" },
             to: { "/": `./${meta.fileName}` },
           };
-          await fsp.writeFile(
-            path.join("data", relFileName),
-            JSON.stringify(relOut, null, 2),
-          );
+          scheduleWrite(relFileName, relOut);
           companiesWithPropertyRelationships.add(record.id);
-          console.log(`Created property_has_company relationship for current owner: ${relFileName}`);
         }
       }
     }
 
-    await removeExisting(/^sales_.*\.json$/);
-    await removeExisting(/^deed_.*\.json$/);
-    await removeExisting(/^file_.*\.json$/);
-    await removeExisting(/^relationship_sales_history_.*_to_deed_.*\.json$/);
-    await removeExisting(/^relationship_deed_.*_to_file_.*\.json$/);
-    await removeExisting(/^relationship_sales_person_.*\.json$/);
-    await removeExisting(/^relationship_sales_company_.*\.json$/);
+    await removeExisting([
+      /^sales_.*\.json$/,
+      /^deed_.*\.json$/,
+      /^file_.*\.json$/,
+      /^relationship_sales_history_.*_to_deed_.*\.json$/,
+      /^relationship_deed_.*_to_file_.*\.json$/,
+      /^relationship_sales_person_.*\.json$/,
+      /^relationship_sales_company_.*\.json$/,
+    ]);
     // await removeExisting(/^relationship_property_has_sales_history_.*\.json$/); // Removed this line
 
     const ALLOWED_DEED_TYPES = [
@@ -2687,10 +2582,7 @@ async function main() {
         ownership_transfer_date: sale.ownership_transfer_date,
         purchase_price_amount: sale.purchase_price_amount,
       };
-      await fsp.writeFile(
-        path.join("data", saleFileName),
-        JSON.stringify(saleOut, null, 2),
-      );
+      scheduleWrite(saleFileName, saleOut);
 
       const deedType = mapDeedCodeToType(sale._deed_code);
 
@@ -2706,10 +2598,7 @@ async function main() {
               from: { "/": `./${saleFileName}` },
               to: { "/": `./${grantorMeta.fileName}` },
             };
-            await fsp.writeFile(
-              path.join("data", relFileName),
-              JSON.stringify(relOut, null, 2),
-            );
+            scheduleWrite(relFileName, relOut);
           } else if (grantorMeta.type === "company") {
             relSalesCompanyCounter++;
             const relFileName = `relationship_sales_company_${relSalesCompanyCounter}.json`;
@@ -2717,10 +2606,7 @@ async function main() {
               from: { "/": `./${saleFileName}` },
               to: { "/": `./${grantorMeta.fileName}` },
             };
-            await fsp.writeFile(
-              path.join("data", relFileName),
-              JSON.stringify(relOut, null, 2),
-            );
+            scheduleWrite(relFileName, relOut);
           }
         }
       }
@@ -2735,10 +2621,7 @@ async function main() {
               from: { "/": `./${saleFileName}` },
               to: { "/": `./${granteeMeta.fileName}` },
             };
-            await fsp.writeFile(
-              path.join("data", relFileName),
-              JSON.stringify(relOut, null, 2),
-            );
+            scheduleWrite(relFileName, relOut);
           } else if (granteeMeta.type === "company") {
             relSalesCompanyCounter++;
             const relFileName = `relationship_sales_company_${relSalesCompanyCounter}.json`;
@@ -2746,10 +2629,7 @@ async function main() {
               from: { "/": `./${saleFileName}` },
               to: { "/": `./${granteeMeta.fileName}` },
             };
-            await fsp.writeFile(
-              path.join("data", relFileName),
-              JSON.stringify(relOut, null, 2),
-            );
+            scheduleWrite(relFileName, relOut);
           }
         }
       }
@@ -2762,21 +2642,15 @@ async function main() {
           source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
           deed_type: deedType,
         };
-        await fsp.writeFile(
-          path.join("data", deedFileName),
-          JSON.stringify(deedOut, null, 2),
-        );
+        scheduleWrite(deedFileName, deedOut);
 
         const relSalesDeed = {
           from: { "/": `./${saleFileName}` },
           to: { "/": `./${deedFileName}` },
         };
-        await fsp.writeFile(
-          path.join(
-            "data",
-            `relationship_sales_history_${i + 1}_to_deed_${i + 1}.json`,
-          ),
-          JSON.stringify(relSalesDeed, null, 2),
+        scheduleWrite(
+          `relationship_sales_history_${i + 1}_to_deed_${i + 1}.json`,
+          relSalesDeed,
         );
 
         if (sale._book_page_url) {
@@ -2791,18 +2665,15 @@ async function main() {
             ipfs_url: null,
             document_type: "ConveyanceDeed",
           };
-          await fsp.writeFile(
-            path.join("data", fileFileName),
-            JSON.stringify(fileOut, null, 2),
-          );
+          scheduleWrite(fileFileName, fileOut);
 
           const relDeedFile = {
             from: { "/": `./${deedFileName}` },
             to: { "/": `./${fileFileName}` },
           };
-          await fsp.writeFile(
-            path.join("data", `relationship_deed_${i + 1}_to_file_${fileIdx}.json`),
-            JSON.stringify(relDeedFile, null, 2),
+          scheduleWrite(
+            `relationship_deed_${i + 1}_to_file_${fileIdx}.json`,
+            relDeedFile,
           );
         }
       } // End of if (deedType !== null)
@@ -2818,8 +2689,10 @@ async function main() {
   const layoutIndexToFile = new Map();
 
   // Tax extraction: clear old and create one file per year option present
-  await removeExisting(/^tax_.*\.json$/);
-  await removeExisting(/^relationship_property_has_tax_.*\.json$/);
+  await removeExisting([
+    /^tax_.*\.json$/,
+    /^relationship_property_has_tax_.*\.json$/,
+  ]);
   if (!isMulti) {
     const targetTaxYear = 2025; // Only include tax for 2025
 
@@ -2856,12 +2729,12 @@ async function main() {
         source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
         request_identifier: baseRequestData.request_identifier || null,
         tax_year: targetTaxYear,
-        property_assessed_value_amount:
-          assessedVal && assessedVal > 0 ? assessedVal : null,
-        property_market_value_amount: justVal && justVal > 0 ? justVal : null,
         property_building_amount:
-          buildingVal && buildingVal > 0 ? buildingVal : null,
-        property_land_amount: landVal && landVal > 0 ? landVal : null,
+          typeof buildingVal === "number" && Number.isFinite(buildingVal) && buildingVal > 0
+            ? buildingVal
+            : null,
+        property_land_amount:
+          typeof landVal === "number" && Number.isFinite(landVal) && landVal > 0 ? landVal : null,
         property_taxable_value_amount:
           typeof taxableVal === 'number' && Number.isFinite(taxableVal) ? taxableVal : 0,
         monthly_tax_amount: null,
@@ -2871,10 +2744,16 @@ async function main() {
         first_year_on_tax_roll: null,
         yearly_tax_amount: null,
       };
-      await fsp.writeFile(
-        path.join("data", taxFileName),
-        JSON.stringify(taxOut, null, 2),
-      );
+
+      const setIfPositiveNumber = (fieldName, value) => {
+        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+          taxOut[fieldName] = value;
+        }
+      };
+
+      setIfPositiveNumber("property_assessed_value_amount", assessedVal);
+      setIfPositiveNumber("property_market_value_amount", justVal);
+      scheduleWrite(taxFileName, taxOut);
 
       // Create relationship from property to tax
       if (propertyOut) {
@@ -2883,18 +2762,17 @@ async function main() {
           from: { "/": "./property.json" },
           to: { "/": `./${taxFileName}` },
         };
-        await fsp.writeFile(
-          path.join("data", relFileName),
-          JSON.stringify(relOut, null, 2),
-        );
+        scheduleWrite(relFileName, relOut);
       }
     }
   }
 
   // Utilities from owners/utilities_data.json (use best available key)
-  await removeExisting(/^utility_.*\.json$/);
-  await removeExisting(/^utility\.json$/);
-  await removeExisting(/^relationship_property_has_utility_.*\.json$/); // Remove this relationship
+  await removeExisting([
+    /^utility_.*\.json$/,
+    /^utility\.json$/,
+    /^relationship_property_has_utility_.*\.json$/, // Remove this relationship
+  ]);
 
   const utilityEntries = [];
   const utilityRecords = [];
@@ -2963,10 +2841,7 @@ async function main() {
     utilityOut.source_http_request = sourceHttpRequest;
     utilityOut.request_identifier = baseRequestData.request_identifier || null;
 
-    await fsp.writeFile(
-      path.join("data", fileName),
-      JSON.stringify(utilityOut, null, 2),
-    );
+    scheduleWrite(fileName, utilityOut);
     utilityIndexToFile.set(i + 1, fileName);
     utilityRecords.push({
       index: i + 1,
@@ -2976,9 +2851,11 @@ async function main() {
   }
 
   // Structure extraction (prefer owners/structure_data.json)
-  await removeExisting(/^structure_.*\.json$/);
-  await removeExisting(/^structure\.json$/); // Ensure this is removed if it exists
-  await removeExisting(/^relationship_property_has_structure_.*\.json$/); // Remove this relationship
+  await removeExisting([
+    /^structure_.*\.json$/,
+    /^structure\.json$/, // Ensure this is removed if it exists
+    /^relationship_property_has_structure_.*\.json$/, // Remove this relationship
+  ]);
 
   const structureEntries = [];
   const structureRecords = [];
@@ -3048,10 +2925,7 @@ async function main() {
     structureOut.source_http_request = sourceHttpRequest;
     structureOut.request_identifier = baseRequestData.request_identifier || null;
 
-    await fsp.writeFile(
-      path.join("data", fileName),
-      JSON.stringify(structureOut, null, 2),
-    );
+    scheduleWrite(fileName, structureOut);
     structureIndexToFile.set(i + 1, fileName);
     structureRecords.push({
       index: i + 1,
@@ -3061,12 +2935,14 @@ async function main() {
   }
 
   // Layouts from owners/layout_data.json
-  await removeExisting(/^layout_.*\.json$/);
-  await removeExisting(/^relationship_property_has_layout_.*\.json$/);
-  await removeExisting(/^relationship_layout_.*_has_layout_.*\.json$/);
-  await removeExisting(/^relationship_layout_.*_has_structure_.*\.json$/);
-  await removeExisting(/^relationship_layout_.*_has_utility_.*\.json$/);
-  await removeExisting(/^relationship_layout_.*\.json$/);
+  await removeExisting([
+    /^layout_.*\.json$/,
+    /^relationship_property_has_layout_.*\.json$/,
+    /^relationship_layout_.*_has_layout_.*\.json$/,
+    /^relationship_layout_.*_has_structure_.*\.json$/,
+    /^relationship_layout_.*_has_utility_.*\.json$/,
+    /^relationship_layout_.*\.json$/,
+  ]);
 
   const layoutEntries = [];
   if (layoutData && typeof layoutData === "object") {
@@ -3111,10 +2987,7 @@ async function main() {
       layoutOut.building_number = null;
     }
 
-    await fsp.writeFile(
-      path.join("data", fileName),
-      JSON.stringify(layoutOut, null, 2),
-    );
+    scheduleWrite(fileName, layoutOut);
     layoutIndexToFile.set(i + 1, fileName);
     layoutRecords.push({
       index: i + 1,
@@ -3176,10 +3049,7 @@ async function main() {
         from: { "/": `./${layoutIndexToFile.get(parentIndex)}` },
         to: { "/": `./${record.file}` },
       };
-      await fsp.writeFile(
-        path.join("data", relFile),
-        JSON.stringify(relOut, null, 2),
-      );
+      scheduleWrite(relFile, relOut);
     }
   }
 
@@ -3216,10 +3086,7 @@ async function main() {
             from: { "/": `./${layoutFile}` },
             to: utilityRef,
           };
-          await fsp.writeFile(
-            path.join("data", relFile),
-            JSON.stringify(relOut, null, 2),
-          );
+          scheduleWrite(relFile, relOut);
           linkedToLayout = true;
         }
       }
@@ -3231,10 +3098,7 @@ async function main() {
           from: { "/": `./${layoutFile}` },
           to: utilityRef,
         };
-        await fsp.writeFile(
-          path.join("data", relFile),
-          JSON.stringify(relOut, null, 2),
-        );
+        scheduleWrite(relFile, relOut);
         linkedToLayout = true;
       }
     }
@@ -3245,10 +3109,7 @@ async function main() {
         from: propertyRef,
         to: utilityRef,
       };
-      await fsp.writeFile(
-        path.join("data", relFile),
-        JSON.stringify(relOut, null, 2),
-      );
+      scheduleWrite(relFile, relOut);
     }
   }
 
@@ -3269,10 +3130,7 @@ async function main() {
             from: { "/": `./${layoutFile}` },
             to: structureRef,
           };
-          await fsp.writeFile(
-            path.join("data", relFile),
-            JSON.stringify(relOut, null, 2),
-          );
+          scheduleWrite(relFile, relOut);
           linkedToLayout = true;
         }
       }
@@ -3284,10 +3142,7 @@ async function main() {
           from: { "/": `./${layoutFile}` },
           to: structureRef,
         };
-        await fsp.writeFile(
-          path.join("data", relFile),
-          JSON.stringify(relOut, null, 2),
-        );
+        scheduleWrite(relFile, relOut);
         linkedToLayout = true;
       }
     }
@@ -3298,10 +3153,7 @@ async function main() {
         from: propertyRef,
         to: structureRef,
       };
-      await fsp.writeFile(
-        path.join("data", relFile),
-        JSON.stringify(relOut, null, 2),
-      );
+      scheduleWrite(relFile, relOut);
     }
   }
 
@@ -3341,11 +3193,12 @@ async function main() {
       else if (rec.file_format === "jpeg" || rec.file_format === "png") rec.document_type = "PropertyImage";
       else rec.document_type = null; // Default for other links, using null for schema compliance
 
-      await fsp.writeFile(
-        path.join("data", fileFileName),
-        JSON.stringify(rec, null, 2),
-      );
+      scheduleWrite(fileFileName, rec);
     }
+  }
+
+  if (pendingWrites.length) {
+    await Promise.all(pendingWrites);
   }
 }
 

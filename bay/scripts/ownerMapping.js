@@ -468,10 +468,82 @@ function classifyOwner(part, candidateLastNames) {
     const lastTokensSnapshot = [...lastTokens];
     let givenTokens = tokenizeNameSection(restSegment);
     givenTokens = stripLeadingPrefixes(givenTokens);
+    const givenTokensBeforeSuffixStrip = [...givenTokens];
     givenTokens = stripTrailingSuffixes(givenTokens);
-    if (!givenTokens.length) {
-      givenTokens = tokenizeNameSection(restSegment);
+
+    // If stripping suffixes removed all tokens, check if the original tokens were only suffixes
+    // In that case, this is likely "Last Name, Suffix" format (e.g., "GLENN COOPER, JR")
+    // We should treat the lastSegment as the full name and parse it instead
+    if (!givenTokens.length && givenTokensBeforeSuffixStrip.length > 0) {
+      // All tokens after comma were suffixes - this means lastSegment is actually the full name
+      // Parse lastSegment as "First Middle Last" format instead
+      const fullNameTokens = stripLeadingPrefixes(tokenizeNameSection(lastSegment));
+      const fullNameTokensAfterSuffixStrip = stripTrailingSuffixes(fullNameTokens);
+
+      if (fullNameTokensAfterSuffixStrip.length === 0) {
+        return {
+          valid: false,
+          reason: "person_missing_first_name",
+          raw: cleaned,
+        };
+      }
+
+      const surnameTokensFromFull = extractLastNameTokens(fullNameTokensAfterSuffixStrip);
+      const remainingFromFull = fullNameTokensAfterSuffixStrip.slice(0, fullNameTokensAfterSuffixStrip.length - surnameTokensFromFull.length);
+
+      if (!remainingFromFull.length) {
+        return {
+          valid: false,
+          reason: "person_missing_first_name",
+          raw: cleaned,
+        };
+      }
+
+      const firstNameFromFull = cleanInvalidCharsFromName(remainingFromFull.shift());
+      const middleTokensFromFull = remainingFromFull.map(cleanInvalidCharsFromName).filter(Boolean);
+      const lastNameFromFull = formatLastNameTokens(surnameTokensFromFull);
+
+      if (!lastNameFromFull || normalizeComparisonToken(lastNameFromFull).length <= 1) {
+        return {
+          valid: false,
+          reason: "person_missing_last_name",
+          raw: cleaned,
+        };
+      }
+
+      if (!firstNameFromFull) {
+        return {
+          valid: false,
+          reason: "person_missing_first_name",
+          raw: cleaned,
+        };
+      }
+
+      const formattedFirstName = titleCaseName(firstNameFromFull);
+      const formattedLastName = titleCaseName(lastNameFromFull);
+      const formattedMiddleName = middleTokensFromFull.length
+        ? titleCaseMiddleName(middleTokensFromFull.join(" "))
+        : null;
+
+      if (!formattedFirstName || !formattedLastName) {
+        return {
+          valid: false,
+          reason: "name_formatting_failed",
+          raw: cleaned,
+        };
+      }
+
+      return {
+        valid: true,
+        owner: {
+          type: "person",
+          first_name: formattedFirstName,
+          last_name: formattedLastName,
+          middle_name: formattedMiddleName,
+        },
+      };
     }
+
     if (!givenTokens.length) {
       return {
         valid: false,
@@ -525,13 +597,27 @@ function classifyOwner(part, candidateLastNames) {
         }
       }
     }
+    // Apply title case formatting to person names
+    const formattedFirstName = titleCaseName(firstName);
+    const formattedLastName = titleCaseName(lastName);
+    const formattedMiddleName = middleNameValue ? titleCaseMiddleName(middleNameValue) : null;
+
+    // Validate that names pass the validation pattern
+    if (!formattedFirstName || !formattedLastName) {
+      return {
+        valid: false,
+        reason: "name_formatting_failed",
+        raw: cleaned,
+      };
+    }
+
     return {
       valid: true,
       owner: {
         type: "person",
-        first_name: firstName,
-        last_name: lastName,
-        middle_name: middleNameValue ? middleNameValue : null,
+        first_name: formattedFirstName,
+        last_name: formattedLastName,
+        middle_name: formattedMiddleName,
       },
     };
   }
@@ -559,12 +645,24 @@ function classifyOwner(part, candidateLastNames) {
       lastNameCandidate = pickFallbackLastName(fallbackLastNames);
     }
     if (lastNameCandidate) {
+      // Apply title case formatting
+      const formattedFirstName = titleCaseName(firstName);
+      const formattedLastName = titleCaseName(lastNameCandidate);
+
+      if (!formattedFirstName || !formattedLastName) {
+        return {
+          valid: false,
+          reason: "name_formatting_failed",
+          raw: cleaned,
+        };
+      }
+
       return {
         valid: true,
         owner: {
           type: "person",
-          first_name: firstName,
-          last_name: lastNameCandidate,
+          first_name: formattedFirstName,
+          last_name: formattedLastName,
           middle_name: null,
         },
       };
@@ -663,15 +761,126 @@ function classifyOwner(part, candidateLastNames) {
     }
   }
 
+  // Apply title case formatting to person names
+  const formattedFirstName = titleCaseName(firstName);
+  const formattedLastName = titleCaseName(lastName);
+  const formattedMiddleName = middleNameValue ? titleCaseMiddleName(middleNameValue) : null;
+
+  // Validate that names pass the validation pattern
+  if (!formattedFirstName || !formattedLastName) {
+    return {
+      valid: false,
+      reason: "name_formatting_failed",
+      raw: cleaned,
+    };
+  }
+
   return {
     valid: true,
     owner: {
       type: "person",
-      first_name: firstName,
-      last_name: lastName,
-      middle_name: middleNameValue ? middleNameValue : null,
+      first_name: formattedFirstName,
+      last_name: formattedLastName,
+      middle_name: formattedMiddleName,
     },
   };
+}
+
+function titleCaseName(s) {
+  if (!s) return null;
+  const trimmed = String(s).trim();
+  if (!trimmed) return null;
+
+  // Split by separators while preserving them
+  const parts = trimmed.toLowerCase().split(/([ \-',.])/);
+  let result = '';
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!part) continue;
+
+    // If it's a separator, just add it
+    if (/^[ \-',.]$/.test(part)) {
+      result += part;
+      continue;
+    }
+
+    // If it's a word, capitalize first letter
+    if (part.length > 0) {
+      result += part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    }
+  }
+
+  if (!result || result.length === 0) return null;
+
+  // Normalize multiple consecutive separators (e.g., " -" → "-")
+  result = result.replace(/([ \-',.])(?=[ \-',.])/g, '');
+
+  // Remove trailing separators (e.g., "Flynn-" → "Flynn", "H." → "H")
+  while (/[ \-',.]$/.test(result)) {
+    result = result.slice(0, -1);
+  }
+
+  // Remove leading separators (edge case safety)
+  while (/^[ \-',.]/.test(result)) {
+    result = result.slice(1);
+  }
+
+  if (!result || result.length === 0) return null;
+
+  // Validate against the required pattern
+  if (!/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) return null;
+
+  return result;
+}
+
+function titleCaseMiddleName(s) {
+  if (!s) return null;
+  const trimmed = String(s).trim();
+  if (!trimmed) return null;
+
+  // Split by separators while preserving them
+  const parts = trimmed.split(/([ \-',.])/);
+  let result = '';
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!part) continue;
+
+    // If it's a separator, just add it
+    if (/^[ \-',.]$/.test(part)) {
+      result += part;
+      continue;
+    }
+
+    // For middle names, capitalize first letter but preserve case for rest
+    if (part.length > 0) {
+      const lower = part.toLowerCase();
+      result += lower.charAt(0).toUpperCase() + lower.slice(1);
+    }
+  }
+
+  if (!result || result.length === 0) return null;
+
+  // Remove leading separators
+  while (/^[ \-',.]/.test(result)) {
+    result = result.slice(1);
+  }
+
+  // Remove trailing separators
+  while (/[ \-',.]$/.test(result)) {
+    result = result.slice(0, -1);
+  }
+
+  // Normalize multiple consecutive separators (e.g., "John  Doe" → "John Doe")
+  result = result.replace(/([ \-',.])(?=[ \-',.])/g, '');
+
+  if (!result || result.length === 0) return null;
+
+  // Validate against the middle name pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+
+  return result;
 }
 
 function dedupeOwners(owners) {

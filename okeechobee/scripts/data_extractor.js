@@ -220,7 +220,7 @@ const propertyTypeMapping=[
     "property_type": "Building"
   },
   {
-    "property_usecode": "RV/MH PK ,PK/LOT",
+    "property_usecode": "RV/MH,PK LOT",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
@@ -2466,7 +2466,7 @@ const extraFeaturesCodeListMapping = [
     "code": "WALL 5",
     "class": "Structure",
     "property": "exterior_wall_material_primary",
-    "value": "Poured Concrete"
+    "value": "Precast Concrete"
   },
   {
     "code": "WDA N2",
@@ -2993,15 +2993,18 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
   }
 
   if (hasLotData) {
+    console.log("Creating lot.json with data:", lotData);
     writeJson(path.join("data", "lot.json"), lotData);
-    // writeJson(
-    //   path.join("data", "relationship_property_has_lot.json"),
-    //   {
-    //     from: { "/": "./property.json" },
-    //     to: { "/": "./lot.json" },
-    //   }
-    // );
+    writeJson(
+      path.join("data", "relationship_property_has_lot.json"),
+      {
+        from: { "/": "./property.json" },
+        to: { "/": "./lot.json" },
+      }
+    );
     console.log("Created lot.json and relationship_property_has_lot.json");
+  } else {
+    console.log("No lot data found in extra features");
   }
   //Lot modifications
   // 7) LOT
@@ -3035,16 +3038,33 @@ function extractExtraFeatures($, parcelIdentifier, seed, appendSourceInfo) {
     const lotPath = path.join("data", "lot.json");
     if (fs.existsSync(lotPath)) {
       existingLotData = readJson(lotPath);
+    } else {
+      // Create default lot data structure if no existing file
+      existingLotData = {
+        ...appendSourceInfo(seed),
+        lot_type: null,
+        lot_length_feet: null,
+        lot_width_feet: null,
+        lot_area_sqft: null,
+        landscaping_features: null,
+        view: null,
+        fencing_type: null,
+        fence_height: null,
+        fence_length: null,
+        driveway_material: null,
+        driveway_condition: null,
+        lot_condition_issues: null
+      };
     }
     
-    // Merge with new data, keeping only the three specified fields
+    // Merge with new data, preserving all existing fields
     const finalLotData = {
       ...existingLotData,
-      lot_area_sqft: lotAreaSqft || existingLotData.lot_area_sqft || null,
-      lot_type: lot_type || existingLotData.lot_type || null,
-      lot_size_acre: lotSizeAcre || existingLotData.lot_size_acre || null,
+      lot_area_sqft: lotAreaSqft !== null ? lotAreaSqft : existingLotData.lot_area_sqft || null,
+      lot_type: lot_type !== null ? lot_type : existingLotData.lot_type || null,
+      lot_size_acre: lotSizeAcre !== null ? lotSizeAcre : existingLotData.lot_size_acre || null
     };
-    
+    // console.log("FINAL LOT ",finalLotData)
     writeJson(lotPath, finalLotData);
   } catch (e) {}
 
@@ -3074,10 +3094,7 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng, seed, appendSourceInf
   const address = {
       ...appendSourceInfo(seed),
       county_name,
-      unnormalized_address: full,
-      township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
-      range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
-      section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
+      unnormalized_address: full
     };
   writeJson(path.join("data", "address.json"), address);
   // console.log("----ADDRESS--",address);
@@ -3283,6 +3300,12 @@ function main() {
       for (const layout of layScope.layouts) {
         i += 1;
         writeJson(path.join("data", `layout_${i}.json`), layout);
+
+        // Create relationship between property and layout
+        writeJson(path.join("data", `relationship_property_has_layout_${i}.json`), {
+          from: { "/": "./property.json" },
+          to: { "/": `./layout_${i}.json` }
+        });
       }
     }
   }
@@ -3407,15 +3430,22 @@ function main() {
         ownership_transfer_date: parseDateToISO(row.dateTxt),
         purchase_price_amount: parseCurrencyToNumber(row.priceTxt),
       };
-      writeJson(path.join("data", `sales_${saleIndex}.json`), sale);
-      salesFiles.push(`./sales_${saleIndex}.json`);
+      writeJson(path.join("data", `sales_history_${saleIndex}.json`), sale);
+      salesFiles.push(`./sales_history_${saleIndex}.json`);
+
+      // Create relationship between property and sales_history
+      writeJson(path.join("data", `relationship_property_has_sales_history_${saleIndex}.json`), {
+        from: { "/": "./property.json" },
+        to: { "/": `./sales_history_${saleIndex}.json` }
+      });
+
       // Extract book and page from bookPageTxt
       let book = null, page = null;
       if (row.bookPageTxt) {
         const bookPageMatch = row.bookPageTxt.match(/(\d+)\s*\/\s*(\d+)/);
         if (bookPageMatch) {
-          book = bookPageMatch[1];
-          page = bookPageMatch[2];
+          book = bookPageMatch[1] ? String(bookPageMatch[1].trim()) : null;
+          page = bookPageMatch[2] ? String(bookPageMatch[2].trim()) : null;
         }
       }
 
@@ -3423,19 +3453,25 @@ function main() {
       if (book || page || (row.deedCode && row.deedCode !== "N/A")) {
         deedIndex += 1;
         const deed = {
-          ...appendSourceInfo(seed),
-          book: book,
-          page: page
+          ...appendSourceInfo(seed)
         };
-        
+
+        // Only include book and page if they are valid non-empty strings
+        if (book && typeof book === 'string' && book.length > 0) {
+          deed.book = String(book);
+        }
+        if (page && typeof page === 'string' && page.length > 0) {
+          deed.page = String(page);
+        }
+
         if (row.deedCode !== "N/A") {
           const mapped = deedCodeMap[row.deedCode];
           deed.deed_type = mapped || "Miscellaneous";
         }
         writeJson(path.join("data", `deed_${deedIndex}.json`), deed);
 
-        writeJson(path.join("data", `relationship_sales_deed_${saleIndex}.json`), {
-          from: { "/": `./sales_${saleIndex}.json` },
+        writeJson(path.join("data", `relationship_sales_history_${saleIndex}_has_deed.json`), {
+          from: { "/": `./sales_history_${saleIndex}.json` },
           to: { "/": `./deed_${deedIndex}.json` }
         });
       }
@@ -3481,29 +3517,33 @@ function main() {
       const companies = globalThis.__ownerCompanyFiles || [];
       const persons = globalThis.__ownerPersonFiles || [];
       if (companies.length > 0) {
-        companies.forEach((companyPath, idx) =>
+        companies.forEach((companyPath, idx) => {
+          globalThis.__usedFiles = globalThis.__usedFiles || new Set();
+          globalThis.__usedFiles.add(companyPath);
           writeJson(
             path.join(
               "data",
               idx === 0
-                ? "relationship_sales_company.json"
-                : `relationship_sales_company_${idx + 1}.json`,
+                ? "relationship_sales_history_company.json"
+                : `relationship_sales_history_company_${idx + 1}.json`,
             ),
             {  from: { "/": mostRecentSale },to: { "/": companyPath } },
-          ),
-        );
+          );
+        });
       } else if (persons.length > 0) {
-        persons.forEach((personPath, idx) =>
+        persons.forEach((personPath, idx) => {
+          globalThis.__usedFiles = globalThis.__usedFiles || new Set();
+          globalThis.__usedFiles.add(personPath);
           writeJson(
             path.join(
               "data",
               idx === 0
-                ? "relationship_sales_person.json"
-                : `relationship_sales_person_${idx + 1}.json`,
+                ? "relationship_sales_history_person.json"
+                : `relationship_sales_history_person_${idx + 1}.json`,
             ),
             {  from: { "/": mostRecentSale },to: { "/": personPath }},
-          ),
-        );
+          );
+        });
       }
     }
   }
@@ -3604,9 +3644,23 @@ function main() {
   }
   const tax2024 = buildTaxFromSection("2024 Certified Values", 2024);
   // console.log("tax2024", tax2024);
-  if (tax2024) writeJson(path.join("data", "tax_2024.json"), tax2024);
+  if (tax2024) {
+    writeJson(path.join("data", "tax_2024.json"), tax2024);
+    // Create relationship between property and tax_2024
+    writeJson(path.join("data", "relationship_property_has_tax_2024.json"), {
+      from: { "/": "./property.json" },
+      to: { "/": "./tax_2024.json" }
+    });
+  }
   const tax2025 = buildTaxFromSection("2025 Certified Values", 2025);
-  if (tax2025) writeJson(path.join("data", "tax_2025.json"), tax2025);
+  if (tax2025) {
+    writeJson(path.join("data", "tax_2025.json"), tax2025);
+    // Create relationship between property and tax_2025
+    writeJson(path.join("data", "relationship_property_has_tax_2025.json"), {
+      from: { "/": "./property.json" },
+      to: { "/": "./tax_2025.json" }
+    });
+  }
 
 
 
@@ -3702,14 +3756,35 @@ function main() {
         return false;
       });
       console.log(">>>",propertyMapping)
-      
+
       const propertyFields = {
-        property_type: propertyMapping?.property_type || null,
+        property_type: propertyMapping?.property_type || "Building",
         property_usage_type: propertyMapping?.property_usage_type || null,
-        ownership_estate_type: propertyMapping?.ownership_estate_type || null,
+        ownership_estate_type: propertyMapping?.ownership_estate_type || "FeeSimple",
         structure_form: propertyMapping?.structure_form || null,
-        build_status: propertyMapping?.build_status || null
+        build_status: propertyMapping?.build_status || "Improved"
       };
+
+      // Validate and ensure property_type is a valid string
+      const validPropertyTypes = [
+        "Cooperative", "Condominium", "Modular", "ManufacturedHousingMultiWide", "Pud", "Timeshare",
+        "2Units", "DetachedCondominium", "Duplex", "SingleFamily", "MultipleFamily", "3Units",
+        "ManufacturedHousing", "ManufacturedHousingSingleWide", "4Units", "Townhouse",
+        "NonWarrantableCondo", "VacantLand", "Retirement", "MiscellaneousResidential",
+        "ResidentialCommonElementsAreas", "MobileHome", "Apartment", "MultiFamilyMoreThan10",
+        "MultiFamilyLessThan10", "LandParcel", "Building", "Unit", "ManufacturedHome"
+      ];
+      let finalPropertyType = propertyFields.property_type;
+      if (!finalPropertyType || typeof finalPropertyType !== 'string' || !validPropertyTypes.includes(finalPropertyType)) {
+        finalPropertyType = "Building";
+      }
+
+      // Validate and ensure build_status is a valid string
+      const validBuildStatuses = ["VacantLand", "Improved", "UnderConstruction"];
+      let finalBuildStatus = propertyFields.build_status;
+      if (!finalBuildStatus || typeof finalBuildStatus !== 'string' || !validBuildStatuses.includes(finalBuildStatus)) {
+        finalBuildStatus = "Improved";
+      }
 
       const prop = {
         ...appendSourceInfo(seed),
@@ -3721,11 +3796,11 @@ function main() {
         number_of_units: null,
         subdivision: null,
         zoning: null,
-        property_type: propertyFields.property_type,
+        property_type: finalPropertyType,
         property_usage_type: propertyFields.property_usage_type,
         ownership_estate_type: propertyFields.ownership_estate_type,
         structure_form: propertyFields.structure_form,
-        build_status: propertyFields.build_status,
+        build_status: finalBuildStatus,
 
       };
       writeJson(path.join("data", "property.json"), prop);
@@ -3854,40 +3929,64 @@ function main() {
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($, ownerData, hyphenParcel)
   console.log("MAILING--",mailingAddressRaw);
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-  };
-  writeJson(path.join("data", "mailing_address.json"), mailingAddressOutput);
 
-  // Create mailing address relationships with current owners
+  // Only create mailing address if there are owners to link it to
   const companies = globalThis.__ownerCompanyFiles || [];
   const persons = globalThis.__ownerPersonFiles || [];
-  
-  companies.forEach((companyPath, idx) => {
-    writeJson(
-      path.join("data", `relationship_company_has_mailing_address_${idx + 1}.json`),
-      {
-        from: { "/": companyPath },
-        to: { "/": "./mailing_address.json" }
-      }
-    );
-  });
-  
-  persons.forEach((personPath, idx) => {
-    writeJson(
-      path.join("data", `relationship_person_has_mailing_address_${idx + 1}.json`),
-      {
-        from: { "/": personPath },
-        to: { "/": "./mailing_address.json" }
-      }
-    );
-  });
+
+  if ((companies.length > 0 || persons.length > 0) && mailingAddressRaw) {
+    const mailingAddressOutput = {
+      ...appendSourceInfo(seed),
+      unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+    };
+    writeJson(path.join("data", "mailing_address.json"), mailingAddressOutput);
+
+    // Create mailing address relationships with current owners
+    companies.forEach((companyPath, idx) => {
+      globalThis.__usedFiles = globalThis.__usedFiles || new Set();
+      globalThis.__usedFiles.add(companyPath);
+      writeJson(
+        path.join("data", `relationship_company_has_mailing_address_${idx + 1}.json`),
+        {
+          from: { "/": companyPath },
+          to: { "/": "./mailing_address.json" }
+        }
+      );
+    });
+
+    persons.forEach((personPath, idx) => {
+      globalThis.__usedFiles = globalThis.__usedFiles || new Set();
+      globalThis.__usedFiles.add(personPath);
+      writeJson(
+        path.join("data", `relationship_person_has_mailing_address_${idx + 1}.json`),
+        {
+          from: { "/": personPath },
+          to: { "/": "./mailing_address.json" }
+        }
+      );
+    });
+  }
 
 
   //Extra Features Extraction.Adds lot area as well.
   extractExtraFeatures($, hyphenParcel, seed,appendSourceInfo);
   
+  // Log relationship usage summary and delete unused files
+  const allOwnerFiles = [...companies, ...persons];
+  const usedFiles = globalThis.__usedFiles || new Set();
+  const unusedFiles = allOwnerFiles.filter(file => !usedFiles.has(file));
+  
+  console.log("Files used in relationships:", Array.from(usedFiles));
+  console.log("Unused owner files:", unusedFiles);
+  
+  // Delete unused files
+  unusedFiles.forEach(file => {
+    const filePath = path.join("data", file.replace("./", ""));
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log("Deleted unused file:", filePath);
+    }
+  });
 }
 
 main();
