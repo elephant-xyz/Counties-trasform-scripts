@@ -78,6 +78,27 @@ function extractPropertyId($) {
   return id || "unknown_id";
 }
 
+function normalizeWhitespace(str) {
+  return (str || "")
+    .replace(/\s+/g, " ")
+    .replace(/[\u00A0\s]+/g, " ")
+    .trim();
+}
+
+function cleanInvalidCharsFromName(raw) {
+  let parsedName = normalizeWhitespace(raw)
+    .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
+    .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .trim();
+  while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(1);
+  }
+  while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(0, parsedName.length - 1);
+  }
+  return parsedName;
+}
+
 // Owner classification heuristics
 const COMPANY_KEYWORDS = [
   "inc",
@@ -128,17 +149,19 @@ function classifyOwner(rawName) {
     const joined = cleaned.replace(/&/g, " ").replace(/\s+/g, " ").trim();
     const tokens = joined.split(" ").filter(Boolean);
     if (tokens.length >= 2) {
-      const first = tokens[0];
-      const last = tokens[tokens.length - 1];
-      const middle = tokens.slice(1, -1).join(" ").trim() || null;
-      return {
-        owner: {
-          type: "person",
-          first_name: first,
-          last_name: last,
-          middle_name: middle || null,
-        },
-      };
+      const first = cleanInvalidCharsFromName(tokens[0]);
+      const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
+      const middle = cleanInvalidCharsFromName(tokens.slice(1, -1).join(" ").trim()) || null;
+      if (first && last) {
+        return {
+          owner: {
+            type: "person",
+            first_name: first,
+            last_name: last,
+            middle_name: middle || null,
+          },
+        };
+      }
     }
     return {
       invalid: { raw: cleaned, reason: "unable_to_split_ampersand_name" },
@@ -148,17 +171,19 @@ function classifyOwner(rawName) {
   // Person assumption: needs at least two tokens
   const tokens = cleaned.split(/\s+/).filter(Boolean);
   if (tokens.length >= 2) {
-    const first = tokens[0];
-    const last = tokens[tokens.length - 1];
-    const middle = tokens.slice(1, -1).join(" ").trim() || null;
-    return {
-      owner: {
-        type: "person",
-        first_name: first,
-        last_name: last,
-        middle_name: middle || null,
-      },
-    };
+    const first = cleanInvalidCharsFromName(tokens[0]);
+    const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
+    const middle = cleanInvalidCharsFromName(tokens.slice(1, -1).join(" ").trim()) || null;
+    if (first && last) {
+      return {
+        owner: {
+          type: "person",
+          first_name: first,
+          last_name: last,
+          middle_name: middle || null,
+        },
+      };
+    }
   }
 
   return {
@@ -219,11 +244,28 @@ function extractOwnerCandidates($) {
     "permit search",
     "property record card",
     "map it+",
+    "view",
+    "print",
+    "no images",
+    "not available",
+    "capped",
+    "base value",
+    "911 address",
+    "vid:",
+    "homestead",
+    "non-homestead",
+    "cap 10",
+    "images are",
   ];
   const filtered = candidates.filter((c) => {
-    const lc = (c || "").toLowerCase();
+    const lc = (c || "").toLowerCase().replace(/[\/\-]/g, ' ');
     if (!lc || lc.length < 2) return false;
     if (banned.some((b) => lc.includes(b))) return false;
+    // Filter out single words that look like UI elements
+    const words = lc.trim().split(/\s+/);
+    if (words.length === 1 && words[0].length < 3) return false;
+    // Filter out anything that starts with a number or special character
+    if (/^[0-9\.\$\:]/.test(lc)) return false;
     return true;
   });
 
