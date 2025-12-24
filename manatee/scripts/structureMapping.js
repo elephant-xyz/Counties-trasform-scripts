@@ -183,7 +183,7 @@ function parseRoofMaterial(value) {
     "HYPALON": [null, null],
     "BERMUDA.": [null, null],
     "BERMUDA": [null, null],
-    "SYNTHETIC/PLASTIC": ["Synthetic Slate", null],
+    "SYNTHETIC/PLASTIC": ["Manufactured", null],
     "SLATE": [null, null],
     "COPPER": ["Metal", null],
     "SOLAR ROOF": [null, "Solar Integrated Tiles"],
