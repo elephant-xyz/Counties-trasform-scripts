@@ -1171,7 +1171,7 @@ function extract() {
     request_identifier: seed.request_identifier || null,
   };
 
-  // Address extraction logic - Prioritize HTML, then JSON
+  // Address extraction logic - Use unnormalized_address only
   let fullAddressFromHtml = null;
   // Look for the address in the header row, specifically the last td
   $("#datalet_header_row")
@@ -1202,135 +1202,8 @@ function extract() {
     },
     request_identifier: seed.request_identifier || null,
     county_name: seed.county_name || "Citrus",
-    latitude: seed.latitude || null,
-    longitude: seed.longitude || null
+    unnormalized_address: sourceFullAddress || null,
   };
-
-  // Attempt to parse structured address from the determined sourceFullAddress
-  if (sourceFullAddress) {
-    const full = sourceFullAddress.trim();
-    let street_number = null,
-      pre = null,
-      street_name = null,
-      suffix = null,
-      city = null,
-      state = null,
-      zip = null,
-      plus4 = null;
-
-    // Example parsing logic (can be refined based on actual address formats)
-    const parts = full.split(",");
-    if (parts.length >= 2) { // Changed from 3 to 2 because HTML address might not have state/zip in separate part
-      const streetPart = parts[0].trim();
-      
-      // Extract street number, pre-directional, street name, and suffix
-      const streetMatch = streetPart.match(/^(\d+)\s+([NESW]{1,2})?\s*(.+?)\s+(?:(AVE|BLVD|CIR|CT|DR|HWY|LN|PKWY|PL|RD|RTE|ST|TER|TRL|WAY|AVENUE|BOULEVARD|CIRCLE|COURT|DRIVE|HIGHWAY|LANE|PARKWAY|PLACE|ROAD|ROUTE|STREET|TERRACE|TRAIL))?$/i);
-      if (streetMatch) {
-        street_number = streetMatch[1];
-        pre = streetMatch[2] ? streetMatch[2].toUpperCase() : null;
-        street_name = streetMatch[3].trim();
-        suffix = streetMatch[4] ? streetMatch[4].toUpperCase() : null;
-      } else {
-        // Fallback for simpler street names without directional or suffix
-        const simpleStreetMatch = streetPart.match(/^(\d+)\s+(.+)$/);
-        if (simpleStreetMatch) {
-          street_number = simpleStreetMatch[1];
-          street_name = simpleStreetMatch[2].trim();
-        }
-      }
-
-      // Handle city, state, zip from the remaining parts
-      if (parts.length >= 2) {
-        const cityStateZipPart = parts[1].trim();
-        const cityStateZipMatch = cityStateZipPart.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5})(?:-(\d{4}))?$/);
-        if (cityStateZipMatch) {
-          city = cityStateZipMatch[1].trim().toUpperCase();
-          state = cityStateZipMatch[2];
-          zip = cityStateZipMatch[3];
-          plus4 = cityStateZipMatch[4] || null;
-        } else {
-          // If no state/zip, assume the rest is city
-          city = cityStateZipPart.toUpperCase();
-        }
-      }
-    } else if (parts.length === 1) { // If only one part, assume it's a street address without city/state/zip
-        const streetPart = parts[0].trim();
-        const streetMatch = streetPart.match(/^(\d+)\s+([NESW]{1,2})?\s*(.+?)\s+(?:(AVE|BLVD|CIR|CT|DR|HWY|LN|PKWY|PL|RD|RTE|ST|TER|TRL|WAY|AVENUE|BOULEVARD|CIRCLE|COURT|DRIVE|HIGHWAY|LANE|PARKWAY|PLACE|ROAD|ROUTE|STREET|TERRACE|TRAIL))?$/i);
-        if (streetMatch) {
-            street_number = streetMatch[1];
-            pre = streetMatch[2] ? streetMatch[2].toUpperCase() : null;
-            street_name = streetMatch[3].trim();
-            suffix = streetMatch[4] ? streetMatch[4].toUpperCase() : null;
-        } else {
-            const simpleStreetMatch = streetPart.match(/^(\d+)\s+(.+)$/);
-            if (simpleStreetMatch) {
-                street_number = simpleStreetMatch[1];
-                street_name = simpleStreetMatch[2].trim();
-            }
-        }
-    }
-
-
-    const suffixMap = {
-      RD: "Rd", ROAD: "Rd", ST: "St", STREET: "St", AVE: "Ave", AVENUE: "Ave",
-      BLVD: "Blvd", BOULEVARD: "Blvd", DR: "Dr", DRIVE: "Dr", LN: "Ln", LANE: "Ln",
-      CT: "Ct", COURT: "Ct", TER: "Ter", TERRACE: "Ter", HWY: "Hwy", HIGHWAY: "Hwy",
-      PKWY: "Pkwy", PARKWAY: "Pkwy", PL: "Pl", PLACE: "Pl", WAY: "Way", CIR: "Cir",
-      CIRCLE: "Cir", PLZ: "Plz", TRL: "Trl", TRAIL: "Trl", RTE: "Rte", ROUTE: "Rte",
-    };
-    const street_suffix_type = suffix
-      ? suffixMap[suffix.toUpperCase()] || null
-      : null;
-
-    // Extract S/T/R from HTML if available
-    let section = null,
-      township = null,
-      range = null;
-    const strTxt = $('td:contains("S/T/R")')
-      .filter((i, el) => $(el).text().trim().startsWith("S/T/R"))
-      .first()
-      .next()
-      .text()
-      .trim();
-    if (strTxt && /\d{1,2}-\d{1,2}[A-Z]-\d{1,2}/.test(strTxt)) {
-      const parts2 = strTxt.split("-");
-      section = parts2[0];
-      township = parts2[1];
-      range = parts2[2];
-    }
-
-    // Check if street_name contains directional abbreviations and adjust if necessary
-    let final_street_name = street_name ? street_name.toUpperCase() : null;
-    if (final_street_name && (/\bE\b|\bN\b|\bNE\b|\bNW\b|\bS\b|\bSE\b|\bSW\b|\bW\b/.test(final_street_name))) {
-      const streetNameParts = final_street_name.split(' ');
-      const directional = streetNameParts.find(part => ['E', 'N', 'NE', 'NW', 'S', 'SE', 'SW', 'W'].includes(part));
-      if (directional) {
-        pre = directional;
-        final_street_name = streetNameParts.filter(part => part !== directional).join(' ');
-      }
-    }
-
-    Object.assign(address, {
-      street_number: street_number || null,
-      street_pre_directional_text: pre || null,
-      street_name: final_street_name,
-      street_suffix_type: street_suffix_type || null,
-      street_post_directional_text: null, // Not extracted from this source
-      unit_identifier: null, // Not extracted from this source
-      city_name: city || null,
-      state_code: state || null,
-      postal_code: zip || null,
-      plus_four_postal_code: plus4 || null,
-      country_code: "US", // Assuming US for now
-      route_number: null, // Not extracted from this source
-      township: township || null,
-      range: range || null,
-      section: section || null,
-      lot: null, // Not extracted from this source
-      block: null, // Not extracted from this source
-      municipality_name: null, // Not extracted from this source
-    });
-  }
 
   // Lot
   const estSqft = extractTextAfterColonRow(
@@ -1370,12 +1243,16 @@ function extract() {
       }
       return null;
     })(),
-    lot_length_feet: frontage
-      ? parseInt(String(frontage).replace(/[^0-9.]/g, ""), 10)
-      : null,
-    lot_width_feet: depth
-      ? parseInt(String(depth).replace(/[^0-9.]/g, ""), 10)
-      : null,
+    lot_length_feet: (() => {
+      if (!frontage) return null;
+      const parsed = parseInt(String(frontage).replace(/[^0-9.]/g, ""), 10);
+      return parsed >= 1 ? parsed : null;
+    })(),
+    lot_width_feet: (() => {
+      if (!depth) return null;
+      const parsed = parseInt(String(depth).replace(/[^0-9.]/g, ""), 10);
+      return parsed >= 1 ? parsed : null;
+    })(),
     lot_area_sqft: estSqft
       ? parseInt(String(estSqft).replace(/[^0-9]/g, ""), 10)
       : null,
@@ -1648,7 +1525,6 @@ function extract() {
         file_format: null,
         ipfs_url: null,
         name: name || null,
-        original_url: href || null,
       });
     }
   });
@@ -1663,6 +1539,11 @@ function extract() {
   writeJSON(path.join(dataDir, "property.json"), property);
   // address.json (unnormalized)
   writeJSON(path.join(dataDir, "address.json"), address);
+  // property_has_address relationship
+  writeJSON(path.join(dataDir, "relationship_property_has_address.json"), {
+    to: { "/": "./address.json" },
+    from: { "/": "./property.json" },
+  });
   // lot.json
   writeJSON(path.join(dataDir, "lot.json"), lot);
   // structure.json
@@ -1762,31 +1643,69 @@ function extract() {
   // relationships: deed-file and sales-deed for all entries
   if (deeds.length > 0 && files.length > 0) {
     const relDF = {
-      to: { "/": "./deed_1.json" },
-      from: { "/": "./file_1.json" },
+      from: { "/": "./deed_1.json" },
+      to: { "/": "./file_1.json" },
     };
     writeJSON(path.join(dataDir, "relationship_deed_file.json"), relDF);
     for (let i = 2; i <= Math.min(deeds.length, files.length); i++) {
       const rel = {
-        to: { "/": `./deed_${i}.json` },
-        from: { "/": `./file_${i}.json` },
+        from: { "/": `./deed_${i}.json` },
+        to: { "/": `./file_${i}.json` },
       };
       writeJSON(path.join(dataDir, `relationship_deed_file_${i}.json`), rel);
     }
   }
   if (sales.length > 0 && deeds.length > 0) {
     const relSD = {
-      to: { "/": "./sales_1.json" },
-      from: { "/": "./deed_1.json" },
+      from: { "/": "./sales_1.json" },
+      to: { "/": "./deed_1.json" },
     };
     writeJSON(path.join(dataDir, "relationship_sales_deed.json"), relSD);
     for (let i = 2; i <= Math.min(sales.length, deeds.length); i++) {
       const rel = {
-        to: { "/": `./sales_${i}.json` },
-        from: { "/": `./deed_${i}.json` },
+        from: { "/": `./sales_${i}.json` },
+        to: { "/": `./deed_${i}.json` },
       };
       writeJSON(path.join(dataDir, `relationship_sales_deed_${i}.json`), rel);
     }
+  }
+
+  // property fallback relationships to structure/utility when layout links are absent
+  const relationshipFiles = fs
+    .readdirSync(dataDir)
+    .filter((name) => name.startsWith("relationship_"));
+  const hasLayoutStructureRel = relationshipFiles.some(
+    (name) => name.includes("layout") && name.includes("structure"),
+  );
+  const hasLayoutUtilityRel = relationshipFiles.some(
+    (name) => name.includes("layout") && name.includes("utility"),
+  );
+  const propertyPath = "./property.json";
+  const structurePath = "./structure.json";
+  const utilityPath = "./utility.json";
+
+  if (!hasLayoutStructureRel && fs.existsSync(path.join(dataDir, "structure.json"))) {
+    removeFilesByPrefix(dataDir, "relationship_property_structure");
+    const relPropertyStructure = {
+      from: { "/": propertyPath },
+      to: { "/": structurePath },
+    };
+    writeJSON(
+      path.join(dataDir, "relationship_property_structure.json"),
+      relPropertyStructure,
+    );
+  }
+
+  if (!hasLayoutUtilityRel && fs.existsSync(path.join(dataDir, "utility.json"))) {
+    removeFilesByPrefix(dataDir, "relationship_property_utility");
+    const relPropertyUtility = {
+      from: { "/": propertyPath },
+      to: { "/": utilityPath },
+    };
+    writeJSON(
+      path.join(dataDir, "relationship_property_utility.json"),
+      relPropertyUtility,
+    );
   }
 }
 

@@ -838,7 +838,6 @@ const LAYOUT_FIELDS = [
   "decor_elements",
   "design_style",
   "fixture_finish_quality",
-  "floor_level",
   "flooring_installation_date",
   "flooring_material_type",
   "flooring_wear",
@@ -1319,7 +1318,6 @@ function main() {
         building_number: Number.isFinite(buildingNumber)
           ? buildingNumber
           : null,
-        floor_level: formatFloorLevel(fa.floor),
         size_square_feet: Math.round(fa.heated),
         heated_area_sq_ft: Math.round(fa.heated),
         livable_area_sq_ft: Math.round(fa.heated),
