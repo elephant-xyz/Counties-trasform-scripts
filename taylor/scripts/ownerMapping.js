@@ -19,13 +19,9 @@ function cleanRawName(raw) {
   let s = (raw || "").replace(/\s+/g, " ").trim();
   if (!s) return "";
   const noisePatterns = [
-    /\bET\s*AL\b/gi,
-    /\bETAL\b/gi,
     /\bET\s*UX\b/gi,
     /\bET\s*VIR\b/gi,
     /\bET\s+UXOR\b/gi,
-    /\bTRUSTEE[S]?\b/gi,
-    /\bTTEE[S]?\b/gi,
     /\bU\/A\b/gi,
     /\bU\/D\/T\b/gi,
     /\bAKA\b/gi,
@@ -35,8 +31,6 @@ function cleanRawName(raw) {
     /\b%\s*INTEREST\b/gi,
     /\b\d{1,3}%\b/gi,
     /\b\d{1,3}%\s*INTEREST\b/gi,
-    /\bJR\.?\b/gi,
-    /\bSR\.?\b/gi,
   ];
   noisePatterns.forEach((re) => {
     s = s.replace(re, " ");
@@ -81,29 +75,177 @@ function cleanInvalidCharsFromName(raw) {
   return parsedName;
 }
 
+const PREFIX_NORMALIZATION_MAP = {
+  mr: "Mr.",
+  mister: "Mr.",
+  mrs: "Mrs.",
+  missus: "Mrs.",
+  ms: "Ms.",
+  miss: "Miss",
+  mx: "Mx.",
+  mxx: "Mx.",
+  dr: "Dr.",
+  doctor: "Dr.",
+  prof: "Prof.",
+  professor: "Prof.",
+  rev: "Rev.",
+  reverend: "Rev.",
+  fr: "Fr.",
+  father: "Fr.",
+  sr: "Sr.",
+  br: "Br.",
+  brother: "Br.",
+  capt: "Capt.",
+  captain: "Capt.",
+  col: "Col.",
+  colonel: "Col.",
+  maj: "Maj.",
+  major: "Maj.",
+  lt: "Lt.",
+  lieutenant: "Lt.",
+  sgt: "Sgt.",
+  sergeant: "Sgt.",
+  hon: "Hon.",
+  honorable: "Hon.",
+  judge: "Judge",
+  rabbi: "Rabbi",
+  imam: "Imam",
+  sheikh: "Sheikh",
+  shaikh: "Sheikh",
+  sir: "Sir",
+  dame: "Dame",
+};
+
+const SUFFIX_NORMALIZATION_MAP = {
+  jr: "Jr.",
+  junior: "Jr.",
+  sr: "Sr.",
+  senior: "Sr.",
+  ii: "II",
+  "2nd": "II",
+  iii: "III",
+  "3rd": "III",
+  iv: "IV",
+  "4th": "IV",
+  phd: "PhD",
+  "ph.d": "PhD",
+  md: "MD",
+  "m.d": "MD",
+  esq: "Esq.",
+  esquire: "Esq.",
+  jd: "JD",
+  "j.d": "JD",
+  llm: "LLM",
+  "ll.m": "LLM",
+  mba: "MBA",
+  rn: "RN",
+  dds: "DDS",
+  dvm: "DVM",
+  cfa: "CFA",
+  cpa: "CPA",
+  pe: "PE",
+  "p.e": "PE",
+  pmp: "PMP",
+  emeritus: "Emeritus",
+  ret: "Ret.",
+  retired: "Ret.",
+};
+
+function normalizeAffixToken(token) {
+  return (token || "")
+    .toLowerCase()
+    .replace(/\./g, "")
+    .replace(/,/g, "")
+    .replace(/\s+/g, "");
+}
+
+function extractPrefixAndSuffix(tokens) {
+  const remaining = [...tokens];
+  let prefix_name = null;
+  let suffix_name = null;
+
+  if (remaining.length > 0) {
+    const mappedPrefix =
+      PREFIX_NORMALIZATION_MAP[normalizeAffixToken(remaining[0])];
+    if (mappedPrefix) {
+      prefix_name = mappedPrefix;
+      remaining.shift();
+    }
+  }
+
+  if (remaining.length > 0) {
+    const mappedSuffix =
+      SUFFIX_NORMALIZATION_MAP[
+        normalizeAffixToken(remaining[remaining.length - 1])
+      ];
+    if (mappedSuffix) {
+      suffix_name = mappedSuffix;
+      remaining.pop();
+    }
+  }
+
+  return { prefix_name, suffix_name, tokens: remaining };
+}
+
 const COMPANY_KEYWORDS = [
   "inc",
+  "inc.",
+  "incorporated",
   "llc",
   "l.l.c",
+  "lc",
+  "l.c",
   "ltd",
+  "ltd.",
+  "limited",
+  "limited company",
+  "limited co",
+  "limited liability company",
+  "limited liability co",
+  "limited liability corporation",
+  "limited liability corp",
   "foundation",
   "alliance",
   "solutions",
   "corp",
+  "corp.",
+  "corporation",
   "co",
+  "co.",
   "company",
+  "companies",
   "services",
   "trust",
   "tr",
+  "trustees",
   "associates",
+  "assoc",
+  "assn",
   "association",
+  "partnership",
+  "partner",
   "holdings",
   "group",
   "partners",
   "lp",
+  "l.p",
   "llp",
+  "l.l.p",
+  "lllp",
+  "l.l.l.p",
+  "limited partnership",
+  "limited liability partnership",
   "plc",
+  "p.l.c",
   "pllc",
+  "p.l.l.c",
+  "professional limited liability company",
+  "pc",
+  "p.c",
+  "professional corporation",
+  "pa",
+  "p.a",
+  "professional association",
   "bank",
   "church",
   "school",
@@ -114,9 +256,10 @@ const COMPANY_KEYWORDS = [
 
 function isCompanyName(name) {
   const n = name.toLowerCase();
-  return COMPANY_KEYWORDS.some((kw) =>
-    new RegExp(`(^|\\b)${kw}(\\b|\.$)`, "i").test(n),
-  );
+  return COMPANY_KEYWORDS.some((kw) => {
+    const kwPattern = kw.replace(/\./g, "\\.").replace(/\s+/g, "\\s+");
+    return new RegExp(`(^|\\b)${kwPattern}(\\b|\\.?$)`, "i").test(n);
+  });
 }
 
 function splitCompositeNames(name) {
@@ -141,21 +284,25 @@ function classifyOwner(raw) {
   if (tokens.length < 2) {
     return { valid: false, reason: "person_missing_last_name", raw: cleaned };
   }
-  const first = cleanInvalidCharsFromName(tokens[0]);
-  const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
-  const middleTokens = tokens.slice(1, -1);
-  // if (/^[A-Za-z]$/.test(last)) {
-  //   return { valid: false, reason: "person_missing_last_name", raw: cleaned };
-  // }
+  const { prefix_name, suffix_name, tokens: coreTokens } =
+    extractPrefixAndSuffix(tokens);
+  if (coreTokens.length < 2) {
+    return { valid: false, reason: "person_missing_last_name", raw: cleaned };
+  }
+  const first = cleanInvalidCharsFromName(coreTokens[0]);
+  const last = cleanInvalidCharsFromName(coreTokens[coreTokens.length - 1]);
+  const middleTokens = coreTokens.slice(1, -1);
   const middle = cleanInvalidCharsFromName(middleTokens.join(" ").trim());
   if (first && last) {
-  const person = {
-    type: "person",
-    first_name: first,
-    last_name: last,
-    middle_name: middle ? middle : null,
-  };
-  return { valid: true, owner: person };
+    const person = {
+      type: "person",
+      first_name: first,
+      last_name: last,
+      middle_name: middle ? middle : null,
+      prefix_name: prefix_name || null,
+      suffix_name: suffix_name || null,
+    };
+    return { valid: true, owner: person };
   }
   return { valid: false, reason: "person_missing_first_or_last", raw: cleaned };
 }
@@ -169,7 +316,9 @@ function dedupeOwners(owners) {
       norm = `company:${normalizeName(o.name)}`;
     } else {
       const middle = o.middle_name ? normalizeName(o.middle_name) : "";
-      norm = `person:${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}`;
+      const prefix = o.prefix_name ? normalizeName(o.prefix_name) : "";
+      const suffix = o.suffix_name ? normalizeName(o.suffix_name) : "";
+      norm = `person:${prefix}|${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}|${suffix}`;
     }
     if (!seen.has(norm)) {
       seen.add(norm);
@@ -189,14 +338,10 @@ function getParcelId($) {
 
 function extractCurrentOwners($) {
   const owners = [];
-  $(CURRENT_OWNER_SELECTOR).each((i, el) => {
-    const owner_text_split = $(el).text().split('\n');
-    for (const owner of owner_text_split) {
-      if (owner.trim() && !owner.toLowerCase().includes("primary")) {
-        const t = txt(owner.trim());
-        owners.push(t);
-        break;
-      }
+  $('#ctlBodyPane_ctl02_ctl01_lstOwners tbody tr td span[id*="lblOwnerFirstName"]').each((i, el) => {
+    const ownerText = $(el).text().trim();
+    if (ownerText) {
+      owners.push(ownerText);
     }
   });
   return owners;
@@ -272,10 +417,14 @@ if (priorOwners && priorOwners.length > 0) {
     arr.forEach((o) => {
       if (o.type === "company")
         granteeNamesNorm.add(`company:${normalizeName(o.name)}`);
-      else
+      else {
+        const prefix = o.prefix_name ? normalizeName(o.prefix_name) : "";
+        const middle = o.middle_name ? normalizeName(o.middle_name) : "";
+        const suffix = o.suffix_name ? normalizeName(o.suffix_name) : "";
         granteeNamesNorm.add(
-          `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`,
+          `person:${prefix}|${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}|${suffix}`,
         );
+      }
     });
   });
   const placeholderRaw = [];
@@ -287,8 +436,12 @@ if (priorOwners && priorOwners.length > 0) {
         const o = res.owner;
         let key;
         if (o.type === "company") key = `company:${normalizeName(o.name)}`;
-        else
-          key = `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`;
+        else {
+          const prefix = o.prefix_name ? normalizeName(o.prefix_name) : "";
+          const middle = o.middle_name ? normalizeName(o.middle_name) : "";
+          const suffix = o.suffix_name ? normalizeName(o.suffix_name) : "";
+          key = `person:${prefix}|${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}|${suffix}`;
+        }
         if (!granteeNamesNorm.has(key)) {
           placeholderRaw.push(part);
         }
