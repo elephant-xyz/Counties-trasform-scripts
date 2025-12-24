@@ -14,24 +14,61 @@ function toTitleCase(str) {
   if (!str) return null;
   const cleaned = str.trim();
   if (!cleaned) return null;
-  return cleaned
-    .toLowerCase()
-    .split(/\s+/)
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join(" ");
+
+  // Handle names with various separators (space, hyphen, apostrophe, comma, period)
+  // Normalize multiple spaces and clean up
+  const normalized = cleaned.replace(/\s+/g, ' ');
+
+  // Split on separators while preserving them
+  const parts = normalized.toLowerCase().split(/(?=[\ \-',.])/).filter(Boolean);
+
+  let result = '';
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (/^[\ \-',.]/.test(part)) {
+      // This part starts with a separator
+      const separator = part[0];
+      const rest = part.slice(1);
+      result += separator;
+      if (rest.length > 0) {
+        // Find first letter to capitalize
+        let firstLetterIdx = 0;
+        while (firstLetterIdx < rest.length && !/[A-Za-z]/.test(rest[firstLetterIdx])) {
+          firstLetterIdx++;
+        }
+        if (firstLetterIdx < rest.length) {
+          // Add any non-letters before the first letter
+          result += rest.slice(0, firstLetterIdx);
+          // Capitalize the first letter and lowercase the rest
+          result += rest.charAt(firstLetterIdx).toUpperCase() + rest.slice(firstLetterIdx + 1).toLowerCase();
+        } else {
+          // No letters found, just add as is
+          result += rest;
+        }
+      }
+    } else {
+      // No separator at start - capitalize first letter and lowercase the rest
+      result += part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    }
+  }
+
+  return result;
 }
 
 function validatePersonName(name) {
   if (!name || typeof name !== 'string') return null;
   const trimmed = name.trim();
   if (!trimmed) return null;
+  // Remove any leading/trailing special characters that might have been left
+  const cleaned = trimmed.replace(/^[^A-Za-z]+|[^A-Za-z\s\-',.]+$/g, '').trim();
+  if (!cleaned) return null;
   // Pattern from Elephant schema: ^[A-Z][a-zA-Z\s\-',.]*$
-  // Must start with uppercase letter, followed by any letters (upper or lower), spaces, hyphens, apostrophes, commas, or periods
+  // Must start with uppercase letter, then any mix of letters, spaces, and allowed punctuation
   const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  if (!pattern.test(trimmed)) {
+  if (!pattern.test(cleaned)) {
     return null;
   }
-  return trimmed;
+  return cleaned;
 }
 
 function parseCurrency(str) {
@@ -71,7 +108,37 @@ function isoDateFromMDY(mdy) {
   return null;
 }
 
-const ALLOWED_PROPERTY_TYPES = ["LandParcel", "Building", "Unit", "ManufacturedHome"];
+const ALLOWED_PROPERTY_TYPES = [
+  "Cooperative",
+  "Condominium",
+  "Modular",
+  "ManufacturedHousingMultiWide",
+  "Pud",
+  "Timeshare",
+  "2Units",
+  "DetachedCondominium",
+  "Duplex",
+  "SingleFamily",
+  "MultipleFamily",
+  "3Units",
+  "ManufacturedHousing",
+  "ManufacturedHousingSingleWide",
+  "4Units",
+  "Townhouse",
+  "NonWarrantableCondo",
+  "VacantLand",
+  "Retirement",
+  "MiscellaneousResidential",
+  "ResidentialCommonElementsAreas",
+  "MobileHome",
+  "Apartment",
+  "MultiFamilyMoreThan10",
+  "MultiFamilyLessThan10",
+  "LandParcel",
+  "Building",
+  "Unit",
+  "ManufacturedHome",
+];
 const ALLOWED_BUILD_STATUS = ["VacantLand", "Improved", "UnderConstruction", null];
 const ALLOWED_OWNERSHIP_ESTATE_TYPES = [
   "Condominium",
@@ -296,22 +363,10 @@ function cleanUseCode(str) {
 
 function normalizePropertyType(raw) {
   if (!raw) return null;
-  const map = {
-    LandParcel: "LandParcel",
-    VacantLand: "LandParcel",
-    Building: "Building",
-    SingleFamily: "Building",
-    MultiFamilyLessThan10: "Building",
-    MultiFamilyMoreThan10: "Building",
-    MiscellaneousResidential: "Building",
-    Retirement: "Building",
-    MobileHome: "ManufacturedHome",
-    ManufacturedHome: "ManufacturedHome",
-    Condominium: "Unit",
-    Cooperative: "Unit",
-  };
+  // Return the value as-is if it's in the allowed list
   if (ALLOWED_PROPERTY_TYPES.includes(raw)) return raw;
-  return map[raw] || null;
+  // Otherwise return null
+  return null;
 }
 
 function firstNonNull(...values) {
@@ -407,6 +462,27 @@ function formatAddressHtml(htmlContent) {
     .filter(Boolean);
   const joined = parts.join(", ");
   return joined.replace(/\s{2,}/g, " ");
+}
+
+function normalizeAddressValue(value) {
+  if (!value) return null;
+  const normalized = value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  return normalized || null;
+}
+
+const INVALID_SITUS_PATTERNS = [
+  /Location Address:/i,
+  /Owner Name:/i,
+  /Complex Name:/i,
+  /Parcel ID/i,
+  /Account Number/i,
+  /16-Digit Parcel ID/i,
+];
+
+function isLikelyValidAddress(value) {
+  if (!value) return false;
+  if (/^(n\/a|none|null|unknown)$/i.test(value)) return false;
+  return !INVALID_SITUS_PATTERNS.some((pattern) => pattern.test(value));
 }
 
 const getBookPageInfo = (text) => {
@@ -671,7 +747,10 @@ function main() {
   // Inputs
   const html = fs.readFileSync("input.html", "utf8");
   const $ = cheerio.load(html);
-  // const unnormalized = readJSON("unnormalized_address.json"); // No longer needed
+  const unnormalizedAddressPath = "unnormalized_address.json";
+  const unnormalizedFromInput = fs.existsSync(unnormalizedAddressPath)
+    ? readJSON(unnormalizedAddressPath)
+    : null;
   const seed = readJSON("property_seed.json");
 
   // Owners, utilities, layout
@@ -806,7 +885,7 @@ function main() {
         build_status: "VacantLand",
         structure_form: null,
         property_usage_type: "Residential",
-        property_type: "LandParcel",
+        property_type: "VacantLand",
       },
       {
         escambia_property_type: "SINGLE FAMILY RESID",
@@ -814,7 +893,7 @@ function main() {
         build_status: "Improved",
         structure_form: "SingleFamilyDetached",
         property_usage_type: "Residential",
-        property_type: "Building",
+        property_type: "SingleFamily",
       },
       {
         escambia_property_type: "MOBILE HOME",
@@ -822,7 +901,7 @@ function main() {
         build_status: "Improved",
         structure_form: "MobileHome",
         property_usage_type: "Residential",
-        property_type: "ManufacturedHome",
+        property_type: "MobileHome",
       },
       {
         escambia_property_type: "MULTI-FAMILY >=10",
@@ -830,7 +909,7 @@ function main() {
         build_status: "Improved",
         structure_form: "MultiFamilyMoreThan10",
         property_usage_type: "Residential",
-        property_type: "Building",
+        property_type: "MultiFamilyMoreThan10",
       },
       {
         escambia_property_type: "CONDOMINIUM",
@@ -838,7 +917,7 @@ function main() {
         build_status: "Improved",
         structure_form: "ApartmentUnit",
         property_usage_type: "Residential",
-        property_type: "Unit",
+        property_type: "Condominium",
       },
       {
         escambia_property_type: "CONDO-RES UNIT",
@@ -846,7 +925,7 @@ function main() {
         build_status: "Improved",
         structure_form: "ApartmentUnit",
         property_usage_type: "Residential",
-        property_type: "Unit",
+        property_type: "Condominium",
       },
       {
         escambia_property_type: "COOPERATIVE",
@@ -854,7 +933,7 @@ function main() {
         build_status: "Improved",
         structure_form: "ApartmentUnit",
         property_usage_type: "Residential",
-        property_type: "Unit",
+        property_type: "Cooperative",
       },
       {
         escambia_property_type: "RETIREMENT HOME",
@@ -862,7 +941,7 @@ function main() {
         build_status: "Improved",
         structure_form: null,
         property_usage_type: "Retirement",
-        property_type: "Building",
+        property_type: "Retirement",
       },
       {
         escambia_property_type: "MISC. RESIDENTIAL",
@@ -870,7 +949,7 @@ function main() {
         build_status: "Improved",
         structure_form: null,
         property_usage_type: "Residential",
-        property_type: "Building",
+        property_type: "MiscellaneousResidential",
       },
       {
         escambia_property_type: "MULTI-FAMILY <=9",
@@ -878,7 +957,7 @@ function main() {
         build_status: "Improved",
         structure_form: "MultiFamilyLessThan10",
         property_usage_type: "Residential",
-        property_type: "Building",
+        property_type: "MultiFamilyLessThan10",
       },
       {
         escambia_property_type: "* NOT USED *",
@@ -1406,7 +1485,7 @@ function main() {
         build_status: "Improved",
         structure_form: null,
         property_usage_type: "Retirement",
-        property_type: "Building",
+        property_type: "Retirement",
       },
       {
         escambia_property_type: "CHARITABLE",
@@ -1531,10 +1610,10 @@ function main() {
       {
         escambia_property_type: "LEASEHOLD INTEREST",
         ownership_estate_type: "Leasehold",
-        build_status: null,
+        build_status: "Improved",
         structure_form: null,
-        property_usage_type: "Unknown",
-        property_type: "LandParcel",
+        property_usage_type: "Commercial",
+        property_type: "Building",
       },
       {
         escambia_property_type: "UTILITY, GAS, ELECT.",
@@ -1695,7 +1774,7 @@ function main() {
         build_status: "Improved",
         structure_form: null, // No direct mapping, could be a type of warehouse/storage
         property_usage_type: "Commercial",
-        property_type: "Unit",
+        property_type: "Condominium",
       },
       {
         escambia_property_type: "CONDO-NON-RES UNIT",
@@ -1703,7 +1782,7 @@ function main() {
         build_status: "Improved",
         structure_form: "ApartmentUnit", // Generic unit form
         property_usage_type: "Commercial",
-        property_type: "Unit",
+        property_type: "Condominium",
       },
       {
         escambia_property_type: "CONDO-TIMESHARE",
@@ -1711,7 +1790,7 @@ function main() {
         build_status: "Improved",
         structure_form: "ApartmentUnit", // Assuming it's a unit in a building
         property_usage_type: "Residential",
-        property_type: "Unit",
+        property_type: "Timeshare",
       },
       {
         escambia_property_type: "FIRE DEPARTMENT",
@@ -1767,7 +1846,7 @@ function main() {
         build_status: "Improved",
         structure_form: "TownhouseRowhouse",
         property_usage_type: "Residential",
-        property_type: "Building",
+        property_type: "Townhouse",
       },
       {
         escambia_property_type: "PARKING LOTS",
@@ -1799,7 +1878,7 @@ function main() {
         build_status: "Improved",
         structure_form: null,
         property_usage_type: "ResidentialCommonElementsAreas",
-        property_type: "LandParcel",
+        property_type: "ResidentialCommonElementsAreas",
       },
       {
         escambia_property_type: "RV PARKS",
@@ -1815,7 +1894,7 @@ function main() {
         build_status: "Improved",
         structure_form: "TownhouseRowhouse",
         property_usage_type: "Residential",
-        property_type: "Building",
+        property_type: "Townhouse",
       },
       {
         escambia_property_type: "SINGLE FAMILY IN MULTI-FAM COMPLEX",
@@ -1847,7 +1926,7 @@ function main() {
         build_status: "VacantLand", // Vacant unit
         structure_form: "ApartmentUnit",
         property_usage_type: "Residential",
-        property_type: "Unit",
+        property_type: "Condominium",
       },
       {
         escambia_property_type: "VACANT RESIDENTIAL - IMPROVED",
@@ -1856,6 +1935,14 @@ function main() {
         structure_form: null,
         property_usage_type: "Residential",
         property_type: "LandParcel",
+      },
+      {
+        escambia_property_type: "CONDO-COMMERCIAL",
+        ownership_estate_type: "Condominium",
+        build_status: "Improved",
+        structure_form: "ApartmentUnit",
+        property_usage_type: "Commercial",
+        property_type: "Condominium",
       },
     ];
 
@@ -1907,6 +1994,14 @@ function main() {
       mappedType.property_type,
     );
     if (!normalizedPropertyType) {
+      const tempBuildStatus = mappedType.build_status
+        ? validateEnum(
+            mappedType.build_status,
+            ALLOWED_BUILD_STATUS,
+            "Property",
+            "build_status",
+          )
+        : null;
       return {
         propertyType: "MAPPING NOT AVAILABLE",
         ownershipEstateType: mappedType.ownership_estate_type
@@ -1917,14 +2012,7 @@ function main() {
               "ownership_estate_type",
             )
           : null,
-        buildStatus: mappedType.build_status
-          ? validateEnum(
-              mappedType.build_status,
-              ALLOWED_BUILD_STATUS,
-              "Property",
-              "build_status",
-            )
-          : null,
+        buildStatus: tempBuildStatus === "MAPPING NOT AVAILABLE" ? null : tempBuildStatus,
         structureForm: mappedType.structure_form
           ? validateEnum(
               mappedType.structure_form,
@@ -1944,6 +2032,14 @@ function main() {
       };
     }
 
+    const finalBuildStatus = mappedType.build_status
+      ? validateEnum(
+          mappedType.build_status,
+          ALLOWED_BUILD_STATUS,
+          "Property",
+          "build_status",
+        )
+      : null;
     return {
       propertyType: validateEnum(
         normalizedPropertyType,
@@ -1959,14 +2055,7 @@ function main() {
             "ownership_estate_type",
           )
         : null,
-      buildStatus: mappedType.build_status
-        ? validateEnum(
-            mappedType.build_status,
-            ALLOWED_BUILD_STATUS,
-            "Property",
-            "build_status",
-          )
-        : null,
+      buildStatus: finalBuildStatus === "MAPPING NOT AVAILABLE" ? null : finalBuildStatus,
       structureForm: mappedType.structure_form
         ? validateEnum(
             mappedType.structure_form,
@@ -2020,7 +2109,93 @@ function main() {
     return null;
   }
 
-  const propertyInfo = mapPropertyType($);
+  let propertyInfo = mapPropertyType($);
+  const hasBuildings = buildings.length > 0;
+
+  if (
+    !propertyInfo ||
+    !propertyInfo.propertyType ||
+    propertyInfo.propertyType === "MAPPING NOT AVAILABLE"
+  ) {
+    // Determine a more specific property type based on available information
+    let fallbackPropertyType = "LandParcel";
+
+    if (hasBuildings) {
+      // If we have structure form information, try to use a more specific type
+      const structureForm = propertyInfo?.structureForm;
+      if (structureForm === "SingleFamilyDetached" || structureForm === "SingleFamilySemiDetached") {
+        fallbackPropertyType = "SingleFamily";
+      } else if (structureForm === "MobileHome" || structureForm === "ManufacturedHomeOnLand" || structureForm === "ManufacturedHomeInPark") {
+        fallbackPropertyType = "MobileHome";
+      } else if (structureForm === "ApartmentUnit") {
+        fallbackPropertyType = "Apartment";
+      } else if (structureForm === "TownhouseRowhouse") {
+        fallbackPropertyType = "Townhouse";
+      } else if (structureForm === "Duplex") {
+        fallbackPropertyType = "Duplex";
+      } else if (structureForm === "MultiFamilyMoreThan10") {
+        fallbackPropertyType = "MultiFamilyMoreThan10";
+      } else if (structureForm === "MultiFamilyLessThan10") {
+        fallbackPropertyType = "MultiFamilyLessThan10";
+      } else {
+        fallbackPropertyType = "Building";
+      }
+    } else {
+      fallbackPropertyType = "VacantLand";
+    }
+
+    propertyInfo = {
+      propertyType: fallbackPropertyType,
+      ownershipEstateType: propertyInfo?.ownershipEstateType || null,
+      buildStatus: hasBuildings ? "Improved" : "VacantLand",
+      structureForm: hasBuildings ? propertyInfo?.structureForm || null : null,
+      propertyUsageType: propertyInfo?.propertyUsageType || null,
+    };
+  }
+
+  // Validate and convert "MAPPING NOT AVAILABLE" to null for nullable fields
+  const validatedBuildStatus = propertyInfo.buildStatus
+    ? validateEnum(
+        propertyInfo.buildStatus,
+        ALLOWED_BUILD_STATUS,
+        "Property",
+        "build_status",
+      )
+    : null;
+
+  propertyInfo = {
+    propertyType: validateEnum(
+      propertyInfo.propertyType,
+      ALLOWED_PROPERTY_TYPES,
+      "Property",
+      "property_type",
+    ),
+    ownershipEstateType: propertyInfo.ownershipEstateType
+      ? validateEnum(
+          propertyInfo.ownershipEstateType,
+          ALLOWED_OWNERSHIP_ESTATE_TYPES,
+          "Property",
+          "ownership_estate_type",
+        )
+      : null,
+    buildStatus: validatedBuildStatus === "MAPPING NOT AVAILABLE" ? null : validatedBuildStatus,
+    structureForm: propertyInfo.structureForm
+      ? validateEnum(
+          propertyInfo.structureForm,
+          ALLOWED_STRUCTURE_FORMS,
+          "Property",
+          "structure_form",
+        )
+      : null,
+    propertyUsageType: propertyInfo.propertyUsageType
+      ? validateEnum(
+          propertyInfo.propertyUsageType,
+          ALLOWED_PROPERTY_USAGE_TYPES,
+          "Property",
+          "property_usage_type",
+        )
+      : null,
+  };
   const units = totalUnits && totalUnits > 0 ? totalUnits : null;
 
   const property = {
@@ -2047,8 +2222,8 @@ function main() {
     JSON.stringify(property, null, 2),
   );
 
-    // ---------------- Address ----------------
-  let situsAddress = null;
+  // ---------------- Address ----------------
+  let situsAddressRaw = null;
   let mailingAddressString = null;
   const generalInfoTable = $('th:contains("General Information")').closest(
     "table",
@@ -2060,7 +2235,10 @@ function main() {
         const label = $(tds.get(0)).text().trim();
         const valueCell = $(tds.get(1));
         if (/Situs:/i.test(label)) {
-          situsAddress = valueCell.text().replace(/\u00a0/g, " ").trim().replace(/\s{2,}/g, " ");
+          const textValue = normalizeAddressValue(valueCell.text());
+          if (textValue) {
+            situsAddressRaw = textValue;
+          }
         }
         if (/Mail:/i.test(label)) {
           mailingAddressString = formatAddressHtml(valueCell.html());
@@ -2070,20 +2248,22 @@ function main() {
   }
 
   const requestIdentifier = seed.request_identifier || parcelId;
+  const fallbackUnnormalizedAddress = normalizeAddressValue(
+    unnormalizedFromInput && unnormalizedFromInput.full_address
+      ? unnormalizedFromInput.full_address
+      : null,
+  );
+  const unnormalizedAddressValue = isLikelyValidAddress(situsAddressRaw)
+    ? situsAddressRaw
+    : fallbackUnnormalizedAddress;
 
   const propertyAddress = {
+    unnormalized_address: unnormalizedAddressValue || null,
     source_http_request: seed.source_http_request || null,
     request_identifier: requestIdentifier,
     county_name: "Escambia",
-    latitude: null,
-    longitude: null,
-    unnormalized_address: situsAddress || null,
-    municipality_name: null,
-    township: township || null,
-    range: range || null,
-    section: section || null,
-    lot: lot || null,
-    block: block || null,
+    country_code:
+      (unnormalizedFromInput && unnormalizedFromInput.country_code) || "US",
   };
 
   fs.writeFileSync(
@@ -2098,12 +2278,10 @@ function main() {
       request_identifier: requestIdentifier,
       latitude: null,
       longitude: null,
-      unnormalized_address: mailingAddressString,
+      unnormalized_address: normalizeAddressValue(mailingAddressString),
     };
-    fs.writeFileSync(
-      path.join(dataDir, "mailing_address.json"),
-      JSON.stringify(mailingAddressRecord, null, 2),
-    );
+    // Note: The actual file creation is deferred until we know there are person/company files to relate it to
+    // See lines below where relationships are created
   }
 
   // Define allowed enum values for Lot
@@ -2297,6 +2475,14 @@ function main() {
         }
       });
     }
+  }
+
+  // Create property->layout relationships for building layouts
+  if (layoutBuildingIndices.length > 0) {
+    layoutBuildingIndices.forEach((layoutIdx) => {
+      const layoutFile = `layout_${layoutIdx}.json`;
+      writeRelationship("property.json", layoutFile);
+    });
   }
 
   const mapStructureToSource = (structureFile, layoutIdx) => {
@@ -2577,7 +2763,26 @@ function main() {
         const personFile = `person_${index}.json`;
         const first = validatePersonName(toTitleCase(owner.first_name || ""));
         const last = validatePersonName(toTitleCase(owner.last_name || ""));
-        const middle = owner.middle_name ? validatePersonName(toTitleCase(owner.middle_name)) : null;
+
+        // Validate and clean middle name more carefully
+        let middle = null;
+        if (owner.middle_name && typeof owner.middle_name === 'string') {
+          const middleTrimmed = owner.middle_name.trim();
+          // Reject middle names that contain digits or are too long/complex
+          // Valid middle names should not have numbers and should be relatively short
+          if (middleTrimmed && middleTrimmed.length > 0 && middleTrimmed.length < 50) {
+            // Check if middle name contains digits - if so, it's probably malformed data
+            if (!/\d/.test(middleTrimmed)) {
+              // Reject middle names with more than 2 space-separated words
+              // A valid middle name is typically 1-2 words (e.g., "Marie", "Ann Marie", "De La Cruz")
+              // But not 3+ separate names like "Gilliam Aaron C" or "C Jr Desfosses-Gilliam Suzanne"
+              const words = middleTrimmed.split(/\s+/).filter(Boolean);
+              if (words.length <= 2) {
+                middle = validatePersonName(toTitleCase(middleTrimmed));
+              }
+            }
+          }
+        }
 
         // Skip person if first or last name is invalid
         if (!first || !last) {
@@ -2632,7 +2837,12 @@ function main() {
     });
   }
 
-  if (mailingAddressRecord) {
+  if (mailingAddressRecord && (personFiles.length > 0 || companyFiles.length > 0)) {
+    // Only create mailing_address.json if there are person/company files to relate it to
+    fs.writeFileSync(
+      path.join(dataDir, "mailing_address.json"),
+      JSON.stringify(mailingAddressRecord, null, 2),
+    );
     personFiles.forEach((fileName) => {
       writeRelationship(fileName, "mailing_address.json");
     });
