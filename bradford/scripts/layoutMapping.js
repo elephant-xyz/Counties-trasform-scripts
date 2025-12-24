@@ -61,51 +61,8 @@ function extractBaseAndActualSF($) {
 }
 
 function buildDefaultLayoutEntries(baseSF, actualSF) {
-  // With no room-level data, create a single "Living Area" layout capturing size.
-  const size = actualSF || baseSF || null;
-
-  const layout = {
-    space_type: "Living Area",
-    space_index: 1,
-    flooring_material_type: null,
-    size_square_feet: size,
-    floor_level: null,
-    has_windows: null,
-    window_design_type: null,
-    window_material_type: null,
-    window_treatment_type: null,
-    is_finished: true,
-    furnished: null,
-    paint_condition: null,
-    flooring_wear: null,
-    clutter_level: null,
-    visible_damage: null,
-    countertop_material: null,
-    cabinet_style: null,
-    fixture_finish_quality: null,
-    design_style: null,
-    natural_light_quality: null,
-    decor_elements: null,
-    pool_type: null,
-    pool_equipment: null,
-    spa_type: null,
-    safety_features: null,
-    view_type: null,
-    lighting_features: null,
-    condition_issues: null,
-    is_exterior: false,
-    pool_condition: null,
-    pool_surface_type: null,
-    pool_water_quality: null,
-
-    // Optional fields
-    adjustable_area_sq_ft: null,
-    area_under_air_sq_ft: size,
-    heated_area_sq_ft: size,
-    livable_area_sq_ft: size,
-  };
-
-  return [layout];
+  // No room-level data available in provided HTML examples.
+  return [];
 }
 
 function main() {

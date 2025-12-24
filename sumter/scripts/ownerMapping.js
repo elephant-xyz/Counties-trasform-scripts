@@ -7,9 +7,9 @@ const htmlPath = path.join(process.cwd(), "input.html");
 const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
-const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl01_mSection .sdw1-owners-container";
-const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl06_ctl01_grdSales tbody tr";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+// const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl01_mSection .sdw1-owners-container";
+const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl07_ctl01_grdSales tbody tr";
 
 // Utility helpers
 const txt = (s) => (s || "").replace(/\s+/g, " ").trim();
@@ -38,8 +38,7 @@ function cleanRawName(raw) {
     /\bET\s*UX\b/gi,
     /\bET\s*VIR\b/gi,
     /\bET\s+UXOR\b/gi,
-    /\bTRUSTEE[S]?\b/gi,
-    /\bTTEE[S]?\b/gi,
+
     /\bU\/A\b/gi,
     /\bU\/D\/T\b/gi,
     /\bAKA\b/gi,
@@ -49,8 +48,6 @@ function cleanRawName(raw) {
     /\b%\s*INTEREST\b/gi,
     /\b\d{1,3}%\b/gi,
     /\b\d{1,3}%\s*INTEREST\b/gi,
-    /\bJR\.?\b/gi,
-    /\bSR\.?\b/gi,
   ];
   noisePatterns.forEach((re) => {
     s = s.replace(re, " ");
@@ -95,34 +92,181 @@ function cleanInvalidCharsFromName(raw) {
   return parsedName;
 }
 
+const PREFIX_MAP = {
+  mr: "Mr.",
+  "mr.": "Mr.",
+  mrs: "Mrs.",
+  "mrs.": "Mrs.",
+  ms: "Ms.",
+  "ms.": "Ms.",
+  miss: "Miss",
+  mx: "Mx.",
+  "mx.": "Mx.",
+  dr: "Dr.",
+  "dr.": "Dr.",
+  prof: "Prof.",
+  "prof.": "Prof.",
+  rev: "Rev.",
+  "rev.": "Rev.",
+  fr: "Fr.",
+  "fr.": "Fr.",
+  sr: "Sr.",
+  "sr.": "Sr.",
+  br: "Br.",
+  "br.": "Br.",
+  capt: "Capt.",
+  "capt.": "Capt.",
+  col: "Col.",
+  "col.": "Col.",
+  maj: "Maj.",
+  "maj.": "Maj.",
+  lt: "Lt.",
+  "lt.": "Lt.",
+  sgt: "Sgt.",
+  "sgt.": "Sgt.",
+  hon: "Hon.",
+  "hon.": "Hon.",
+  judge: "Judge",
+  rabbi: "Rabbi",
+  imam: "Imam",
+  sheikh: "Sheikh",
+  sir: "Sir",
+  dame: "Dame",
+};
+
+const SUFFIX_MAP = {
+  jr: "Jr.",
+  "jr.": "Jr.",
+  sr: "Sr.",
+  "sr.": "Sr.",
+  ii: "II",
+  iii: "III",
+  iv: "IV",
+  phd: "PhD",
+  "ph.d": "PhD",
+  md: "MD",
+  "m.d": "MD",
+  esq: "Esq.",
+  "esq.": "Esq.",
+  jd: "JD",
+  llm: "LLM",
+  mba: "MBA",
+  rn: "RN",
+  dds: "DDS",
+  dvm: "DVM",
+  cfa: "CFA",
+  cpa: "CPA",
+  pe: "PE",
+  pmp: "PMP",
+  emeritus: "Emeritus",
+  ret: "Ret.",
+  "ret.": "Ret.",
+};
+
+function normalizePrefixToken(token) {
+  return token.replace(/[^A-Za-z.]/g, "").toLowerCase();
+}
+
+function normalizeSuffixToken(token) {
+  return token.replace(/[^A-Za-z0-9.]/g, "").toLowerCase();
+}
+
+function extractPrefixAndSuffix(tokens) {
+  const working = [...tokens];
+  let prefix = null;
+  let suffix = null;
+
+  if (working.length) {
+    const firstToken = normalizePrefixToken(working[0]);
+    if (PREFIX_MAP[firstToken]) {
+      prefix = PREFIX_MAP[firstToken];
+      working.shift();
+    }
+  }
+
+  if (working.length) {
+    const lastToken = normalizeSuffixToken(working[working.length - 1]);
+    if (SUFFIX_MAP[lastToken]) {
+      suffix = SUFFIX_MAP[lastToken];
+      working.pop();
+    }
+  }
+
+  return { tokens: working, prefix_name: prefix, suffix_name: suffix };
+}
+
 const COMPANY_KEYWORDS = [
   "inc",
+  "inc.",
+  "incorporated",
   "llc",
   "l.l.c",
+  "limited liability company",
   "ltd",
+  "ltd.",
+  "limited",
   "foundation",
   "alliance",
   "solutions",
   "corp",
+  "corp.",
+  "corporation",
   "co",
+  "co.",
   "company",
+  "companies",
   "services",
+  "service",
   "trust",
+  "trustee",
+  "trustees",
   "tr",
   "associates",
   "association",
+  "assoc",
+  "assn",
   "holdings",
+  "holding",
   "group",
   "partners",
+  "partnership",
   "lp",
+  "l.p",
+  "limited partnership",
   "llp",
+  "l.l.p",
+  "limited liability partnership",
   "plc",
+  "p.l.c",
   "pllc",
+  "p.l.l.c",
+  "professional limited liability company",
+  "pc",
+  "p.c",
+  "professional corporation",
+  "pa",
+  "p.a",
+  "professional association",
   "bank",
+  "banks",
   "church",
+  "ministries",
   "school",
+  "schools",
   "university",
   "authority",
+  "authority.",
+  "board",
+  "dept",
+  "department",
+  "ministries",
+  "club",
+  "clubs",
+  "hoa",
+  "homeowners association",
+  "village",
+  "villages",
+  "ttee",
 ];
 
 
@@ -152,12 +296,13 @@ function classifyOwner(raw) {
     return { valid: true, owner: { type: "company", name: cleaned } };
   }
   const tokens = cleaned.split(/\s+/).map((p) => p.trim()).filter(Boolean);
-  if (tokens.length < 2) {
+  const { tokens: coreTokens, prefix_name, suffix_name } = extractPrefixAndSuffix(tokens);
+  if (coreTokens.length < 2) {
     return { valid: false, reason: "person_missing_last_name", raw: cleaned };
   }
-  const first = cleanInvalidCharsFromName(tokens[0]);
-  const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
-  const middleTokens = tokens.slice(1, -1);
+  const first = cleanInvalidCharsFromName(coreTokens[0]);
+  const last = cleanInvalidCharsFromName(coreTokens[coreTokens.length - 1]);
+  const middleTokens = coreTokens.slice(1, -1);
   // if (/^[A-Za-z]$/.test(last)) {
   //   return { valid: false, reason: "person_missing_last_name", raw: cleaned };
   // }
@@ -168,6 +313,8 @@ function classifyOwner(raw) {
       first_name: first,
       last_name: last,
       middle_name: middle ? middle : null,
+      prefix_name: prefix_name || null,
+      suffix_name: suffix_name || null,
     };
     return { valid: true, owner: person };
   }
@@ -203,16 +350,11 @@ function getParcelId($) {
 
 function extractCurrentOwners($) {
   const owners = [];
-  $(CURRENT_OWNER_SELECTOR).each((i, el) => {
-    const owner_text_split = $(el).text().split('\n');
-    for (const owner of owner_text_split) {
-      if (owner.trim()) {
-        const t = txt(owner.trim());
-        owners.push(t);
-        break;
-      }
-    }
-  });
+  const selector = '#ctlBodyPane_ctl02_ctl01_rptOwner_ctl00_sprOwnerName1_lnkUpmSearchLinkSuppressed_lblSearch';
+  const ownerText = $(selector).text().trim();
+  if (ownerText) {
+    owners.push(ownerText);
+  }
   return owners;
 }
 
@@ -233,12 +375,13 @@ function extractSalesOwnersByDate($) {
     const yyyy = dm[3];
     const dateStr = `${yyyy}-${mm}-${dd}`;
     const grantee = txt(tds.last().text());
+    // console.log("grantee",grantee)
     if (grantee) {
       if (!map[dateStr]) map[dateStr] = [];
       map[dateStr].push(grantee);
     }
-    const grantor = txt(tds.eq(tds.length - 2).text());
-    if (grantor) priorOwners.push(grantor);
+    // const grantor = txt(tds.eq(tds.length - 2).text());
+    // if (grantor) priorOwners.push(grantor);
   });
   return { map, priorOwners };
 }
@@ -268,7 +411,11 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
 
 const parcelId = getParcelId($);
 const currentOwnerRaw = extractCurrentOwners($);
+console.log("currentOwnerRaw",currentOwnerRaw)
 const { map: salesMap, priorOwners } = extractSalesOwnersByDate($);
+console.log("salesMap",salesMap)
+console.log("priorOwners",priorOwners)
+
 
 const invalid_owners = [];
 const dates = Object.keys(salesMap).sort();
