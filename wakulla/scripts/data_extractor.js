@@ -423,7 +423,7 @@ const propertyTypeMapping =[
     "property_type": "ManufacturedHome"
   },
   {
-    "property_usecode": "MORTUARY/CEMETARY",
+    "property_usecode": "MORTUARY/CEMETERY",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
