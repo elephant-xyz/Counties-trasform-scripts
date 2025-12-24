@@ -228,6 +228,14 @@ const propertyTypeMapping = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "PACKING PLANTS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PackingPlant",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "INSURANCE COMPANY",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -290,6 +298,14 @@ const propertyTypeMapping = [
     "structure_form": null,
     "property_usage_type": "Unknown",
     "property_type": "Building"
+  },
+  {
+    "property_usecode": "MITIGATION",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Unknown",
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "MOBILE HOME",
@@ -516,6 +532,14 @@ const propertyTypeMapping = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "PUBLIC SCHOOLS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PublicSchool",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "PUBLIC SCHOOLS (VAC)",
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
@@ -605,6 +629,30 @@ const propertyTypeMapping = [
   },
   {
     "property_usecode": "STATE (VAC)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "FEDERAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "FEDERAL (VAC)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "MILITARY (VAC)",
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,

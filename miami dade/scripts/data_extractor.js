@@ -84,6 +84,14 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "0104 - RESIDENTIAL - SINGLE FAMILY : RESIDENTIAL - TOTAL VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "0105 - RESIDENTIAL - SINGLE FAMILY : CLUSTER HOME",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -109,6 +117,14 @@ const propertyTypeMapping  = [
   },
   {
     "property_usecode": "0303 - MULTIFAMILY 10 UNITS PLUS : MULTIFAMILY 3 OR MORE UNI",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0303 - MULTIFAMILY 10 UNITS PLUS : MULTIFAMILY 3 OR MORE UNITS",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": "MultiFamilyMoreThan10",
@@ -186,6 +202,14 @@ const propertyTypeMapping  = [
     "structure_form": null,
     "property_usage_type": "Residential",
     "property_type": "Building"
+  },
+  {
+    "property_usecode": "0724 - MISCELLANEOUS - RESIDENTIAL : CAMPSITE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Recreational",
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0802 - MULTIFAMILY 2-9 UNITS : 2 LIVING UNITS",
@@ -532,6 +556,14 @@ const propertyTypeMapping  = [
     "property_type": "LandParcel"
   },
   {
+    "property_usecode": "2807 - PARKING GARAGE - RESIDENTIAL CONDO",
+    "ownership_estate_type": "Condominium",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Unit"
+  },
+  {
     "property_usecode": "2817 - PARKING LOT/MOBILE HOME PARK : COMMERCIAL - TOTAL VAL",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -569,6 +601,14 @@ const propertyTypeMapping  = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "NurseryGreenhouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3115 - DRIVE-IN THEATER OR STADIUM : ENTERTAINMENT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Entertainment",
     "property_type": "Building"
   },
   {
@@ -682,6 +722,14 @@ const propertyTypeMapping  = [
     "structure_form": null,
     "property_usage_type": "Hotel",
     "property_type": "Unit"
+  },
+  {
+    "property_usecode": "4018 - VACANT INDUSTRIAL - CONDO",
+    "ownership_estate_type": "Condominium",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "4066 - VACANT LAND - INDUSTRIAL : EXTRA FEA OTHER THAN PARKI",
@@ -828,7 +876,55 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "5006 - IMPR AGRI - NOT HOMESITES : MOBILE HOME",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MobileHome",
+    "property_usage_type": "Agricultural",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "5009 - IMPR AGRI - NOT HOMESITES : MIXED USE - RESIDENTIAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "5011 - IMPR AGRI - NOT HOMESITES : RETAIL OUTLET",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "5013 - IMPR AGRI - NOT HOMESITES : OFFICE BUILDING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "5014 - IMPR AGRI - NOT HOMESITES : WHOLESALE OUTLET",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "5015 - IMPR AGRI - NOT HOMESITES : ENTERTAINMENT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "5019 - IMPR AGRI - NOT HOMESITES : AUTOMOTIVE OR MARINE",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
@@ -876,6 +972,14 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "5042 - IMPR AGRI - NOT HOMESITES : CLUB OR HALL - PRIVATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "5063 - IMPR AGRI - NOT HOMESITES : UTILITY",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -900,11 +1004,35 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "5181 - CROPLAND - SOIL CLASS I : VACANT LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5379 - VEG CROPLANDS MIXED/ROTATED : MIXED USE - AGRICULTURAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
     "property_usecode": "5381 - VEG CROPLANDS MIXED/ROTATED : VACANT LAND",
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6081 - GRAZING LAND - CLASS I : VACANT LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
     "property_type": "LandParcel"
   },
   {
@@ -933,6 +1061,14 @@ const propertyTypeMapping  = [
   },
   {
     "property_usecode": "6671 - LIME GROVES : GROVE OR ORCHARD",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6679 - ORCHARD GROVES CITRUS ETC : MIXED USE - AGRICULTURAL",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
@@ -1004,7 +1140,23 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "7157 - RELIGIOUS - EXEMPT : PARSONAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Church",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "7241 - EDUCATIONAL/SCIENTIFIC - EX : EDUCATIONAL - PRIVATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PrivateSchool",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7256 - EDUCATIONAL/SCIENTIFIC - EX : SCIENTIFIC",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
@@ -1028,6 +1180,22 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "7503 - CHARITABLE - EXEMPT : MULTIFAMILY 3 OR MORE UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "NonProfitCharity",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7513 - CHARITABLE - EXEMPT : OFFICE BUILDING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "NonProfitCharity",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "7543 - CHARITABLE - EXEMPT : HEALTH CARE",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -1044,7 +1212,23 @@ const propertyTypeMapping  = [
     "property_type": "LandParcel"
   },
   {
+    "property_usecode": "7654 - BURIAL GROUND OR VAULT : CEMETERY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MortuaryCemetery",
+    "property_type": "LandParcel"
+  },
+  {
     "property_usecode": "7742 - BENEVOLENT - EXEMPT : CLUB OR HALL - PRIVATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ClubsLodges",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7755 - BENEVOLENT - EXEMPT : BENEVOLENT",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
@@ -1068,6 +1252,22 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "7950 - LITERARY - EXEMPT : CULTURAL - LITERARY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "CulturalOrganization",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8007 - VACANT GOVERNMENTAL : CONDOMINIUM - RESIDENTIAL",
+    "ownership_estate_type": "Condominium",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
     "property_usecode": "8040 - VACANT GOVERNMENTAL : MUNICIPAL",
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
@@ -1077,6 +1277,30 @@ const propertyTypeMapping  = [
   },
   {
     "property_usecode": "8047 - VACANT GOVERNMENTAL : DADE COUNTY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8048 - VACANT GOVERNMENTAL : SCHOOL BOARD",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8063 - VACANT GOVERNMENTAL : UTILITY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8065 - VACANT GOVERNMENTAL : PARKING LOT",
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
@@ -1100,6 +1324,46 @@ const propertyTypeMapping  = [
     "property_type": "LandParcel"
   },
   {
+    "property_usecode": "8081 - VACANT GOVERNMENTAL : VACANT LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8085 - VACANT GOVERNMENTAL : SO FLORIDA WATER MGNT DIST",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8098 - VACANT GOVERNMENTAL : FEDERAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8099 - VACANT GOVERNMENTAL : STATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8198 - MILITARY : FEDERAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Military",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "8240 - PRIVATE PARK",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -1108,11 +1372,67 @@ const propertyTypeMapping  = [
     "property_type": "LandParcel"
   },
   {
+    "property_usecode": "8247 - FOREST/PARK OR REC AREA : DADE COUNTY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ForestParkRecreation",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8252 - FOREST/PARK OR REC AREA : PLAYGROUND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ForestParkRecreation",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8348 - BOARD OF PUBLIC INSTRUCTION : BOARD OF PUBLIC INSTRUCTION",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PublicSchool",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "8441 - UNIVERSITY OR COLLEGE : EDUCATIONAL - PRIVATE",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "PrivateSchool",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8499 - UNIVERSITY OR COLLEGE : STATE OF FLORIDA",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PublicSchool",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8543 - HOSPITAL - GOVERNMENTAL : HEALTH CARE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PublicHospital",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8601 - COUNTY : RESIDENTIAL - SINGLE FAMILY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8602 - COUNTY : 2 LIVING UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "Duplex",
+    "property_usage_type": "GovernmentProperty",
     "property_type": "Building"
   },
   {
@@ -1125,6 +1445,134 @@ const propertyTypeMapping  = [
   },
   {
     "property_usecode": "8613 - COUNTY : OFFICE BUILDING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8619 - COUNTY : AUTOMOTIVE OR MARINE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8637 - COUNTY : WAREHOUSE OR STORAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8642 - COUNTY : CLUB OR HALL - PRIVATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8647 - COUNTY : DADE COUNTY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8663 - COUNTY : UTILITY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8713 - STATE : OFFICE BUILDING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8786 - STATE : TRUSTEE II FUND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8799 - STATE : STATE OF FLORIDA",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8807 - FEDERAL : CONDOMINIUM - RESIDENTIAL",
+    "ownership_estate_type": "Condominium",
+    "build_status": "Improved",
+    "structure_form": "ApartmentUnit",
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Unit"
+  },
+  {
+    "property_usecode": "8813 - FEDERAL : OFFICE BUILDING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8845 - FEDERAL : PUBLIC ADMINISTRATION",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8898 - FEDERAL : FEDERAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8903 - MUNICIPAL : MULTIFAMILY 3 OR MORE UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8911 - MUNICIPAL : RETAIL OUTLET",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8913 - MUNICIPAL : OFFICE BUILDING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8915 - MUNICIPAL : ENTERTAINMENT",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
@@ -1146,6 +1594,38 @@ const propertyTypeMapping  = [
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
     "property_type": "Building"
+  },
+  {
+    "property_usecode": "8942 - MUNICIPAL : CLUB OR HALL - PRIVATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8949 - MUNICIPAL : MIXED USE - GOVERNMENTAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8950 - MUNICIPAL : CULTURAL - LITERARY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8965 - MUNICIPAL : PARKING LOT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "9015 - LEASEHOLD INTEREST : ENTERTAINMENT",
@@ -1196,6 +1676,14 @@ const propertyTypeMapping  = [
     "property_type": "LandParcel"
   },
   {
+    "property_usecode": "9099 - LEASEHOLD INTEREST : STATE OF FLORIDA",
+    "ownership_estate_type": "Leasehold",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "9113 - UTILITY : OFFICE BUILDING",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -1212,11 +1700,91 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "9388 - OIL GAS OR MINERAL RTS : O/G/M RIGHTS",
+    "ownership_estate_type": "SubsurfaceRights",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9464 - RIGHT-OF-WAY : RIGHT-OF-WAY",
+    "ownership_estate_type": "RightOfWay",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "TransitionalProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9581 - RIVER LAKE OR SUBMERGED LAND : VACANT LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9585 - RIVER LAKE OR SUBMERGED LAND : SO FLORIDA WATER MGMT DIST",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9591 - RIVER LAKE OR SUBMERGED LAND : RIVER",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9592 - RIVER LAKE OR SUBMERGED LAND : LAKE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9593 - RIVER LAKE OR SUBMERGED LAND : SUBMERGED LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9701 - IMP EEL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Conservation",
+    "property_type": "LandParcel"
+  },
+  {
     "property_usecode": "9751 - PVT PARK -REC AREA -ROADWAY : COMMON AREA",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "ResidentialCommonElementsAreas",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9784 - RECREATIONAL OR ENDANGERED : RECREATIONAL OR ENDANGERED",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Conservation",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9862 - CENTRALLY ASSESSED : RAILROAD ASSESSMENT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Railroad",
     "property_type": "LandParcel"
   },
   {
@@ -1242,8 +1810,25 @@ const propertyTypeMapping  = [
     "structure_form": null,
     "property_usage_type": "Agricultural",
     "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9985 - ACREAGE NOT CLASSIFIED AG : SO FLORIDA WATER MGMT DIST",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0000 - REFERENCE FOLIO",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Unknown",
+    "property_type": "LandParcel"
   }
-]
+];
+
 
 
 function ensureDir(p) {

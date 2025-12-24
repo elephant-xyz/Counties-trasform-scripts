@@ -67,6 +67,15 @@ const bayPropertyMapping = [
     "property_usage_type": "ServiceStation",
     "property_type": "Building"
   },
+
+  {
+    "property_usecode": "CENTRALLY ASSESSED",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "ReferenceParcel",
+    "property_type": "LandParcel"
+  },
   {
     "bay_property_type": "CHURCHES",
     "ownership_estate_type": "FeeSimple",
