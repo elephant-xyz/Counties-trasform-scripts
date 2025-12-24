@@ -3,7 +3,9 @@ const path = require("path");
 const cheerio = require("cheerio");
 
 // Read HTML input
-const html = fs.readFileSync("input.html", "utf8");
+const htmlFiles = fs.readdirSync(".").filter(f => f.endsWith(".html"));
+const htmlFile = htmlFiles.length > 0 ? htmlFiles[0] : "input.html";
+const html = fs.readFileSync(htmlFile, "utf8");
 const $ = cheerio.load(html);
 
 // Utility: normalize whitespace
@@ -11,11 +13,105 @@ function normalizeSpace(str) {
   return (str || "").replace(/\s+/g, " ").trim();
 }
 
-// Utility: title-case words conservatively (keep all-caps acronyms)
+// Utility: title-case words conservatively according to pattern ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
 function titleCase(str) {
-  return (str || "")
+  if (!str || str.trim() === "") return "";
+
+  // Remove any characters that don't match the allowed pattern
+  const cleaned = str.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
+  if (!cleaned || cleaned.length === 0) return "";
+
+  // Normalize spacing: collapse multiple spaces into one
+  const normalizedSpacing = cleaned.replace(/\s+/g, " ").trim();
+  if (!normalizedSpacing) return "";
+
+  const normalized = normalizedSpacing.toLowerCase();
+  let result = "";
+  let capitalizeNext = true;
+  let lastWasSpecial = false;
+
+  for (let i = 0; i < normalized.length; i++) {
+    const char = normalized[i];
+
+    if (/[a-z]/.test(char)) {
+      // It's a letter
+      if (capitalizeNext) {
+        result += char.toUpperCase();
+        capitalizeNext = false;
+      } else {
+        result += char;
+      }
+      lastWasSpecial = false;
+    } else if (/[ \-',.]/.test(char)) {
+      // It's a special character allowed in names
+      // Only add if the previous character was not a special character
+      // and if there's a next character that is a letter
+      if (!lastWasSpecial && i + 1 < normalized.length && /[a-z]/.test(normalized[i + 1])) {
+        result += char;
+        // Next letter should be capitalized
+        capitalizeNext = true;
+        lastWasSpecial = true;
+      }
+    }
+  }
+
+  // If the result is empty or doesn't start with a letter, return empty string
+  if (!result || result.length === 0 || !/^[A-Z]/.test(result)) return "";
+
+  // Validate result matches the pattern, return empty string if not
+  if (!/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
+    return "";
+  }
+
+  return result;
+}
+
+// Utility: format middle name according to pattern ^[A-Z][a-zA-Z\s\-',.]*$
+// Middle names allow mixed case throughout (not just after separators)
+function formatMiddleName(str) {
+  if (!str || str.trim() === "") return "";
+
+  // Remove any characters that don't match the allowed pattern
+  const cleaned = str.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
+  if (!cleaned || cleaned.length === 0) return "";
+
+  // Remove leading special characters to ensure it starts with a letter
+  const startsWithLetter = cleaned.replace(/^[\s\-',.]+/, "");
+  if (!startsWithLetter || startsWithLetter.length === 0) return "";
+
+  // Normalize spacing: collapse multiple spaces into one
+  const normalizedSpacing = startsWithLetter.replace(/\s+/g, " ").trim();
+  if (!normalizedSpacing) return "";
+
+  // Title case each word: capitalize first letter of each word, lowercase the rest
+  // This ensures multi-word middle names like "MARY WELLS" become "Mary Wells"
+  // and single-word names like "WELLS" become "Wells"
+  const result = normalizedSpacing
     .toLowerCase()
-    .replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
+    .split(/\s+/)
+    .map(word => {
+      // Find the first letter in the word and capitalize it
+      const firstLetterIndex = word.search(/[a-z]/);
+      if (firstLetterIndex === -1) return ""; // No letters found, skip this word
+
+      // Skip leading special characters and capitalize first letter
+      const letterPart = word.substring(firstLetterIndex);
+      return letterPart.charAt(0).toUpperCase() + letterPart.slice(1);
+    })
+    .filter(Boolean) // Remove empty strings
+    .join(" ");
+
+  // Remove any trailing special characters that might have been left
+  const finalResult = result.replace(/[\s\-',.]+$/, "").trim();
+
+  if (!finalResult || finalResult.length === 0) return "";
+
+  // Validate against the middle name pattern ^[A-Z][a-zA-Z\s\-',.]*$
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(finalResult)) {
+    return "";
+  }
+
+  return finalResult;
 }
 
 // Extract property id
@@ -100,10 +196,13 @@ function isCompanyName(name) {
   // More strict matching - require word boundaries for most keywords
   const strictKeywords = [
     "\\binc\\b", "\\bllc\\b", "\\bl\\.l\\.c\\b", "\\bltd\\b", "\\bcorp\\b", "\\bcorporation\\b",
-    "\\bplc\\b", "\\bpc\\b", "\\bp\\.c\\.\\b", "\\bpllc\\b", "\\bllp\\b", "\\blp\\b", "\\bco\\b",
+    "\\bplc\\b", "\\bpc\\b", "\\bp\\.c\\.\\b", "\\bpllc\\b", "\\blllp\\b", "\\bllp\\b", "\\blp\\b", "\\bco\\b",
     "\\btrust\\b", "\\btr\\b", "\\bfoundation\\b", "\\bfund\\b", "\\bpartnership\\b",
     "\\bholdings\\b", "\\bholding\\b", "\\bassociation\\b", "\\bassociates\\b",
-    "\\bbank\\b", "\\bn\\.a\\.\\b", "\\bna\\b", "\\bchurch\\b", "\\bschool\\b", "\\bdistrict\\b"
+    "\\bbank\\b", "\\bn\\.a\\.\\b", "\\bna\\b", "\\bchurch\\b", "\\bschool\\b", "\\bdistrict\\b",
+    "\\bstate\\b", "\\bcounty\\b", "\\bcity\\b", "\\bgovernment\\b", "\\bfederal\\b",
+    "\\bpublic\\b", "\\bmunicipal\\b", "\\bauthority\\b", "\\bcommission\\b",
+    "\\bagency\\b", "\\bdepartment\\b", "\\bboard\\b", "\\blands\\b"
   ];
   
   // Check for strict keyword matches
@@ -155,11 +254,15 @@ function validateSuffix(suffix) {
 
 // Build a person object using inferred pattern
 function buildPerson(first, last, middle, prefix, suffix) {
+  const firstFormatted = titleCase(first);
+  const lastFormatted = titleCase(last);
+  const middleFormatted = middle ? formatMiddleName(middle) : null;
+
   return {
     type: "person",
-    first_name: titleCase(first),
-    last_name: titleCase(last),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: firstFormatted || null,
+    last_name: lastFormatted || null,
+    middle_name: middleFormatted || null,
     prefix_name: prefix ? validatePrefix(prefix) : null,
     suffix_name: suffix ? validateSuffix(suffix) : null,
   };
@@ -197,19 +300,62 @@ function parsePerson(name) {
 
   if (tokens.length < 2) return null;
 
+  let first, last, middle;
+
   if (upper) {
-    // Assume LAST FIRST [MIDDLE] for uppercase names
-    const last = tokens[0];
-    const first = tokens[1] || null;
-    const middle = tokens.length >= 3 ? tokens.slice(2).join(" ") : null;
+    // For uppercase names, we need to be smart about 2-token names
+    if (tokens.length === 2) {
+      // Check if either token is a single letter
+      const firstIsSingleLetter = tokens[0].length === 1;
+      const secondIsSingleLetter = tokens[1].length === 1;
+
+      if (secondIsSingleLetter && !firstIsSingleLetter) {
+        // Pattern like "MARY A" -> treat as FIRST MIDDLE (reject due to missing last name)
+        console.log(`Debug: Rejecting '${name}' - appears to be FIRST MIDDLE without last name`);
+        return null;
+      } else if (firstIsSingleLetter && !secondIsSingleLetter) {
+        // Pattern like "A MARY" -> treat as MIDDLE FIRST (reject due to missing last name)
+        console.log(`Debug: Rejecting '${name}' - appears to be MIDDLE FIRST without last name`);
+        return null;
+      } else if (firstIsSingleLetter && secondIsSingleLetter) {
+        // Both single letters -> reject
+        console.log(`Debug: Rejecting '${name}' - both tokens are single letters`);
+        return null;
+      }
+      // Otherwise, treat as LAST FIRST
+      last = tokens[0];
+      first = tokens[1];
+      middle = null;
+    } else {
+      // 3+ tokens: Assume LAST FIRST [MIDDLE] for uppercase names
+      last = tokens[0];
+      first = tokens[1];
+      middle = tokens.length >= 3 ? tokens.slice(2).join(" ") : null;
+    }
+
     if (!first || !last) return null;
+
+    // Reject if first or last name is a single letter
+    if (first.length === 1 || last.length === 1) {
+      console.log(`Debug: Rejecting '${name}' - first or last name is a single letter after parsing`);
+      return null;
+    }
+
     return buildPerson(first, last, middle, prefix, suffix);
   } else {
     // Assume FIRST [MIDDLE] LAST for mixed case names
-    const first = tokens[0];
-    const last = tokens[tokens.length - 1];
-    const middle = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
+    first = tokens[0];
+    last = tokens[tokens.length - 1];
+    middle = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
+
     if (!first || !last) return null;
+
+    // Reject if first or last name is a single letter
+    if (first.length === 1 || last.length === 1) {
+      console.log(`Debug: Rejecting '${name}' - first or last name is a single letter after parsing`);
+      return null;
+    }
+
     return buildPerson(first, last, middle, prefix, suffix);
   }
 }
@@ -247,15 +393,19 @@ function extractCurrentOwnerCandidates($) {
   const owners = [];
   $(".parcel-info .parcel-detail .ownership > div").each((i, el) => {
     const clone = $(el).clone();
-    clone.find("p").remove();
-    const raw = normalizeSpace(
-      clone
-        .text()
-        .replace(/\s*\n\s*/g, " ")
-        .replace(/\s{2,}/g, " ")
-        .trim(),
-    );
-    if (raw) owners.push(raw);
+    clone.find("p").remove(); // Remove address paragraphs
+    const htmlContent = clone.html() || "";
+
+    // Split by <br> tags to get individual owner lines
+    const ownerLines = htmlContent
+      .split(/<br\s*\/?>/i)
+      .map(line => {
+        // Remove HTML tags and normalize whitespace
+        return normalizeSpace(line.replace(/<[^>]*>/g, '').trim());
+      })
+      .filter(line => line.length > 0);
+
+    owners.push(...ownerLines);
   });
   return owners;
 }
@@ -298,14 +448,49 @@ function buildOwnersByDate($) {
   const sales = extractSalesHistory($);
 
   for (const { date, grantee } of sales) {
-    const parts = splitJointOwners(grantee);
+    // Check if the ORIGINAL grantee string contains company keywords before splitting
+    // This prevents splitting company names like "E3 LAND & MINERALS LLC" into person names
+    const cleanedGrantee = normalizeSpace(
+      grantee
+        .replace(/\.$/, "")
+        .replace(/\s*\([^)]*\)\s*/g, " ") // Remove ALL parenthetical content like (GUARDIAN), (TRUSTEE), etc.
+        .replace(/\b(AS\s+(?:TRUSTEE|BISHOP|GUARDIAN|ADMINISTRATOR|EXECUTOR|EXECUTRIX|AGENT|ATTORNEY|REPRESENTATIVE|CONSERVATOR|CUSTODIAN))\b.*$/i, "")
+        .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|M\/C|H&W|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|CUSTODIAN)\b.*$/i, "")
+        .replace(/\s+/g, ' ') // Normalize multiple spaces
+    ).trim();
+
+    // If the original string is clearly a company (has LLC, INC, etc.), don't split it
+    let parts;
+    if (isCompanyName(cleanedGrantee) || /\b(revocable|living)\b\s*\btrust\b/i.test(cleanedGrantee)) {
+      parts = [cleanedGrantee];
+    } else {
+      parts = splitJointOwners(cleanedGrantee);
+    }
+
     const owners = [];
 
-    // Parse each owner independently
+    // Parse each owner independently, but track the first person's last name for joint ownership
+    let sharedLastName = null;
 
     for (let idx = 0; idx < parts.length; idx++) {
       const raw = parts[idx];
-      const clean = normalizeSpace(raw.replace(/\.$/, "").replace(/\s*\([^)]*\)\s*$/, ""));
+
+      // Detect and skip corrupted names with semicolons or other suspicious patterns
+      if (/[;]/.test(raw)) {
+        console.log(`Debug: Skipping corrupted name with semicolon: '${raw}'`);
+        invalid.push({ raw, reason: "corrupted_name_with_semicolon" });
+        continue;
+      }
+
+      // Remove legal designations and parenthetical content
+      const clean = normalizeSpace(
+        raw
+          .replace(/\.$/, "")
+          .replace(/\s*\([^)]*\)\s*/g, " ") // Remove ALL parenthetical content like (GUARDIAN), (TRUSTEE), etc.
+          .replace(/\b(AS\s+(?:TRUSTEE|BISHOP|GUARDIAN|ADMINISTRATOR|EXECUTOR|EXECUTRIX|AGENT|ATTORNEY|REPRESENTATIVE|CONSERVATOR|CUSTODIAN))\b.*$/i, "")
+          .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|M\/C|H&W|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|CUSTODIAN)\b.*$/i, "")
+          .replace(/\s+/g, ' ') // Normalize multiple spaces
+      ).trim();
 
       if (!clean) continue;
 
@@ -321,12 +506,25 @@ function buildOwnersByDate($) {
         const person = parsePerson(clean);
         if (person) {
           owners.push(person);
+          // Track the first person's last name for joint ownership scenarios
+          if (idx === 0 && person.last_name && parts.length > 1) {
+            sharedLastName = person.last_name;
+          }
         } else {
+          // If parsing failed and we have a shared last name, try appending it
+          if (sharedLastName && parts.length > 1 && idx > 0) {
+            const nameWithLast = `${clean} ${sharedLastName}`;
+            const personWithLast = parsePerson(nameWithLast);
+            if (personWithLast) {
+              owners.push(personWithLast);
+              continue;
+            }
+          }
           invalid.push({ raw: clean, reason: "could_not_parse_person" });
         }
         continue;
       }
-      
+
       // Debug: Check if it's a person name that failed looksLikePerson
       console.log(`Debug: '${clean}' failed looksLikePerson check`);
 
@@ -337,7 +535,20 @@ function buildOwnersByDate($) {
         const person = parsePerson(clean);
         if (person) {
           owners.push(person);
+          // Track the first person's last name for joint ownership scenarios
+          if (idx === 0 && person.last_name && parts.length > 1) {
+            sharedLastName = person.last_name;
+          }
         } else {
+          // If parsing failed and we have a shared last name, try appending it
+          if (sharedLastName && parts.length > 1 && idx > 0) {
+            const nameWithLast = `${clean} ${sharedLastName}`;
+            const personWithLast = parsePerson(nameWithLast);
+            if (personWithLast) {
+              owners.push(personWithLast);
+              continue;
+            }
+          }
           invalid.push({ raw: clean, reason: "unrecognized_owner_format" });
         }
       }
@@ -366,10 +577,14 @@ function buildOwnersByDate($) {
     }
 
     const personLike = cand
+      .replace(/\s*\([^)]*\)\s*/g, " ") // Remove parenthetical content
+      .replace(/\b(OF\s+(?:DIOCESE|THE\s+ESTATE|THE\s+TRUST|THE|ESTATE))\b.*$/i, "")
+      .replace(/\b(AS\s+(?:TRUSTEE|BISHOP|GUARDIAN|ADMINISTRATOR|EXECUTOR|EXECUTRIX|AGENT|ATTORNEY|REPRESENTATIVE|CONSERVATOR|CUSTODIAN))\b.*$/i, "")
       .replace(
-        /\b(TRUSTEE|ET\s+AL|CUSTODIAN|AS\s+TRUSTEE|TTEE|AS\s+TTEE)\b.*$/i,
+        /\b(L\/E|TRUSTEE|ET\s+AL|CUSTODIAN|TTEE)\b.*$/i,
         "",
       )
+      .replace(/\s+/g, ' ') // Normalize multiple spaces
       .trim();
     if (looksLikePerson(personLike)) {
       const p = parsePerson(personLike, null, 0);
