@@ -33,6 +33,11 @@ function isCompanyName(name) {
 
 // Heuristic: looks like address
 function looksLikeAddress(s) {
+  // Exclude "ST JOHNS" which is a proper name (Saint Johns), not "Street"
+  if (/\bST\s+JOHNS?\b/i.test(s)) {
+    return false;
+  }
+
   const addrWords =
     /(\b(st|street|ave|avenue|rd|road|dr|drive|blvd|lane|ln|hwy|suite|ste|apt|#)\b|\bFL\b|\bCA\b|\bGA\b|\bTX\b|\bNY\b|\b\d{5}(-\d{4})?\b)/i;
   const manyDigits = /\d{2,}/;
@@ -46,6 +51,8 @@ function cleanCandidate(t) {
   let s = normSpace(t);
   s = s.replace(/^owner\s*:?\s*/i, "");
   s = s.replace(/\s+\|\s+.*/, ""); // drop trailing pipe details
+  // Remove parenthetical suffixes like (JTRS), (JT), etc.
+  s = s.replace(/\s*\([^)]*\)\s*$/g, "");
   return normSpace(s);
 }
 
@@ -72,16 +79,20 @@ function cleanInvalidCharsFromName(raw) {
 
 // Split full personal name into parts
 function splitPersonName(name) {
-  const cleaned = normSpace(name.replace(/&/g, " "));
+  const cleaned = normSpace(name.replace(/[&+]/g, " "));
   const parts = cleaned.split(/\s+/).filter(Boolean);
   if (parts.length < 2) return null;
   const first_name = cleanInvalidCharsFromName(parts[0]);
   const last_name = cleanInvalidCharsFromName(parts[parts.length - 1]);
+
+  // Validate both first and last names are non-empty after cleaning
+  if (!first_name || !last_name) return null;
+
   const middle = cleanInvalidCharsFromName(parts.slice(1, -1).join(" "));
   return {
     type: "person",
-    first_name: first_name || null,
-    last_name: last_name || null,
+    first_name: first_name,
+    last_name: last_name,
     middle_name: middle ? middle : null,
   };
 }
@@ -99,10 +110,10 @@ function classifyOwner(raw) {
     return { valid: true, owner: { type: "company", name } };
   }
 
-  if (name.includes("&")) {
+  if (name.includes("&") || name.includes("+")) {
     const person = splitPersonName(name);
     if (person) return { valid: true, owner: person };
-    return { valid: false, reason: "ampersand_unparsable" };
+    return { valid: false, reason: "separator_unparsable" };
   }
 
   const person = splitPersonName(name);

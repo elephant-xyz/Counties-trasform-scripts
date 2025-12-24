@@ -180,11 +180,23 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
+  // Clean name by removing trailing/leading punctuation and hyphens
+  const cleanName = (name) => {
+    if (!name) return "";
+    // Remove leading/trailing hyphens, periods, commas, spaces
+    let cleaned = name.replace(/^[\-\.\,\s]+|[\-\.\,\s]+$/g, '').trim();
+    // If the name is just a single letter or initial with period (e.g., "B."), keep just the letter
+    if (/^[A-Z]\.?$/.test(cleaned)) {
+      cleaned = cleaned.replace(/\./g, '');
+    }
+    return cleaned || "";
+  };
+
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: cleanName(titleCase(first || "")),
+    last_name: cleanName(titleCase(last || "")),
+    middle_name: middle ? cleanName(titleCase(middle)) || null : null,
   };
 }
 

@@ -1,3 +1,4 @@
+
 // Structure mapping script
 // Reads input.html, parses building and summary data using cheerio, and writes owners/structure_data.json
 

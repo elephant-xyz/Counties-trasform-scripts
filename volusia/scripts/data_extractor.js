@@ -2423,40 +2423,52 @@ async function main() {
     companyFilesByKey[entry.key] = cFile;
   });
 
-  //OWNERS TO MAILING ADDRESS RELATIONSHIP FILE.
-  let relIdx=0
-  currentOwners.forEach((o) => {
-    // console.log("relIdx",relIdx);
-    if (o && o.type === "person") {
-      const key = normalizeOwnerKey(o);
-      const pf = personFilesByKey[key];
-      if (pf) {
-        relIdx += 1;
-        const rel = {
-          from: { "/": `./${pf}` },
-          to: { "/": "./mailing_address.json" },
-        };
-        writeJSON(
-          path.join(dataDir, `relationship_person_has_mailing_address_${relIdx}.json`),
-          rel,
-        );
+  // Mailing Address - only create if there are owners to connect it to
+  const mailingAddressRaw = extractTopValue("Mailing Address On File:");
+  if (currentOwners.length > 0 && mailingAddressRaw) {
+    const mailingAddressOutput = {
+      ...appendSourceInfo(seed),
+      latitude: null,
+      longitude: null,
+      unnormalized_address: mailingAddressRaw,
+    };
+    writeJSON(path.join(dataDir, "mailing_address.json"), mailingAddressOutput);
+
+    //OWNERS TO MAILING ADDRESS RELATIONSHIP FILE.
+    let relIdx=0
+    currentOwners.forEach((o) => {
+      // console.log("relIdx",relIdx);
+      if (o && o.type === "person") {
+        const key = normalizeOwnerKey(o);
+        const pf = personFilesByKey[key];
+        if (pf) {
+          relIdx += 1;
+          const rel = {
+            from: { "/": `./${pf}` },
+            to: { "/": "./mailing_address.json" },
+          };
+          writeJSON(
+            path.join(dataDir, `relationship_person_has_mailing_address_${relIdx}.json`),
+            rel,
+          );
+        }
+      } else if (o && o.type === "company") {
+        const key = normalizeCompanyKey(o);
+        const cf = companyFilesByKey[key];
+        if (cf) {
+          relIdx += 1;
+          const rel = {
+            from: { "/": `./${cf}` },
+            to: { "/": "./mailing_address.json" },
+          };
+          writeJSON(
+            path.join(dataDir, `relationship_company_has_mailing_address${relIdx}.json`),
+            rel,
+          );
+        }
       }
-    } else if (o && o.type === "company") {
-      const key = normalizeCompanyKey(o);
-      const cf = companyFilesByKey[key];
-      if (cf) {
-        relIdx += 1;
-        const rel = {
-          from: { "/": `./${cf}` },
-          to: { "/": "./mailing_address.json" },
-        };
-        writeJSON(
-          path.join(dataDir, `relationship_company_has_mailing_address${relIdx}.json`),
-          rel,
-        );
-      }
-    }
-  });  
+    });
+  }  
 
 
 

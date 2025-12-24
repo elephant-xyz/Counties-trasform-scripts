@@ -43,8 +43,11 @@ function cleanPersonText(s) {
 // Helper: Capitalize first letter of each word, lowercase rest
 function toTitleCase(str) {
   if (!str) return "";
+  // Trim the string first to remove leading/trailing spaces
+  const trimmed = str.trim();
+  if (!trimmed) return "";
   // Split by allowed delimiters, keeping them in the result
-  return str
+  return trimmed
     .split(/([ \-',.])/)
     .map((word, index) => {
       if (word.length === 0) return "";
@@ -152,6 +155,13 @@ function isCompany(nameRaw) {
 
 function splitAmpersand(name) {
   if (!name || name.indexOf("&") === -1) return [name];
+
+  // Check if the entire name is a company before splitting
+  // If it's a company (e.g., "M & M PROPERTIES LLC"), don't split it
+  if (isCompany(name)) {
+    return [name];
+  }
+
   return name.split("&").map((p) => cleanText(p));
 }
 
@@ -171,12 +181,20 @@ function normalizeNameKey(owner) {
   return parts.join(" ").trim();
 }
 
+// Valid suffixes according to Elephant schema
+const VALID_SUFFIXES = [
+  "Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM",
+  "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."
+];
+
 // Map for suffix formatting to match schema enum (e.g., "Jr" -> "Jr.")
+// Valid suffixes: Jr., Sr., II, III, IV, PhD, MD, Esq., JD, LLM, MBA, RN, DDS, DVM, CFA, CPA, PE, PMP, Emeritus, Ret.
+// NOTE: Keys must match what toTitleCase produces (e.g., "Ii" not "II", "Phd" not "PhD")
 const suffixFormatMap = {
-  "Jr": "Jr.", "Sr": "Sr.", "II": "II", "III": "III", "IV": "IV", "V": "V",
-  "PhD": "PhD", "MD": "MD", "Esq": "Esq.", "JD": "JD", "LLM": "LLM",
-  "MBA": "MBA", "RN": "RN", "DDS": "DDS", "DVM": "DVM", "CFA": "CFA",
-  "CPA": "CPA", "PE": "PE", "PMP": "PMP", "Emeritus": "Emeritus", "Ret": "Ret."
+  "Jr": "Jr.", "Sr": "Sr.", "Ii": "II", "Iii": "III", "Iv": "IV",
+  "Phd": "PhD", "Md": "MD", "Esq": "Esq.", "Jd": "JD", "Llm": "LLM",
+  "Mba": "MBA", "Rn": "RN", "Dds": "DDS", "Dvm": "DVM", "Cfa": "CFA",
+  "Cpa": "CPA", "Pe": "PE", "Pmp": "PMP", "Emeritus": "Emeritus", "Ret": "Ret."
 };
 
 function parsePersonName(raw) {
@@ -189,24 +207,32 @@ function parsePersonName(raw) {
     return { invalid: true, reason: "name contains digits" };
   }
 
+  // Remove designations like "- LIFE TENANT", "- TRUSTEE", etc. before parsing
+  // These are not part of the person's name
+  let cleanedName = s.replace(/\s*-\s*(LIFE TENANT|TRUSTEE|EXECUTOR|ADMINISTRATOR|ESTATE|ET AL|ETAL)\s*$/i, "").trim();
+  if (!cleanedName) {
+    return { invalid: true, reason: "empty after removing designation" };
+  }
+
   let firstName = null;
   let lastName = null;
   let middleName = null;
   let suffixName = null;
 
-  // Common suffixes to check for (case-insensitive)
-  const suffixes = ["JR", "SR", "II", "III", "IV", "ESQ", "MD", "PHD"];
+  // Common suffixes to check for (case-insensitive) - MUST match all valid schema suffixes
+  const suffixes = ["JR", "SR", "II", "III", "IV", "PHD", "MD", "ESQ", "JD", "LLM",
+                    "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "EMERITUS", "RET"];
   // Create a regex that matches whole words for suffixes
   const suffixRegex = new RegExp(`\\b(${suffixes.join("|")})\\b`, "i");
 
   // Check for and extract suffix first
-  let nameWithoutSuffix = s;
-  const suffixMatch = s.match(suffixRegex);
+  let nameWithoutSuffix = cleanedName;
+  const suffixMatch = cleanedName.match(suffixRegex);
   if (suffixMatch) {
     const rawSuffix = toTitleCase(suffixMatch[1]);
-    suffixName = suffixFormatMap[rawSuffix] || rawSuffix; // Apply formatting from map
+    suffixName = suffixFormatMap[rawSuffix] || null; // Apply formatting from map, null if not valid
     // Remove the matched suffix from the name string
-    nameWithoutSuffix = s.replace(suffixMatch[0], "").trim();
+    nameWithoutSuffix = cleanedName.replace(suffixMatch[0], "").trim();
   }
 
   // Handle comma-delimited: LAST, FIRST MIDDLE
@@ -256,7 +282,7 @@ function parsePersonName(raw) {
     type: "person",
     first_name: cleanPersonText(firstName),
     last_name: cleanPersonText(lastName),
-    middle_name: cleanPersonText(middleName),
+    middle_name: middleName ? cleanPersonText(middleName) || null : null,
     suffix_name: suffixName,
   };
 }
@@ -406,8 +432,12 @@ function dedupeOwners(list) {
       if (o.middle_name === "" || o.middle_name === undefined) {
         o.middle_name = null; // Set to null instead of deleting if schema requires it
       }
+      // Validate suffix_name: must be null or one of the valid enum values
       if (o.suffix_name === "" || o.suffix_name === undefined) {
         o.suffix_name = null; // Set to null instead of deleting if schema requires it
+      } else if (o.suffix_name !== null && !VALID_SUFFIXES.includes(o.suffix_name)) {
+        // If suffix_name has a value but it's not in the valid list, set to null
+        o.suffix_name = null;
       }
       // Other required fields (birth_date, prefix_name, us_citizenship_status, veteran_status)
       // are already initialized to null in parsePersonName, so no need to check here.

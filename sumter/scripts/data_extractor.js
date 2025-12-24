@@ -919,6 +919,8 @@ function extractLotDetails($) {
   });
   if (lotSizeAcre == null) return null;
   const lotAreaSqft = Math.round(lotSizeAcre * 43560);
+  // Ensure lot_area_sqft is at least 1 to meet schema constraint
+  if (lotAreaSqft < 1) return null;
   return {
     lot_size_acre: lotSizeAcre,
     lot_area_sqft: lotAreaSqft,
@@ -1397,7 +1399,7 @@ function writeSalesDeedsFilesAndRelationships($) {
   // Remove old deed/file and sales_deed relationships if present to avoid duplicates
   try {
     fs.readdirSync("data").forEach((f) => {
-      if (/^relationship_(deed_file|sales_deed)(?:_\d+)?\.json$/.test(f)) {
+      if (/^relationship_(deed_file|file_deed|deed_\d+_has_file_\d+|sales_deed)(?:_\d+)?\.json$/.test(f)) {
         fs.unlinkSync(path.join("data", f));
       }
     });
@@ -1415,11 +1417,21 @@ function writeSalesDeedsFilesAndRelationships($) {
     const deedType = mapInstrumentToDeedType(s.instrument);
     const bookPageParts = s.bookPage ? s.bookPage.split('/') : [null, null];
     const deed = {
-      ...appendSourceInfo(seed),
-      book: bookPageParts[0] || null,
-      page: bookPageParts[1] || null
+      ...appendSourceInfo(seed)
     };
     if (deedType) deed.deed_type = deedType;
+
+    // Only include book and page if they have valid non-empty values
+    const bookValue = bookPageParts[0] ? String(bookPageParts[0]).trim() : null;
+    const pageValue = bookPageParts[1] ? String(bookPageParts[1]).trim() : null;
+
+    if (bookValue && bookValue.length > 0) {
+      deed.book = String(bookValue);
+    }
+    if (pageValue && pageValue.length > 0) {
+      deed.page = String(pageValue);
+    }
+
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     const file = {
@@ -1437,7 +1449,7 @@ function writeSalesDeedsFilesAndRelationships($) {
       to: { "/": `./file_${idx}.json` }
     };
     writeJSON(
-      path.join("data", `relationship_deed_file_${idx}.json`),
+      path.join("data", `relationship_deed_${idx}_has_file_${idx}.json`),
       relDeedFile,
     );
 
@@ -2142,12 +2154,7 @@ function main() {
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($)
   // console.log("---",mailingAddressRaw);
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-  
+
   // Create mailing address relationships with current owners
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (owners) {
@@ -2183,6 +2190,15 @@ function main() {
           }
         }
       });
+
+      // Only create mailing_address.json if we created at least one relationship
+      if (relCounter > 0 && mailingAddressRaw) {
+        const mailingAddressOutput = {
+          ...appendSourceInfo(seed),
+          unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+        };
+        writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+      }
     }
   }  
 

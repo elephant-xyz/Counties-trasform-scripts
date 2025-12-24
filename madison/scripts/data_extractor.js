@@ -930,7 +930,7 @@ function mapInstrumentToDeedType(instr) {
     TOD: "Transfer on Death Deed",
   };
   if (map[u]) return map[u];
-  return "Miscellaneous";
+  return null;
 }
 
 function extractValuation($) {
@@ -1133,6 +1133,7 @@ function writeProperty($, parcelId) {
     subdivision: null, // Not available in this HTML
     zoning: null, // Not available in this HTML
   };
+  if (!property.build_status) delete property.build_status;
   writeJSON(path.join("data", "property.json"), property);
   return {
     propertyAttributes,
@@ -1179,15 +1180,20 @@ function writeSalesHistoryDeedsAndFiles($, parcelId) {
     const salesHistoryObj = {
       ownership_transfer_date: isoDate,
       purchase_price_amount: parseCurrencyToNumber(s.salePrice),
-      sale_type: s.saleType || null,
       request_identifier: parcelId,
     };
+    if (s.saleType) {
+      salesHistoryObj.sale_type = s.saleType;
+    }
     writeJSON(path.join("data", salesHistoryFile), salesHistoryObj);
 
+    const deedType = mapInstrumentToDeedType(s.instrument);
     const deedObj = {
-      deed_type: mapInstrumentToDeedType(s.instrument),
       request_identifier: parcelId,
     };
+    if (deedType) {
+      deedObj.deed_type = deedType;
+    }
     if (s.book) deedObj.book = String(s.book);
     if (s.page) deedObj.page = String(s.page);
     if (s.volume) deedObj.volume = String(s.volume);

@@ -194,8 +194,9 @@ function extractCurrentOwners($) {
     for (const owner of owner_text_split) {
       if (owner.trim() && !owner.toLowerCase().includes("primary")) {
         const t = txt(owner.trim());
-        owners.push(t);
-        break;
+        if (t) {
+          owners.push(t);
+        }
       }
     }
   });
@@ -252,9 +253,61 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
   return dedupeOwners(owners);
 }
 
+function detectAndFixReversedName(currentOwnerName, allSalesNames) {
+  // Current owners might be in "LAST FIRST MIDDLE" format
+  // Sales are in "FIRST MIDDLE LAST" format
+  // Check if reversing the current owner matches any sales name
+  const currentCleaned = cleanRawName(currentOwnerName);
+  const currentTokens = currentCleaned.split(/\s+/).filter(Boolean);
+  if (currentTokens.length < 2) return currentOwnerName;
+
+  for (const salesName of allSalesNames) {
+    // Clean and split composite names (sales might have "&" or "and")
+    const salesParts = splitCompositeNames(salesName);
+    for (const salesPart of salesParts) {
+      const salesCleaned = cleanRawName(salesPart);
+      const salesTokens = salesCleaned.split(/\s+/).filter(Boolean);
+      if (salesTokens.length !== currentTokens.length) continue;
+
+      // Check if current owner is reversed version of sales name
+      // e.g., "HODGE BRITTANY L" (current) vs "BRITTANY L HODGE" (sales)
+      // For 3-token names: LAST FIRST MIDDLE vs FIRST MIDDLE LAST
+      // We need to check if swapping first and last tokens makes them match
+      let isReversed = false;
+      if (currentTokens.length === 3 && salesTokens.length === 3) {
+        // Check if pattern is: current[LAST, FIRST, MIDDLE] vs sales[FIRST, MIDDLE, LAST]
+        isReversed =
+          currentTokens[0].toLowerCase() === salesTokens[2].toLowerCase() &&
+          currentTokens[1].toLowerCase() === salesTokens[0].toLowerCase() &&
+          currentTokens[2].toLowerCase() === salesTokens[1].toLowerCase();
+      } else if (currentTokens.length === 2 && salesTokens.length === 2) {
+        // For 2-token names: LAST FIRST vs FIRST LAST
+        isReversed =
+          currentTokens[0].toLowerCase() === salesTokens[1].toLowerCase() &&
+          currentTokens[1].toLowerCase() === salesTokens[0].toLowerCase();
+      }
+
+      if (isReversed) {
+        // Return the sales format (correct format)
+        return salesCleaned;
+      }
+    }
+  }
+
+  // No match found, return original
+  return currentOwnerName;
+}
+
 const parcelId = getParcelId($);
 const currentOwnerRaw = extractCurrentOwners($);
 const { map: salesMap, priorOwners } = extractSalesOwnersByDate($);
+
+// Fix reversed names in current owners by comparing with sales names
+const allSalesNames = [];
+Object.values(salesMap).forEach(names => allSalesNames.push(...names));
+const correctedCurrentOwnerRaw = currentOwnerRaw.map(name =>
+  detectAndFixReversedName(name, allSalesNames)
+);
 
 const invalid_owners = [];
 const dates = Object.keys(salesMap).sort();
@@ -318,7 +371,7 @@ if (priorOwners && priorOwners.length > 0) {
 }
 
 const currentOwnersStructured = resolveOwnersFromRawStrings(
-  currentOwnerRaw,
+  correctedCurrentOwnerRaw,
   invalid_owners,
 );
 if (currentOwnersStructured.length > 0) {
@@ -338,9 +391,8 @@ Object.keys(owners_by_date)
   .forEach((k) => {
     orderedOwnersByDate[k] = owners_by_date[k];
   });
-if (dateKeys.length > 0) {
-  orderedOwnersByDate["current"] = owners_by_date[dateKeys[dateKeys.length - 1]];
-} else if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
+// Always preserve the actual current owner from HTML
+if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
   orderedOwnersByDate["current"] = owners_by_date["current"];
 }
 
