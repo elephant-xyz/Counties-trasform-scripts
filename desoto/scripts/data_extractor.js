@@ -811,6 +811,62 @@ const structureData = fs.existsSync(structureDataPath)
         },
       );
     });
+
+    grantorCompanyPaths.forEach((companyPath) => {
+      markCompanySalesRelationship(companyPath);
+      const relName = relationshipFileName(saleRelPath, companyPath);
+      writeJson(
+        path.join("data", relName),
+        {
+          from: { "/": saleRelPath },
+          to: { "/": companyPath },
+        },
+      );
+    });
+
+    grantorPersonPaths.forEach((personPath) => {
+      markPersonSalesRelationship(personPath);
+      const relName = relationshipFileName(saleRelPath, personPath);
+      writeJson(
+        path.join("data", relName),
+        {
+          from: { "/": saleRelPath },
+          to: { "/": personPath },
+        },
+      );
+    });
+  }
+
+  if (
+    saleHistoryFiles.length === 0 &&
+    (ownerCompanyFiles.length > 0 || ownerPersonFiles.length > 0)
+  ) {
+    saleIndex += 1;
+    const saleRelPath = `./sales_history_${saleIndex}.json`;
+    const defaultSaleRequest =
+      propertySeed?.source_http_request ||
+      unnormalizedAddress?.source_http_request || {
+        method: "GET",
+        url:
+          propertySeed?.source_http_request?.url ||
+          unnormalizedAddress?.source_http_request?.url ||
+          "https://www.desotopa.com/gis",
+      };
+    const fallbackSaleRecord = pruneNullish({
+      source_http_request: defaultSaleRequest,
+      request_identifier:
+        hyphenParcel ||
+        propertySeed?.parcel_id ||
+        propertySeed?.request_identifier ||
+        null,
+      ownership_transfer_date: new Date().toISOString().slice(0, 10),
+      purchase_price_amount: 0,
+    });
+    writeJson(
+      path.join("data", `sales_history_${saleIndex}.json`),
+      fallbackSaleRecord,
+    );
+    saleHistoryFiles.push(saleRelPath);
   }
 
   if (saleHistoryFiles.length > 0) {
@@ -837,6 +893,8 @@ const structureData = fs.existsSync(structureDataPath)
       );
     });
   }
+
+  pruneEntitiesWithoutSalesLinks();
 
   // 5) TAX
   function buildTaxRecord($table, taxYear) {
@@ -1314,6 +1372,14 @@ const structureData = fs.existsSync(structureDataPath)
       "property_type": "VacantLand"
     },
     {
+      "desoto_property_type": "5300 - Cropland, Class III",
+      "ownership_estate_type": "FeeSimple",
+      "build_status": "VacantLand",
+      "structure_form": null,
+      "property_usage_type": "CroplandClass3",
+      "property_type": "VacantLand"
+    },
+    {
       "desoto_property_type": "5400 - Timberland, Index 90+",
       "ownership_estate_type": "FeeSimple",
       "build_status": "VacantLand",
@@ -1660,13 +1726,16 @@ const structureData = fs.existsSync(structureDataPath)
 
   if (!mappedProperty) {
     raiseEnumError(useCodeVal, "property.property_type");
-    // Default to a generic type if not found to avoid script failure, or handle as an error
+    const useCodeText = (useCodeVal || "").toLowerCase();
+    const indicatesVacantLand = /\b(vacant|cropland|timber|grazing|orchard|pasture|agri)\b/.test(
+      useCodeText,
+    );
     mappedProperty = {
-      property_type: "Unknown",
+      property_type: indicatesVacantLand ? "VacantLand" : "Building",
       ownership_estate_type: null,
-      build_status: null,
+      build_status: indicatesVacantLand ? "VacantLand" : "Improved",
       structure_form: null,
-      property_usage_type: "Unknown"
+      property_usage_type: "Unknown",
     };
   }
 

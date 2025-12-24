@@ -8,7 +8,7 @@ const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 
 const PARCEL_SELECTOR = "#ctlBodyPane_ctl08_ctl01_lblParcelID";
-const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl09_ctl01_lstPrimaryOwner_ctl00_lblPrimaryOwnerName_lnkUpmSearchLinkSuppressed_lblSearch";
+const CURRENT_OWNER_SELECTOR = '[id*="lstPrimaryOwner"][id*="lblPrimaryOwnerName"][id$="lnkSearch"]';
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl18_ctl01_grdSales tbody tr";
 
 // Utility helpers
@@ -95,6 +95,7 @@ const COMPANY_KEYWORDS = [
   "services",
   "trust",
   "tr",
+  "estate",
   "associates",
   "association",
   "holdings",
@@ -296,10 +297,11 @@ Object.keys(owners_by_date)
   .forEach((k) => {
     orderedOwnersByDate[k] = owners_by_date[k];
   });
-if (dateKeys.length > 0) {
-  orderedOwnersByDate["current"] = owners_by_date[dateKeys[dateKeys.length - 1]];
-} else if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
+// Preserve actual current owners from the page, don't overwrite with last sale owners
+if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
   orderedOwnersByDate["current"] = owners_by_date["current"];
+} else if (dateKeys.length > 0) {
+  orderedOwnersByDate["current"] = owners_by_date[dateKeys[dateKeys.length - 1]];
 }
 
 const propKey = `property_${parcelId || "unknown_id"}`;

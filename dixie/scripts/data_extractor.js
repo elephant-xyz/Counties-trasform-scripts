@@ -696,12 +696,11 @@ function collectBuildings($) {
 }
 
 function toInt(val) {
-  const n = Number(
-    String(val || "")
-      .replace(/[,]/g, "")
-      .trim(),
-  );
-  return Number.isFinite(n) ? n : 0;
+  const normalized = String(val || "").replace(/[,]/g, "").trim();
+  if (!normalized) return 0;
+  const n = Number(normalized);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n);
 }
 
 function formatNameForSchema(name) {
@@ -1167,7 +1166,7 @@ function extractMailingAddress($) {
 }
 
 function mapDeedType(deedType) {
-  if (!deedType) return null;
+  if (!deedType) return "Miscellaneous";
   const u = deedType.trim().toUpperCase();
   if (u.includes("WARRANTY DEED") || u === "WD") return "Warranty Deed";
   if (u.includes("SPECIAL WARRANTY")) return "Special Warranty Deed";
@@ -1344,7 +1343,7 @@ function writeSalesHistoryArtifacts($, parcelId) {
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
     const deed = {
-      deed_type: mapDeedType(s.deedType),
+      deed_type: String(mapDeedType(s.deedType)),
       request_identifier: deedRequestId,
       source_http_request: buildSourceHttpRequest(parcelId),
     };
@@ -1413,7 +1412,7 @@ function writePersonCompaniesSalesRelationships($, parcelId, salesRecords) {
   const ownersByDate = record.owners_by_date;
 
   const personCanonical = new Map();
-  const companySet = new Set();
+  const companyCanonical = new Map();
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "person") {
@@ -1429,7 +1428,10 @@ function writePersonCompaniesSalesRelationships($, parcelId, salesRecords) {
           if (!existing.middle_name && o.middle_name) existing.middle_name = o.middle_name;
         }
       } else if (o.type === "company" && (o.name || "").trim()) {
-        companySet.add((o.name || "").trim());
+        const normKey = (o.name || "").trim().toUpperCase();
+        if (!companyCanonical.has(normKey)) {
+          companyCanonical.set(normKey, (o.name || "").trim());
+        }
       }
     });
   });
@@ -1460,7 +1462,7 @@ function writePersonCompaniesSalesRelationships($, parcelId, salesRecords) {
   });
 
   const companyIndexMap = new Map();
-  Array.from(companySet).forEach((name, idx) => {
+  Array.from(companyCanonical.values()).forEach((name, idx) => {
     const companyObj = {
       name,
       request_identifier: parcelId,
@@ -1522,30 +1524,21 @@ function writePersonCompaniesSalesRelationships($, parcelId, salesRecords) {
   });
 
   const mailingAddress = extractMailingAddress($);
+  const mailingPath = path.join("data", "mailing_address_1.json");
   if (mailingAddress) {
-    const mailingPath = path.join("data", "mailing_address_1.json");
-    writeJSON(mailingPath, {
-      unnormalized_address: mailingAddress,
-      latitude: null,
-      longitude: null,
-      source_http_request: buildSourceHttpRequest(parcelId),
-      request_identifier: parcelId,
-    });
-
     const ownersForMailing = Array.isArray(ownersByDate.current) && ownersByDate.current.length
       ? ownersByDate.current
       : (latestSaleIso && Array.isArray(ownersByDate[latestSaleIso]) ? ownersByDate[latestSaleIso] : []);
 
-    const processedPerson = new Set();
-    const processedCompany = new Set();
+    const personIndices = [];
+    const companyIndices = [];
 
     ownersForMailing
       .filter((o) => o.type === "person")
       .forEach((o) => {
         const idx = findPersonIndexByName(personIndexMap, o.first_name, o.last_name);
-        if (idx && !processedPerson.has(idx)) {
-          processedPerson.add(idx);
-          writeHasRelationship(`./person_${idx}.json`, "./mailing_address_1.json");
+        if (idx) {
+          personIndices.push(idx);
         }
       });
 
@@ -1553,16 +1546,35 @@ function writePersonCompaniesSalesRelationships($, parcelId, salesRecords) {
       .filter((o) => o.type === "company")
       .forEach((o) => {
         const idx = findCompanyIndexByName(companyIndexMap, o.name);
-        if (idx && !processedCompany.has(idx)) {
-          processedCompany.add(idx);
-          writeHasRelationship(`./company_${idx}.json`, "./mailing_address_1.json");
+        if (idx) {
+          companyIndices.push(idx);
         }
       });
-  } else {
-    const mailingPath = path.join("data", "mailing_address_1.json");
-    if (fs.existsSync(mailingPath)) {
+
+    const uniquePersonIndices = [...new Set(personIndices)];
+    const uniqueCompanyIndices = [...new Set(companyIndices)];
+
+    if (uniquePersonIndices.length || uniqueCompanyIndices.length) {
+      writeJSON(mailingPath, {
+        unnormalized_address: mailingAddress,
+        latitude: null,
+        longitude: null,
+        source_http_request: buildSourceHttpRequest(parcelId),
+        request_identifier: parcelId,
+      });
+
+      uniquePersonIndices.forEach((idx) => {
+        writeHasRelationship(`./person_${idx}.json`, "./mailing_address_1.json");
+      });
+
+      uniqueCompanyIndices.forEach((idx) => {
+        writeHasRelationship(`./company_${idx}.json`, "./mailing_address_1.json");
+      });
+    } else if (fs.existsSync(mailingPath)) {
       fs.unlinkSync(mailingPath);
     }
+  } else if (fs.existsSync(mailingPath)) {
+    fs.unlinkSync(mailingPath);
   }
 }
 
@@ -1607,6 +1619,15 @@ function sanitizeObject(obj) {
     }
   });
   return obj;
+}
+
+function applyTemplateDefaults(target, template) {
+  Object.keys(template).forEach((key) => {
+    if (!(key in target) || target[key] === undefined) {
+      target[key] = template[key];
+    }
+  });
+  return target;
 }
 
 function mergeDefined(base, overlay) {
@@ -1776,7 +1797,7 @@ function mapFoundationMaterial(value) {
   if (upper.includes("CONCRETE") && upper.includes("BLOCK")) return "Concrete Block";
   if (upper.includes("POURED") && upper.includes("CONCRETE")) return "Poured Concrete";
   if (upper.includes("CONCRETE")) return "Poured Concrete";
-  if (upper.includes("MASONRY")) return "Masonry";
+  if (upper.includes("MASONRY")) return "Concrete Block";
   if (upper.includes("STONE")) return "Stone";
   if (upper.includes("BRICK")) return "Brick";
   if (upper.includes("STEEL")) return "Steel Piers";
@@ -1867,6 +1888,19 @@ function mapExteriorWallMaterial(value) {
   return null;
 }
 
+function mapExteriorWallMaterialSecondary(value) {
+  const primary = mapExteriorWallMaterial(value);
+  if (!primary) return null;
+  if (primary === "Brick") return "Brick Accent";
+  if (primary === "Natural Stone" || primary === "Manufactured Stone") return "Stone Accent";
+  if (primary === "Wood Siding") return "Wood Trim";
+  if (primary === "Metal Siding") return "Metal Trim";
+  if (primary === "Stucco") return "Stucco Accent";
+  if (primary === "Vinyl Siding") return "Vinyl Accent";
+  if (primary === "Concrete Block") return "Decorative Block";
+  return null;
+}
+
 function mapInteriorWallMaterial(value) {
   const v = valueOrNull(value);
   if (!v) return null;
@@ -1886,6 +1920,23 @@ function mapInteriorWallMaterial(value) {
   if (upper.includes("GLASS")) return "Glass Panels";
   if (upper.includes("CONCRETE")) return "Concrete";
   return null;
+}
+
+function mapInteriorWallMaterialSecondary(value) {
+  const v = valueOrNull(value);
+  if (!v) return null;
+  const upper = v.toUpperCase();
+  if (upper.includes("WAINSCOT")) return "Wainscoting";
+  if (upper.includes("CHAIR") && upper.includes("RAIL")) return "Chair Rail";
+  if (upper.includes("CROWN") && upper.includes("MOLD")) return "Crown Molding";
+  if (upper.includes("BASEBOARD")) return "Baseboards";
+  if (upper.includes("WOOD") && upper.includes("TRIM")) return "Wood Trim";
+  if (upper.includes("STONE")) return "Stone Accent";
+  if (upper.includes("TILE")) return "Tile Accent";
+  if (upper.includes("METAL")) return "Metal Accent";
+  if (upper.includes("GLASS")) return "Glass Insert";
+  if (upper.includes("DECORATIVE") && upper.includes("PANEL")) return "Decorative Panels";
+  return "Feature Wall Material";
 }
 
 function mapFlooringMaterialPrimary(material) {
@@ -1997,6 +2048,57 @@ function createStructureTemplate(parcelId, requestIdentifier) {
   };
 }
 
+function createUtilityTemplate(parcelId, requestIdentifier) {
+  return {
+    request_identifier: requestIdentifier ?? parcelId ?? null,
+    source_http_request: buildSourceHttpRequest(parcelId),
+    cooling_system_type: null,
+    electrical_panel_capacity: null,
+    electrical_panel_installation_date: null,
+    electrical_rewire_date: null,
+    electrical_wiring_type: null,
+    electrical_wiring_type_other_description: null,
+    heating_fuel_type: null,
+    heating_system_type: null,
+    hvac_capacity_kw: null,
+    hvac_capacity_tons: null,
+    hvac_condensing_unit_present: null,
+    hvac_equipment_component: null,
+    hvac_equipment_manufacturer: null,
+    hvac_equipment_model: null,
+    hvac_installation_date: null,
+    hvac_seer_rating: null,
+    hvac_system_configuration: null,
+    hvac_unit_condition: null,
+    hvac_unit_issues: null,
+    plumbing_fixture_count: null,
+    plumbing_fixture_quality: null,
+    plumbing_fixture_type_primary: null,
+    plumbing_system_installation_date: null,
+    plumbing_system_type: null,
+    plumbing_system_type_other_description: null,
+    public_utility_type: null,
+    sewer_connection_date: null,
+    sewer_type: null,
+    smart_home_features: null,
+    smart_home_features_other_description: null,
+    solar_installation_date: null,
+    solar_inverter_installation_date: null,
+    solar_inverter_manufacturer: null,
+    solar_inverter_model: null,
+    solar_inverter_visible: false,
+    solar_panel_present: false,
+    solar_panel_type: null,
+    solar_panel_type_other_description: null,
+    water_connection_date: null,
+    water_heater_installation_date: null,
+    water_heater_manufacturer: null,
+    water_heater_model: null,
+    water_source_type: null,
+    well_installation_date: null,
+  };
+}
+
 function writeUtilities(parcelId, buildings) {
   try {
     fs.readdirSync("data").forEach((f) => {
@@ -2015,6 +2117,12 @@ function writeUtilities(parcelId, buildings) {
     else if (record && typeof record === "object") entries = [record];
   }
   const buildingCount = buildings ? buildings.length : 0;
+
+  // If there are no buildings and no actual utility data, don't create utility files
+  if (buildingCount === 0 && entries.length === 0) {
+    return [];
+  }
+
   if (entries.length === 1 && buildingCount > 1) {
     const template = entries[0];
     entries = Array.from({ length: buildingCount }, () => ({ ...template }));
@@ -2023,11 +2131,28 @@ function writeUtilities(parcelId, buildings) {
     buildUtilityFromBuilding(building, parcelId, idx),
   );
   const sourceEntries = entries.length ? entries : derivedUtilities;
+
+  // If no buildings and only one entry with no real data, skip creating utility
+  if (buildingCount === 0 && sourceEntries.length > 0) {
+    const hasRealData = sourceEntries.some((entry) => {
+      return Object.keys(entry).some((key) => {
+        if (key === 'source_http_request' || key === 'request_identifier') return false;
+        const val = entry[key];
+        return val !== null && val !== undefined && val !== false && val !== '';
+      });
+    });
+    if (!hasRealData) {
+      return [];
+    }
+  }
+
   const mergedEntries = sourceEntries.map((raw, idx) => {
     const derived = derivedUtilities[idx] || {};
     const utility = mergeDefined(derived, raw);
     utility.request_identifier =
       utility.request_identifier || formatBuildingRequestIdentifier(parcelId, "utility", idx);
+    const template = createUtilityTemplate(parcelId, utility.request_identifier);
+    applyTemplateDefaults(utility, template);
     utility.source_http_request = buildSourceHttpRequest(parcelId);
     sanitizeObject(utility);
     const fileName = `utility_${idx + 1}.json`;
@@ -2041,6 +2166,8 @@ function writeUtilities(parcelId, buildings) {
       finalUtility.request_identifier =
         finalUtility.request_identifier ||
         formatBuildingRequestIdentifier(parcelId, "utility", index);
+      const template = createUtilityTemplate(parcelId, finalUtility.request_identifier);
+      applyTemplateDefaults(finalUtility, template);
       finalUtility.source_http_request = buildSourceHttpRequest(parcelId);
       sanitizeObject(finalUtility);
       const fileName = `utility_${index + 1}.json`;
@@ -2066,13 +2193,13 @@ function buildStructureFromBuilding(building, parcelId, idx) {
   structure.exterior_wall_material_primary = mapExteriorWallMaterial(
     building["Primary Exterior Wall"],
   );
-  structure.exterior_wall_material_secondary = mapExteriorWallMaterial(
+  structure.exterior_wall_material_secondary = mapExteriorWallMaterialSecondary(
     building["Second Exterior Wall"],
   );
   structure.interior_wall_surface_material_primary = mapInteriorWallMaterial(
     building["Primary Interior Wall"],
   );
-  structure.interior_wall_surface_material_secondary = mapInteriorWallMaterial(
+  structure.interior_wall_surface_material_secondary = mapInteriorWallMaterialSecondary(
     building["Second Interior Wall"],
   );
   structure.flooring_material_primary = mapFlooringMaterialPrimary(
@@ -2125,6 +2252,8 @@ function writeStructures(parcelId, buildings) {
     const structure = mergeDefined(derived, raw);
     structure.request_identifier =
       structure.request_identifier || formatBuildingRequestIdentifier(parcelId, "structure", idx);
+    const template = createStructureTemplate(parcelId, structure.request_identifier);
+    applyTemplateDefaults(structure, template);
     structure.source_http_request = buildSourceHttpRequest(parcelId);
     sanitizeObject(structure);
     const fileName = `structure_${idx + 1}.json`;
@@ -2138,6 +2267,8 @@ function writeStructures(parcelId, buildings) {
       finalStructure.request_identifier =
         finalStructure.request_identifier ||
         formatBuildingRequestIdentifier(parcelId, "structure", index);
+      const template = createStructureTemplate(parcelId, finalStructure.request_identifier);
+      applyTemplateDefaults(finalStructure, template);
       finalStructure.source_http_request = buildSourceHttpRequest(parcelId);
       sanitizeObject(finalStructure);
       const fileName = `structure_${index + 1}.json`;
@@ -2150,6 +2281,7 @@ function writeStructures(parcelId, buildings) {
 
 function buildUtilityFromBuilding(building, parcelId, idx) {
   const requestIdentifier = formatBuildingRequestIdentifier(parcelId, "utility", idx);
+  const utility = createUtilityTemplate(parcelId, requestIdentifier);
   const coolingCandidate = pickBuildingValue(building, [
     "Cooling Type",
     "Cooling",
@@ -2187,30 +2319,18 @@ function buildUtilityFromBuilding(building, parcelId, idx) {
   ]);
   const solarPanelPresent = parseYesNo(solarHotWater);
 
-  const utility = {
-    request_identifier: requestIdentifier,
-    source_http_request: buildSourceHttpRequest(parcelId),
-    cooling_system_type: coolingSystemType,
-    heating_system_type: heatingSystemType,
-    heating_fuel_type: heatingFuelType,
-    public_utility_type: null,
-    sewer_type: mapSewerType(sewerValue),
-    water_source_type: mapWaterSource(waterValue),
-    plumbing_system_type: mapPlumbingSystem(plumbingValue),
-    plumbing_system_type_other_description: null,
-    electrical_panel_capacity: null,
-    electrical_wiring_type: mapElectricalWiring(electricalValue),
-    hvac_condensing_unit_present: hvacCondensingUnitPresent,
-    electrical_wiring_type_other_description: null,
-    solar_panel_present: solarPanelPresent,
-    solar_panel_type: null,
-    solar_panel_type_other_description: null,
-    smart_home_features: null,
-    smart_home_features_other_description: null,
-    hvac_unit_condition: null,
-    solar_inverter_visible: solarPanelPresent === true,
-    hvac_unit_issues: null,
-  };
+  utility.cooling_system_type = coolingSystemType;
+  utility.heating_system_type = heatingSystemType;
+  utility.heating_fuel_type = heatingFuelType;
+  utility.sewer_type = mapSewerType(sewerValue);
+  utility.water_source_type = mapWaterSource(waterValue);
+  utility.plumbing_system_type = mapPlumbingSystem(plumbingValue);
+  utility.electrical_wiring_type = mapElectricalWiring(electricalValue);
+  utility.hvac_condensing_unit_present = hvacCondensingUnitPresent;
+  const solarPanelValue = solarPanelPresent ?? false;
+  utility.solar_panel_present = solarPanelValue;
+  utility.solar_inverter_visible = solarPanelValue === true;
+
   sanitizeObject(utility);
   return utility;
 }
@@ -2234,6 +2354,18 @@ function assignEntitiesToLayouts(buildingLayouts, entities, assignedSet) {
       assignedSet.add(entities[i].index);
     }
   }
+}
+
+function ensurePropertyRelationships(entities) {
+  if (!entities || !entities.length) return;
+  entities.forEach((entity) => {
+    const relFileName = `relationship_property_has_${path
+      .basename(entity.ref)
+      .replace(/\.json$/i, "")}.json`;
+    const relPath = path.join("data", relFileName);
+    if (fs.existsSync(relPath)) return;
+    writeHasRelationship("./property.json", entity.ref);
+  });
 }
 
 function writeLayouts($, parcelId, propertyType, buildings, utilities, structures) {
@@ -2290,7 +2422,8 @@ function writeLayouts($, parcelId, propertyType, buildings, utilities, structure
       }
     });
   } catch (e) {}
-  if (propertyType === "LandParcel" || !buildings.length) {
+  const hasBuildings = Array.isArray(buildings) && buildings.length > 0;
+  if (!hasBuildings) {
     return {
       buildingLayouts: [],
       assignedUtilityIndices: new Set(),
@@ -2495,6 +2628,7 @@ function main() {
       writeHasRelationship("./property.json", utility.ref);
     }
   });
+  ensurePropertyRelationships(utilities);
 
   const assignedStructureIndices = layoutInfo.assignedStructureIndices || new Set();
   structures.forEach((structure) => {
@@ -2502,6 +2636,7 @@ function main() {
       writeHasRelationship("./property.json", structure.ref);
     }
   });
+  ensurePropertyRelationships(structures);
 
   // Address last
   const secTwpRng = extractSecTwpRng($);

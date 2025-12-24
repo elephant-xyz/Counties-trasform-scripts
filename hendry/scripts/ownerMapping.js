@@ -140,22 +140,29 @@ const NAME_PREFIX_MAP = new Map([
 ]);
 
 const NAME_SUFFIX_MAP = new Map([
-  ["jr", "Jr"],
-  ["sr", "Sr"],
+  ["jr", "Jr."],
+  ["junior", "Jr."],
+  ["sr", "Sr."],
+  ["senior", "Sr."],
   ["ii", "II"],
   ["iii", "III"],
   ["iv", "IV"],
-  ["v", "V"],
-  ["vi", "VI"],
   ["md", "MD"],
   ["phd", "PhD"],
   ["dds", "DDS"],
   ["dvm", "DVM"],
   ["cpa", "CPA"],
+  ["cfa", "CFA"],
   ["pe", "PE"],
-  ["esq", "Esq"],
-  ["esquire", "Esq"],
-  ["ret", "Ret"],
+  ["pmp", "PMP"],
+  ["jd", "JD"],
+  ["llm", "LLM"],
+  ["mba", "MBA"],
+  ["rn", "RN"],
+  ["esq", "Esq."],
+  ["esquire", "Esq."],
+  ["ret", "Ret."],
+  ["emeritus", "Emeritus"],
 ]);
 
 const SURNAME_PARTICLES = new Set([
@@ -297,7 +304,7 @@ function classifyOwner(raw) {
     const lookup = normalizeTokenForLookup(tokens[tokens.length - 1]);
     const canonical = NAME_SUFFIX_MAP.get(lookup);
     if (!canonical) break;
-    suffix = suffix ? `${canonical} ${suffix}` : canonical;
+    if (!suffix) suffix = canonical;
     tokens.pop();
   }
 

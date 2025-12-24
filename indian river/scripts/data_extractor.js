@@ -98,11 +98,92 @@ function extractLegalDescription($) {
 function extractUseCode($) {
   let code = null;
   $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
-    if ((th || "").toLowerCase().includes("property use code")) {
-      code = textOf($(tr).find("td span"));
+    if (code) return false;
+    const $tr = $(tr);
+    let rawLabelText = textTrim(
+      $tr.find("th strong, th, td strong").first().text(),
+    );
+    if (!rawLabelText) {
+      const altLabelSelectors = [
+        "td span",
+        "td:first-child",
+        "[data-label]",
+        "[aria-label]",
+      ];
+      for (const selector of altLabelSelectors) {
+        const candidate = textTrim($tr.find(selector).first().text());
+        if (candidate) {
+          rawLabelText = candidate;
+          break;
+        }
+      }
     }
+    if (!rawLabelText) {
+      const dataLabelAttr =
+        $tr.attr("data-label") || $tr.attr("aria-label") || $tr.data("label");
+      if (dataLabelAttr) {
+        rawLabelText = textTrim(String(dataLabelAttr));
+      }
+    }
+    const labelText = (rawLabelText || "").toLowerCase();
+    if (
+      labelText.includes("property use code") ||
+      labelText === "use code" ||
+      labelText.includes("land use code")
+    ) {
+      const collectValueText = () => {
+        const valueSelectors = [
+          () => $tr.find("td").last(),
+          () => $tr.find("th").last(),
+          () => $tr.children("td, th").eq(1),
+        ];
+        for (const getCandidate of valueSelectors) {
+          const $candidate = getCandidate();
+          if (!$candidate || !$candidate.length) continue;
+          const clone = $candidate.clone();
+          clone.find("strong").remove();
+          const candidateText = textTrim(
+            clone.text() || clone.find("span").first().text(),
+          );
+          if (candidateText) return candidateText;
+        }
+        const inlineText = textTrim($tr.text());
+        if (inlineText) {
+          const match = inlineText.match(
+            /(property\s+use\s+code|land\s+use\s+code|use\s+code)\s*[:\-]?\s*(.+)$/i,
+          );
+          if (match && match[2]) {
+            return textTrim(match[2]);
+          }
+        }
+        return null;
+      };
+      const valueText = collectValueText();
+      if (valueText) {
+        code = valueText;
+        return false;
+      }
+    }
+    return true;
   });
+  if (!code) {
+    const $fallbackStrong = $("strong")
+      .filter((_, el) =>
+        textTrim($(el).text()).toLowerCase().includes("use code"),
+      )
+      .first();
+    if ($fallbackStrong.length) {
+      const $row = $fallbackStrong.closest("tr");
+      if ($row.length) {
+        const $valueCell = $row.find("td").last().clone();
+        $valueCell.find("strong").remove();
+        const fallbackValue = textTrim($valueCell.text());
+        if (fallbackValue) {
+          code = fallbackValue;
+        }
+      }
+    }
+  }
   return code || null;
 }
 
@@ -802,6 +883,14 @@ const PROPERTY_USE_CODE_MAPPINGS = {
   },
 };
 
+const DEFAULT_PROPERTY_MAPPING = {
+  property_type: "LandParcel",
+  property_usage_type: "Unknown",
+  structure_form: null,
+  ownership_estate_type: "FeeSimple",
+  build_status: "VacantLand",
+};
+
 function normalizeUseCode(code) {
   if (!code) return null;
   const match = /(\d{4})/.exec(code);
@@ -811,14 +900,10 @@ function normalizeUseCode(code) {
 
 function mapPropertyAttributesFromUseCode(rawCode) {
   const code = normalizeUseCode(rawCode);
-  if (!code) return null;
+  if (!code) return { ...DEFAULT_PROPERTY_MAPPING };
   const mapping = PROPERTY_USE_CODE_MAPPINGS[code];
   if (!mapping) {
-    throw {
-      type: "error",
-      message: `Unhandled property use code ${rawCode}.`,
-      path: "property.property_type",
-    };
+    return { ...DEFAULT_PROPERTY_MAPPING };
   }
   return { ...mapping };
 }
@@ -1860,12 +1945,21 @@ function writeLayout(
 ) {
   clearExistingLayoutFiles();
   if (!parcelId) return;
-  if (propertyType === "LandParcel") return;
   const layoutsData = readJSON(path.join("owners", "layout_data.json"));
   if (!layoutsData) return;
   const key = `property_${parcelId}`;
   const entry = layoutsData[key];
   if (!entry || !Array.isArray(entry.layouts) || !entry.layouts.length) return;
+  if (propertyType === "LandParcel") {
+    const hasBuildingLayout = entry.layouts.some(
+      (lay) =>
+        typeof lay === "object" &&
+        lay &&
+        typeof lay.space_type === "string" &&
+        lay.space_type.toLowerCase() === "building",
+    );
+    if (!hasBuildingLayout) return;
+  }
 
   const layoutOutputs = entry.layouts.map((lay, idx) => {
     const index = idx + 1;

@@ -168,20 +168,23 @@ const SUFFIX_MAP = new Map(
     ["II", "II"],
     ["III", "III"],
     ["IV", "IV"],
-    ["V", "V"],
-    ["VI", "VI"],
-    ["VII", "VII"],
-    ["MD", "MD"],
-    ["DDS", "DDS"],
-    ["DVM", "DVM"],
-    ["DO", "DO"],
     ["PHD", "PhD"],
+    ["MD", "MD"],
     ["ESQ", "Esq."],
     ["ESQUIRE", "Esq."],
+    ["JD", "JD"],
+    ["LLM", "LLM"],
+    ["MBA", "MBA"],
+    ["RN", "RN"],
+    ["DDS", "DDS"],
+    ["DVM", "DVM"],
+    ["CFA", "CFA"],
     ["CPA", "CPA"],
-    ["CFP", "CFP"],
-    ["CLU", "CLU"],
-    ["AFM", "AFM"],
+    ["PE", "PE"],
+    ["PMP", "PMP"],
+    ["EMERITUS", "Emeritus"],
+    ["RET", "Ret."],
+    ["RETIRED", "Ret."],
   ],
 );
 
@@ -304,7 +307,7 @@ function parsePersonName(rawName, inheritLastName) {
       last_name: lastFromCarry,
     };
     if (prefixName) singlePerson.prefix_name = prefixName;
-    if (suffixParts.length) singlePerson.suffix_name = suffixParts.join(" ");
+    if (suffixParts.length) singlePerson.suffix_name = suffixParts[0];
     return singlePerson;
   }
 
@@ -327,7 +330,7 @@ function parsePersonName(rawName, inheritLastName) {
       };
       if (middleName) inferredPerson.middle_name = middleName;
       if (prefixName) inferredPerson.prefix_name = prefixName;
-      if (suffixParts.length) inferredPerson.suffix_name = suffixParts.join(" ");
+      if (suffixParts.length) inferredPerson.suffix_name = suffixParts[0];
       return inferredPerson;
     }
   }
@@ -377,7 +380,7 @@ function parsePersonName(rawName, inheritLastName) {
     const middleFormatted = formatNameTokens(middleTokens);
     if (middleFormatted) person.middle_name = middleFormatted;
     if (prefixName) person.prefix_name = prefixName;
-    if (suffixParts.length) person.suffix_name = suffixParts.join(" ");
+    if (suffixParts.length) person.suffix_name = suffixParts[0];
     return person;
   };
 
@@ -398,7 +401,7 @@ function parsePersonName(rawName, inheritLastName) {
     const middleFormatted = formatNameTokens(middleTokens);
     if (middleFormatted) person.middle_name = middleFormatted;
     if (prefixName) person.prefix_name = prefixName;
-    if (suffixParts.length) person.suffix_name = suffixParts.join(" ");
+    if (suffixParts.length) person.suffix_name = suffixParts[0];
     return person;
   };
 
@@ -421,7 +424,7 @@ function parsePersonName(rawName, inheritLastName) {
       const middleFormatted = formatNameTokens(tokens.slice(1));
       if (middleFormatted) personCandidate.middle_name = middleFormatted;
       if (prefixName) personCandidate.prefix_name = prefixName;
-      if (suffixParts.length) personCandidate.suffix_name = suffixParts.join(" ");
+      if (suffixParts.length) personCandidate.suffix_name = suffixParts[0];
     }
   }
 

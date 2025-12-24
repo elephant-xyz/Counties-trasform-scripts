@@ -44,16 +44,189 @@ function extractNumberAsString(text) {
   return cleaned || null; // Return null if no digits are found after cleaning
 }
 
-// Helper function to capitalize the first letter of each word
+// Helper function to capitalize the first letter of each word, handling apostrophes
 function toTitleCase(str) {
   if (!str) return "";
-  return str
+  // Trim the string first to remove leading/trailing spaces
+  const trimmed = str.trim();
+  if (!trimmed) return "";
+
+  return trimmed
     .toLowerCase()
     .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) => {
+      // Handle words with apostrophes (e.g., O'Connor, D'Angelo)
+      if (word.includes("'")) {
+        return word
+          .split("'")
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join("'");
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
     .join(" ");
 }
 
+// Fix names with space before apostrophe (e.g., "O 'CONNOR" -> "O'CONNOR")
+function fixApostropheName(name) {
+  if (!name) return name;
+  // Remove space before apostrophe
+  return name.replace(/\s+'/g, "'");
+}
+
+// Parse grantee name from "LAST FIRST MIDDLE" format
+function parseGranteeName(granteeText) {
+  if (!granteeText) return null;
+
+  // Fix apostrophe spacing issues
+  const fixed = fixApostropheName(granteeText);
+
+  // Split by spaces
+  const parts = fixed.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+
+  let firstName = null;
+  let middleName = null;
+  let lastName = null;
+  let suffixName = null;
+
+  if (parts.length === 1) {
+    // Only one part, treat as last name
+    lastName = toTitleCase(parts[0]);
+  } else if (parts.length === 2) {
+    // LAST FIRST format
+    lastName = toTitleCase(parts[0]);
+    firstName = toTitleCase(parts[1]);
+  } else if (parts.length === 3) {
+    // LAST FIRST MIDDLE format
+    lastName = toTitleCase(parts[0]);
+    firstName = toTitleCase(parts[1]);
+    // Check if third part is a suffix
+    const possibleSuffix = normalizeSuffix(parts[2]);
+    if (possibleSuffix) {
+      suffixName = possibleSuffix;
+    } else {
+      middleName = toTitleCase(parts[2]);
+    }
+  } else {
+    // LAST FIRST MIDDLE SUFFIX or more complex
+    lastName = toTitleCase(parts[0]);
+    firstName = toTitleCase(parts[1]);
+
+    // Check if last part is a suffix
+    const possibleSuffix = normalizeSuffix(parts[parts.length - 1]);
+    if (possibleSuffix) {
+      suffixName = possibleSuffix;
+      // Middle name(s) are everything between first and suffix
+      if (parts.length > 3) {
+        middleName = parts.slice(2, parts.length - 1).map(p => toTitleCase(p)).join(" ");
+      }
+    } else {
+      // No suffix, middle name(s) are everything after first
+      middleName = parts.slice(2).map(p => toTitleCase(p)).join(" ");
+    }
+  }
+
+  // Validate first_name and last_name match the required pattern
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (firstName && !namePattern.test(firstName)) {
+    // If first_name doesn't match, try to fix it
+    firstName = toTitleCase(firstName);
+  }
+  if (lastName && !namePattern.test(lastName)) {
+    // If last_name doesn't match, try to fix it
+    lastName = toTitleCase(lastName);
+  }
+
+  return {
+    first_name: firstName,
+    middle_name: middleName,
+    last_name: lastName,
+    suffix_name: suffixName
+  };
+}
+
+// Valid suffix values according to Elephant schema
+const VALID_SUFFIXES = [
+  "Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM",
+  "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."
+];
+
+// Normalize suffix to match schema enum or return null if invalid
+function normalizeSuffix(suffix) {
+  if (!suffix) return null;
+
+  // Convert to string and trim to handle any type
+  const trimmed = String(suffix).trim();
+  if (!trimmed) return null;
+
+  // Check if it's already valid
+  if (VALID_SUFFIXES.includes(trimmed)) {
+    return trimmed;
+  }
+
+  // Try to normalize common variations
+  // Remove all periods, extra spaces, and convert to uppercase
+  const normalized = trimmed.replace(/\./g, "").replace(/\s+/g, "").toUpperCase();
+
+  const suffixMap = {
+    "JR": "Jr.",
+    "JUNIOR": "Jr.",
+    "SR": "Sr.",
+    "SENIOR": "Sr.",
+    "II": "II",
+    "2": "II",
+    "2ND": "II",
+    "SECOND": "II",
+    "III": "III",
+    "3": "III",
+    "3RD": "III",
+    "THIRD": "III",
+    "IV": "IV",
+    "4": "IV",
+    "4TH": "IV",
+    "FOURTH": "IV",
+    "PHD": "PhD",
+    "MD": "MD",
+    "ESQ": "Esq.",
+    "ESQUIRE": "Esq.",
+    "JD": "JD",
+    "LLM": "LLM",
+    "MBA": "MBA",
+    "RN": "RN",
+    "DDS": "DDS",
+    "DVM": "DVM",
+    "CFA": "CFA",
+    "CPA": "CPA",
+    "PE": "PE",
+    "PMP": "PMP",
+    "EMERITUS": "Emeritus",
+    "RET": "Ret.",
+    "RETIRED": "Ret."
+  };
+
+  const result = suffixMap[normalized] || null;
+
+  // Final validation: ensure result is in VALID_SUFFIXES or null
+  if (result !== null && !VALID_SUFFIXES.includes(result)) {
+    return null;
+  }
+
+  return result;
+}
+
+// Validate name components against schema patterns
+function isValidFirstOrLastName(name) {
+  if (!name || typeof name !== 'string') return false;
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  return pattern.test(name);
+}
+
+function isValidMiddleName(name) {
+  if (!name || typeof name !== 'string') return true; // null/empty is valid
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  return pattern.test(name);
+}
 
 const propertyTypeMapping = [
   {
@@ -3068,7 +3241,8 @@ const propertyTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
 function mapPropertyTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
 
-  const normalizedInput = String(code).match(/\d{4}/)[0];
+  const matches = String(code).matchAll(/\d{4}/g); // Use 'g' flag for all matches
+  const normalizedInput = Array.from(matches).pop()?.[0]; // Convert to array, get last, then access the match
   if (!normalizedInput) return null;
 
   if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
@@ -3331,7 +3505,8 @@ function extractSales($) {
       const link = $(tds[0]).find("a").last().attr("href") || null;
       const instTypeRaw = tds.eq(2).text().trim();
       const instrumentType = mapInstrumentToDeedType(instTypeRaw);
-      const grantee = tds.eq(4).text().trim();
+      const granteeRaw = tds.eq(4).text().trim();
+      const parsedGrantee = parseGranteeName(granteeRaw);
       const priceText = tds.eq(5).text().trim();
       const price = parseCurrencyToNumber(priceText);
       let isoDate = null;
@@ -3341,9 +3516,10 @@ function extractSales($) {
         const yyyy = dm[2];
         isoDate = `${yyyy}-${mm}-01`;
       }
-      if (price !== null || grantee || dateText) {
+      if (price !== null || granteeRaw || dateText) {
         sales.push({
-          grantee,
+          grantee: granteeRaw,
+          parsedGrantee,
           dateText,
           ownership_transfer_date: isoDate,
           purchase_price_amount: price,
@@ -3377,22 +3553,37 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
   current.forEach((o) => {
     if (o.type === "person") {
       const firstName = toTitleCase(o.first_name); // Apply title case
-      const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
+      const middleName = o.middle_name ? toTitleCase(o.middle_name) || null : null;
       const lastName = toTitleCase(o.last_name); // Apply title case
-      const personKey = `${firstName}|${middleName || ""}|${lastName}`;
-      if (!res.personIndexByKey.has(personKey)) {
-        res.persons.push({
-          birth_date: null,
-          first_name: firstName,
-          last_name: lastName,
-          middle_name: middleName,
-          prefix_name: null,
-          suffix_name: null,
-          us_citizenship_status: null,
-          veteran_status: null,
-        });
-        res.personCurrentOwners.push(res.persons.length); // 1-based
-        res.personIndexByKey.set(personKey, res.persons.length); // 1-based
+      const suffixName = normalizeSuffix(o.suffix_name); // Normalize suffix to match schema
+
+      // Skip if firstName or lastName is empty after toTitleCase
+      if (!firstName || !lastName) {
+        return;
+      }
+
+      // Validate name components before adding
+      const isValid =
+        isValidFirstOrLastName(firstName) &&
+        isValidFirstOrLastName(lastName) &&
+        isValidMiddleName(middleName);
+
+      if (isValid) {
+        const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
+        if (!res.personIndexByKey.has(personKey)) {
+          res.persons.push({
+            birth_date: null,
+            first_name: firstName,
+            last_name: lastName,
+            middle_name: middleName,
+            prefix_name: null,
+            suffix_name: suffixName,
+            us_citizenship_status: null,
+            veteran_status: null,
+          });
+          res.personCurrentOwners.push(res.persons.length); // 1-based
+          res.personIndexByKey.set(personKey, res.persons.length); // 1-based
+        }
       }
     } else if (o.type === "company") {
       const name = (o.name || "").trim();
@@ -3410,21 +3601,36 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
     (owners || []).forEach((o) => {
       if (o.type === "person") {
         const firstName = toTitleCase(o.first_name); // Apply title case
-        const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
+        const middleName = o.middle_name ? toTitleCase(o.middle_name) || null : null;
         const lastName = toTitleCase(o.last_name); // Apply title case
-        const personKey = `${firstName}|${middleName || ""}|${lastName}`;
-        if (!res.personIndexByKey.has(personKey)) {
-          res.persons.push({
-            birth_date: null,
-            first_name: firstName,
-            last_name: lastName,
-            middle_name: middleName,
-            prefix_name: null,
-            suffix_name: null,
-            us_citizenship_status: null,
-            veteran_status: null,
-          });
-          res.personIndexByKey.set(personKey, res.persons.length);
+        const suffixName = normalizeSuffix(o.suffix_name); // Normalize suffix to match schema
+
+        // Skip if firstName or lastName is empty after toTitleCase
+        if (!firstName || !lastName) {
+          return;
+        }
+
+        // Validate name components before adding
+        const isValid =
+          isValidFirstOrLastName(firstName) &&
+          isValidFirstOrLastName(lastName) &&
+          isValidMiddleName(middleName);
+
+        if (isValid) {
+          const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
+          if (!res.personIndexByKey.has(personKey)) {
+            res.persons.push({
+              birth_date: null,
+              first_name: firstName,
+              last_name: lastName,
+              middle_name: middleName,
+              prefix_name: null,
+              suffix_name: suffixName,
+              us_citizenship_status: null,
+              veteran_status: null,
+            });
+            res.personIndexByKey.set(personKey, res.persons.length);
+          }
         }
       } else if (o.type === "company") {
         const name = (o.name || "").trim();
@@ -3554,18 +3760,16 @@ function parseAddressSection($, headingText) {
 }
 
 function attemptWriteAddress(unnorm, siteAddress, mailingAddress) {
-  let hasOwnerMailingAddress = false;
+  let mailingAddressData = null;
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty) {
     inputCounty = (unnorm.county_name || "").trim();
   }
   const county_name = inputCounty || null;
   if (mailingAddress) {
-    const mailingAddressObj = {
+    mailingAddressData = {
       unnormalized_address: mailingAddress,
     };
-    writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
-    hasOwnerMailingAddress = true;
   }
   if (siteAddress) {
     const addressObj = {
@@ -3580,7 +3784,7 @@ function attemptWriteAddress(unnorm, siteAddress, mailingAddress) {
                 from: { "/": `./property.json` },
               });
   }
-  return hasOwnerMailingAddress;
+  return mailingAddressData;
 }
 /**
  * Minimal Geometry model that mirrors the Elephant Geometry class.
@@ -3848,7 +4052,7 @@ function main() {
 
   const addressText = extractAddressText($);
   const mailingAddress = extractOwnerMailingAddress($);
-  const hasOwnerMailingAddress = attemptWriteAddress(unaddr, addressText, mailingAddress);
+  const mailingAddressData = attemptWriteAddress(unaddr, addressText, mailingAddress);
 
   // Lot
   const lot = extractLot($);
@@ -3870,12 +4074,17 @@ function main() {
 
   // Sales
   const sales = extractSales($);
+
+  // Collect persons from sales grantees
+  const salesPersons = [];
+  const salesPersonMap = new Map(); // Map from name key to person index
+
   sales.forEach((s, idx) => {
     const saleOut = {
       ownership_transfer_date: s.ownership_transfer_date || null,
       purchase_price_amount: s.purchase_price_amount ?? null,
     };
-    writeJSON(path.join("data", `sales_${idx + 1}.json`), saleOut);
+    writeJSON(path.join("data", `sales_history_${idx + 1}.json`), saleOut);
     let deed = { deed_type: s.instrumentType };
     if (s.book) {
       deed.book = s.book;
@@ -3884,7 +4093,7 @@ function main() {
       deed.page = s.page;
     }
     writeJSON(path.join("data", `deed_${idx + 1}.json`), deed);
-    
+
     let fileName = deed.book && deed.page ? `${deed.book}/${deed.page}` : null;
     const file = {
       document_type: "Title",
@@ -3904,62 +4113,136 @@ function main() {
     );
 
     const relSalesDeed = {
-      from: { "/": `./sales_${idx + 1}.json` },
+      from: { "/": `./sales_history_${idx + 1}.json` },
       to: { "/": `./deed_${idx + 1}.json` },
     };
     writeJSON(
-      path.join("data", `relationship_sales_deed_${idx + 1}.json`),
+      path.join("data", `relationship_sales_history_deed_${idx + 1}.json`),
       relSalesDeed,
     );
+
+    // COMMENTED OUT: sales_history_has_person is not a valid relationship class in the data group
+    // The removeUnusedOwnerFiles() function will clean up any unreferenced person files
+    /*
+    // Create person from grantee if available and valid
+    if (s.parsedGrantee && s.parsedGrantee.first_name && s.parsedGrantee.last_name) {
+      const pg = s.parsedGrantee;
+
+      // Validate all name components against schema patterns
+      const isValid =
+        isValidFirstOrLastName(pg.first_name) &&
+        isValidFirstOrLastName(pg.last_name) &&
+        isValidMiddleName(pg.middle_name || null);
+
+      // Only create person if validation passes
+      if (isValid) {
+        const personKey = `${pg.first_name}|${pg.middle_name || ""}|${pg.last_name}|${pg.suffix_name || ""}`;
+
+        // Only create person if not already created
+        if (!salesPersonMap.has(personKey)) {
+          const person = {
+            birth_date: null,
+            first_name: pg.first_name,
+            last_name: pg.last_name,
+            middle_name: pg.middle_name || null,
+            prefix_name: null,
+            suffix_name: pg.suffix_name || null,
+            us_citizenship_status: null,
+            veteran_status: null,
+          };
+          salesPersons.push(person);
+          salesPersonMap.set(personKey, salesPersons.length); // 1-based index
+        }
+
+        // Create relationship from sales_history to person
+        const personIdx = salesPersonMap.get(personKey);
+        const relSalesPerson = {
+          from: { "/": `./sales_history_${idx + 1}.json` },
+          to: { "/": `./person_${personIdx}.json` },
+        };
+        writeJSON(
+          path.join("data", `relationship_sales_history_has_person_${idx + 1}.json`),
+          relSalesPerson,
+        );
+      }
+    }
+    */
   });
+
+  // Write person files for sales grantees (COMMENTED OUT - see above)
+  /*
+  salesPersons.forEach((person, i) => {
+    const personIdx = i + 1;
+    // Final validation: ensure suffix_name is either null or a valid enum value
+    // Convert empty strings to null
+    if (person.suffix_name === "" || person.suffix_name === undefined) {
+      person.suffix_name = null;
+    }
+    // Validate against allowed values
+    if (person.suffix_name !== null && !VALID_SUFFIXES.includes(person.suffix_name)) {
+      person.suffix_name = null; // Set to null if invalid
+    }
+    // Ensure all name fields are properly formatted (trim and convert empty to null)
+    if (typeof person.first_name === "string") person.first_name = person.first_name.trim() || null;
+    if (typeof person.last_name === "string") person.last_name = person.last_name.trim() || null;
+    if (typeof person.middle_name === "string") person.middle_name = person.middle_name.trim() || null;
+    if (person.middle_name === "") person.middle_name = null;
+    writeJSON(path.join("data", `person_${personIdx}.json`), person);
+  });
+  */
 
   // Owners (persons/companies)
   const pc = buildPersonsAndCompanies(ownerJSON, parcelId);
-  pc.persons.forEach((p, i) =>
-    writeJSON(path.join("data", `person_${i + 1}.json`), p),
-  );
-  pc.companies.forEach((c, i) =>
-    writeJSON(path.join("data", `company_${i + 1}.json`), c),
-  );
+
+  // Track which person/company indices are actually used
+  // We determine this BEFORE writing files to avoid writing unused files
+  const usedPersonIndices = new Set();
+  const usedCompanyIndices = new Set();
+
+  // Mark current owners as used - they always have relationships to the property
+  pc.personCurrentOwners.forEach((idx) => {
+    usedPersonIndices.add(idx);
+  });
+  pc.companyCurrentOwners.forEach((idx) => {
+    usedCompanyIndices.add(idx);
+  });
+
+  // Write mailing address if available
+  // Only write mailing_address.json if there are current owners to link it to
+  const hasCurrentOwners = pc.personCurrentOwners.length > 0 || pc.companyCurrentOwners.length > 0;
+  const hasOwnerMailingAddress = mailingAddressData && hasCurrentOwners;
   if (hasOwnerMailingAddress) {
-    pc.personCurrentOwners.forEach((idx, i) =>
-      writeJSON(
-        path.join(
-          "data",
-          `relationship_person_has_mailing_address_${idx}.json`,
-        ),
-        {
-          from: { "/": `./person_${idx}.json` },
-          to: { "/": `./mailing_address.json` },
-        }
-      )
-    );
-    pc.companyCurrentOwners.forEach((idx, i) =>
-      writeJSON(
-        path.join(
-          "data",
-          `relationship_company_has_mailing_address_${idx}.json`,
-        ),
-        {
-          from: { "/": `./company_${idx}.json` },
-          to: { "/": `./mailing_address.json` },
-        }
-      )
-    );
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddressData);
   }
 
-  // Relationships person/company -> sales
+  // Build name-to-path maps for sales matching
   const personNameToPath = new Map();
   pc.persons.forEach((p, i) => {
     const nameVariants = [];
     const f = (p.first_name || "").trim();
     const m = (p.middle_name || "").trim();
     const l = (p.last_name || "").trim();
+    const s = (p.suffix_name || "").trim();
     if (f && l) {
       // Use the capitalized names for matching
       nameVariants.push(`${l} ${f}${m ? " " + m : ""}`.toUpperCase());
       nameVariants.push(`${f} ${m ? m + " " : ""}${l}`.toUpperCase());
       nameVariants.push(`${l} ${f}`.toUpperCase());
+      // Add variants with suffix if present (both with and without periods for matching)
+      if (s) {
+        const sNoPeriod = s.replace(/\./g, "").toUpperCase();
+        const sWithPeriod = s.toUpperCase();
+        // Add variants with suffix (without period for better matching)
+        nameVariants.push(`${l} ${f}${m ? " " + m : ""} ${sNoPeriod}`.toUpperCase());
+        nameVariants.push(`${f} ${m ? m + " " : ""}${l} ${sNoPeriod}`.toUpperCase());
+        nameVariants.push(`${l} ${f} ${sNoPeriod}`.toUpperCase());
+        // Also add with period if different
+        if (sWithPeriod !== sNoPeriod) {
+          nameVariants.push(`${l} ${f}${m ? " " + m : ""} ${sWithPeriod}`.toUpperCase());
+          nameVariants.push(`${f} ${m ? m + " " : ""}${l} ${sWithPeriod}`.toUpperCase());
+          nameVariants.push(`${l} ${f} ${sWithPeriod}`.toUpperCase());
+        }
+      }
     }
     const pth = `./person_${i + 1}.json`;
     nameVariants.forEach((v) => personNameToPath.set(v, pth));
@@ -3970,20 +4253,63 @@ function main() {
     if (nm) companyNameToPath.set(nm, `./company_${i + 1}.json`);
   });
 
+  // COMMENTED OUT: Check sales history to mark additional persons/companies as used
+  // This logic is disabled because sales history relationships are not being created
+  // (see lines 4400-4442 where the relationship creation code is commented out)
+  // If we mark persons/companies as used here but don't create relationships for them,
+  // they become "unused" files that fail validation
+  /*
   sales.forEach((s, idx) => {
     const g = normalizeNameForMatch(s.grantee);
     if (!g) return;
+
+    // First, check if the full grantee matches a company (handles companies with & in their name)
     if (companyNameToPath.has(g)) {
-      const rel = {
-        to: { "/": companyNameToPath.get(g) },
-        from: { "/": `./sales_${idx + 1}.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_sales_company_${idx + 1}.json`),
-        rel,
-      );
+      const companyPath = companyNameToPath.get(g);
+      const companyMatch = companyPath.match(/company_(\d+)\.json/);
+      if (companyMatch) {
+        usedCompanyIndices.add(parseInt(companyMatch[1], 10));
+      }
+      return; // Matched as company, done
+    }
+
+    // Check if grantee contains ampersand (joint ownership)
+    if (g.includes('&')) {
+      // Split by ampersand and process each name separately
+      const names = g.split('&').map(n => n.trim()).filter(n => n);
+      names.forEach(name => {
+        // Try company match first
+        if (companyNameToPath.has(name)) {
+          const companyPath = companyNameToPath.get(name);
+          const companyMatch = companyPath.match(/company_(\d+)\.json/);
+          if (companyMatch) {
+            usedCompanyIndices.add(parseInt(companyMatch[1], 10));
+          }
+        } else {
+          // Try person match
+          let toPath = null;
+          if (personNameToPath.has(name)) {
+            toPath = personNameToPath.get(name);
+          } else {
+            const parts = name.split(/\s+/);
+            if (parts.length >= 2) {
+              const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
+                .toUpperCase()
+                .trim();
+              if (personNameToPath.has(swapped))
+                toPath = personNameToPath.get(swapped);
+            }
+          }
+          if (toPath) {
+            const personMatch = toPath.match(/person_(\d+)\.json/);
+            if (personMatch) {
+              usedPersonIndices.add(parseInt(personMatch[1], 10));
+            }
+          }
+        }
+      });
     } else {
-      // try direct or swapped person match
+      // Single owner - try person match
       let toPath = null;
       if (personNameToPath.has(g)) {
         toPath = personNameToPath.get(g);
@@ -3998,17 +4324,202 @@ function main() {
         }
       }
       if (toPath) {
+        // Extract person index from path (e.g., "./person_1.json" -> 1)
+        const personMatch = toPath.match(/person_(\d+)\.json/);
+        if (personMatch) {
+          usedPersonIndices.add(parseInt(personMatch[1], 10));
+        }
+      }
+    }
+  });
+  */
+
+  // Now write only the used person and company files
+  pc.persons.forEach((p, i) => {
+    const personIdx = i + 1;
+    if (usedPersonIndices.has(personIdx)) {
+      // Final validation: ensure suffix_name is either null or a valid enum value
+      // Convert empty strings to null
+      if (p.suffix_name === "" || p.suffix_name === undefined) {
+        p.suffix_name = null;
+      }
+      // Validate against allowed values
+      if (p.suffix_name !== null && !VALID_SUFFIXES.includes(p.suffix_name)) {
+        p.suffix_name = null; // Set to null if invalid
+      }
+      // Ensure all name fields are properly formatted (trim and convert empty to null)
+      if (typeof p.first_name === "string") p.first_name = p.first_name.trim() || null;
+      if (typeof p.last_name === "string") p.last_name = p.last_name.trim() || null;
+      if (typeof p.middle_name === "string") p.middle_name = p.middle_name.trim() || null;
+      if (p.middle_name === "") p.middle_name = null;
+      writeJSON(path.join("data", `person_${personIdx}.json`), p);
+    }
+  });
+  pc.companies.forEach((c, i) => {
+    const companyIdx = i + 1;
+    if (usedCompanyIndices.has(companyIdx)) {
+      writeJSON(path.join("data", `company_${companyIdx}.json`), c);
+    }
+  });
+
+  // Write ownership relationships for current owners (connect to property)
+  pc.personCurrentOwners.forEach((idx) => {
+    if (usedPersonIndices.has(idx)) {
+      writeJSON(
+        path.join(
+          "data",
+          `relationship_property_has_person_owner_${idx}.json`,
+        ),
+        {
+          from: { "/": `./property.json` },
+          to: { "/": `./person_${idx}.json` },
+        }
+      );
+    }
+  });
+  pc.companyCurrentOwners.forEach((idx) => {
+    if (usedCompanyIndices.has(idx)) {
+      writeJSON(
+        path.join(
+          "data",
+          `relationship_property_has_company_owner_${idx}.json`,
+        ),
+        {
+          from: { "/": `./property.json` },
+          to: { "/": `./company_${idx}.json` },
+        }
+      );
+    }
+  });
+
+  // Write mailing address relationships for current owners
+  if (hasOwnerMailingAddress) {
+    pc.personCurrentOwners.forEach((idx) => {
+      writeJSON(
+        path.join(
+          "data",
+          `relationship_person_has_mailing_address_${idx}.json`,
+        ),
+        {
+          from: { "/": `./person_${idx}.json` },
+          to: { "/": `./mailing_address.json` },
+        }
+      );
+    });
+    pc.companyCurrentOwners.forEach((idx) => {
+      writeJSON(
+        path.join(
+          "data",
+          `relationship_company_has_mailing_address_${idx}.json`,
+        ),
+        {
+          from: { "/": `./company_${idx}.json` },
+          to: { "/": `./mailing_address.json` },
+        }
+      );
+    });
+  }
+
+  // Write sales history relationships
+  // COMMENTED OUT: These relationships don't match valid Elephant relationship classes in the data group
+  // The removeUnusedOwnerFiles() function will clean up any unreferenced person/company files
+  /*
+  sales.forEach((s, idx) => {
+    const g = normalizeNameForMatch(s.grantee);
+    if (!g) return;
+
+    let personCounter = 0;
+    let companyCounter = 0;
+
+    // First, check if the full grantee matches a company (handles companies with & in their name)
+    if (companyNameToPath.has(g)) {
+      const companyPath = companyNameToPath.get(g);
+      companyCounter++;
+      const rel = {
+        from: { "/": `./sales_history_${idx + 1}.json` },
+        to: { "/": companyPath },
+      };
+      writeJSON(
+        path.join("data", `relationship_sales_history_${idx + 1}_buyer_company_${companyCounter}.json`),
+        rel,
+      );
+      return; // Matched as company, done
+    }
+
+    // Check if grantee contains ampersand (joint ownership)
+    if (g.includes('&')) {
+      // Split by ampersand and create relationships for each matched person/company
+      const names = g.split('&').map(n => n.trim()).filter(n => n);
+      names.forEach(name => {
+        // Try company match first
+        if (companyNameToPath.has(name)) {
+          const companyPath = companyNameToPath.get(name);
+          companyCounter++;
+          const rel = {
+            from: { "/": `./sales_history_${idx + 1}.json` },
+            to: { "/": companyPath },
+          };
+          writeJSON(
+            path.join("data", `relationship_sales_history_${idx + 1}_buyer_company_${companyCounter}.json`),
+            rel,
+          );
+        } else {
+          // Try person match
+          let toPath = null;
+          if (personNameToPath.has(name)) {
+            toPath = personNameToPath.get(name);
+          } else {
+            const parts = name.split(/\s+/);
+            if (parts.length >= 2) {
+              const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
+                .toUpperCase()
+                .trim();
+              if (personNameToPath.has(swapped))
+                toPath = personNameToPath.get(swapped);
+            }
+          }
+          if (toPath) {
+            personCounter++;
+            const rel = {
+              from: { "/": `./sales_history_${idx + 1}.json` },
+              to: { "/": toPath },
+            };
+            writeJSON(
+              path.join("data", `relationship_sales_history_${idx + 1}_buyer_person_${personCounter}.json`),
+              rel,
+            );
+          }
+        }
+      });
+    } else {
+      // Single owner - try person match
+      let toPath = null;
+      if (personNameToPath.has(g)) {
+        toPath = personNameToPath.get(g);
+      } else {
+        const parts = g.split(/\s+/);
+        if (parts.length >= 2) {
+          const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
+            .toUpperCase()
+            .trim();
+          if (personNameToPath.has(swapped))
+            toPath = personNameToPath.get(swapped);
+        }
+      }
+      if (toPath) {
+        personCounter++;
         const rel = {
+          from: { "/": `./sales_history_${idx + 1}.json` },
           to: { "/": toPath },
-          from: { "/": `./sales_${idx + 1}.json` },
         };
         writeJSON(
-          path.join("data", `relationship_sales_person_${idx + 1}.json`),
+          path.join("data", `relationship_sales_history_${idx + 1}_buyer_person_${personCounter}.json`),
           rel,
         );
       }
     }
   });
+  */
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
     const lset =
@@ -4100,7 +4611,71 @@ function main() {
       idx++;
     }
   }
-  
+
+  // Remove unused person and company files
+  removeUnusedOwnerFiles();
+}
+
+function removeUnusedOwnerFiles() {
+  const dataDir = "data";
+  try {
+    const files = fs.readdirSync(dataDir);
+
+    // Track which persons and companies are referenced in relationships
+    const referencedPersons = new Set();
+    const referencedCompanies = new Set();
+
+    // Read all relationship files to find references
+    files.forEach((file) => {
+      if (file.startsWith("relationship_") && file.endsWith(".json")) {
+        try {
+          const relPath = path.join(dataDir, file);
+          const relContent = fs.readFileSync(relPath, "utf8");
+          const rel = JSON.parse(relContent);
+
+          // Check "from" and "to" for person/company references
+          [rel.from, rel.to].forEach((ref) => {
+            if (ref && ref["/"]) {
+              const target = ref["/"];
+              // Match person_X.json or ./person_X.json
+              const personMatch = target.match(/(?:\.\/)?person_(\d+)\.json/);
+              if (personMatch) {
+                referencedPersons.add(parseInt(personMatch[1], 10));
+              }
+              // Match company_X.json or ./company_X.json
+              const companyMatch = target.match(/(?:\.\/)?company_(\d+)\.json/);
+              if (companyMatch) {
+                referencedCompanies.add(parseInt(companyMatch[1], 10));
+              }
+            }
+          });
+        } catch (e) {
+          // Skip files that can't be read or parsed
+        }
+      }
+    });
+
+    // Remove unreferenced person and company files
+    files.forEach((file) => {
+      const personMatch = file.match(/^person_(\d+)\.json$/);
+      if (personMatch) {
+        const idx = parseInt(personMatch[1], 10);
+        if (!referencedPersons.has(idx)) {
+          fs.unlinkSync(path.join(dataDir, file));
+        }
+      }
+
+      const companyMatch = file.match(/^company_(\d+)\.json$/);
+      if (companyMatch) {
+        const idx = parseInt(companyMatch[1], 10);
+        if (!referencedCompanies.has(idx)) {
+          fs.unlinkSync(path.join(dataDir, file));
+        }
+      }
+    });
+  } catch (e) {
+    // If data directory doesn't exist or can't be read, skip cleanup
+  }
 }
 
 if (require.main === module) {

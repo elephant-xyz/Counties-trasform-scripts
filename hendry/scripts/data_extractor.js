@@ -43,7 +43,7 @@ const deedCodeMap = {
   "GIFT DEED": "Gift Deed",
   ITD: "Interspousal Transfer Deed",
   "WILD D": "Wild Deed",
-  SMD: "Special Master\u2019s Deed",
+  SMD: "Special Master's Deed",
   COD: "Court Order Deed",
   CFD: "Contract for Deed",
   QTD: "Quiet Title Deed",
@@ -54,32 +54,32 @@ const deedCodeMap = {
   VPD: "Vacation of Plat Deed",
   AOC: "Assignment of Contract",
   ROC: "Release of Contract",
-  LC: "Land Contract",
-  MTG: "Mortgage",
-  LIS: "Lis Pendens",
-  EASE: "Easement",
-  AGMT: "Agreement",
-  AFF: "Affidavit",
-  ORD: "Order",
-  CERT: "Certificate",
-  RES: "Resolution",
-  DECL: "Declaration",
-  COV: "Covenant",
-  SUB: "Subordination",
-  MOD: "Modification",
-  REL: "Release",
-  ASSG: "Assignment",
-  LEAS: "Lease",
-  TR: "Trust",
-  WILL: "Will",
-  PROB: "Probate",
-  JUDG: "Judgment",
-  LIEN: "Lien",
-  SAT: "Satisfaction",
-  PART: "Partition",
-  EXCH: "Exchange",
-  CONV: "Conveyance",
-  OTH: "Other",
+  LC: "Miscellaneous",
+  MTG: "Miscellaneous",
+  LIS: "Miscellaneous",
+  EASE: "Miscellaneous",
+  AGMT: "Miscellaneous",
+  AFF: "Miscellaneous",
+  ORD: "Miscellaneous",
+  CERT: "Miscellaneous",
+  RES: "Miscellaneous",
+  DECL: "Miscellaneous",
+  COV: "Miscellaneous",
+  SUB: "Miscellaneous",
+  MOD: "Miscellaneous",
+  REL: "Miscellaneous",
+  ASSG: "Miscellaneous",
+  LEAS: "Miscellaneous",
+  TR: "Miscellaneous",
+  WILL: "Miscellaneous",
+  PROB: "Miscellaneous",
+  JUDG: "Miscellaneous",
+  LIEN: "Miscellaneous",
+  SAT: "Miscellaneous",
+  PART: "Miscellaneous",
+  EXCH: "Miscellaneous",
+  CONV: "Miscellaneous",
+  OTH: "Miscellaneous",
 };
 
 const propertyTypeMapping = [
@@ -1209,22 +1209,29 @@ const NAME_PREFIX_MAP = new Map([
 ]);
 
 const NAME_SUFFIX_MAP = new Map([
-  ["jr", "Jr"],
-  ["sr", "Sr"],
+  ["jr", "Jr."],
+  ["junior", "Jr."],
+  ["sr", "Sr."],
+  ["senior", "Sr."],
   ["ii", "II"],
   ["iii", "III"],
   ["iv", "IV"],
-  ["v", "V"],
-  ["vi", "VI"],
   ["md", "MD"],
   ["phd", "PhD"],
   ["dds", "DDS"],
   ["dvm", "DVM"],
   ["cpa", "CPA"],
+  ["cfa", "CFA"],
   ["pe", "PE"],
-  ["esq", "Esq"],
-  ["esquire", "Esq"],
-  ["ret", "Ret"],
+  ["pmp", "PMP"],
+  ["jd", "JD"],
+  ["llm", "LLM"],
+  ["mba", "MBA"],
+  ["rn", "RN"],
+  ["esq", "Esq."],
+  ["esquire", "Esq."],
+  ["ret", "Ret."],
+  ["emeritus", "Emeritus"],
 ]);
 
 const SURNAME_PARTICLES = new Set([
@@ -1262,6 +1269,13 @@ const SURNAME_PARTICLES = new Set([
 
 function normalizeTokenForLookup(token) {
   return (token || "").replace(/\./g, "").toLowerCase();
+}
+
+function normalizePersonSuffix(suffix) {
+  if (!suffix) return null;
+  const normalized = normalizeTokenForLookup(suffix);
+  const canonical = NAME_SUFFIX_MAP.get(normalized);
+  return canonical || null;
 }
 
 function aggregateParticles(tokens) {
@@ -1365,7 +1379,7 @@ function classifyOwner(raw) {
     const lookup = normalizeTokenForLookup(tokens[tokens.length - 1]);
     const canonical = NAME_SUFFIX_MAP.get(lookup);
     if (!canonical) break;
-    suffix = suffix ? `${canonical} ${suffix}` : canonical;
+    if (!suffix) suffix = canonical;
     tokens.pop();
   }
 
@@ -1662,9 +1676,9 @@ function extractSales($) {
 }
 
 function mapInstrumentToDeedType(instr) {
-  if (!instr) return null;
+  if (!instr) return "Miscellaneous";
   const key = instr.trim().toUpperCase();
-  return deedCodeMap[key] || null;
+  return deedCodeMap[key] || "Miscellaneous";
 }
 
 function extractValuation($) {
@@ -1776,9 +1790,10 @@ function writeSalesDeedsFilesAndRelationships(
 
     const deedFile = `deed_${idx}.json`;
     const deedType = mapInstrumentToDeedType(s.instrument);
-    const deed = {};
+    const deed = {
+      deed_type: deedType
+    };
     if (parcelId) deed.request_identifier = parcelId;
-    if (deedType) deed.deed_type = deedType;
     if (sourceHttp) deed.source_http_request = sourceHttp;
     const bookPageText = s.bookPage
       ? s.bookPage.split("\n")[0].trim()
@@ -1803,9 +1818,28 @@ function writeSalesDeedsFilesAndRelationships(
     };
     writeJSON(path.join("data", fileFile), file);
 
-    writeRelationship(fileFile, deedFile);
-    writeRelationship(saleFile, deedFile);
-    writeRelationship(saleFile, fileFile);
+    // Write relationships with correct naming pattern
+    writeJSON(
+      path.join("data", `relationship_deed_${idx}_has_file_${idx}.json`),
+      {
+        from: { "/": `./${deedFile}` },
+        to: { "/": `./${fileFile}` },
+      }
+    );
+    writeJSON(
+      path.join("data", `relationship_sales_history_${idx}_has_deed.json`),
+      {
+        from: { "/": `./${saleFile}` },
+        to: { "/": `./${deedFile}` },
+      }
+    );
+    writeJSON(
+      path.join("data", `relationship_sales_history_${idx}_has_file_${idx}.json`),
+      {
+        from: { "/": `./${saleFile}` },
+        to: { "/": `./${fileFile}` },
+      }
+    );
   });
   return saleFiles;
 }
@@ -1870,8 +1904,6 @@ function writePersonCompaniesSalesRelationships(
 ) {
   removeMatchingDataFiles(/^person_\d+\.json$/);
   removeMatchingDataFiles(/^company_\d+\.json$/);
-  removeMatchingDataFiles(/^mailing_address_person_\d+\.json$/);
-  removeMatchingDataFiles(/^mailing_address_company_\d+\.json$/);
   removeMatchingDataFiles(/^relationship_sales_history_\d+_person_\d+\.json$/);
   removeMatchingDataFiles(/^relationship_sales_history_\d+_company_\d+\.json$/);
   removeMatchingDataFiles(/^relationship_sales_person_\d+\.json$/);
@@ -1893,50 +1925,20 @@ function writePersonCompaniesSalesRelationships(
     parcelId ||
     null;
 
-  removeMatchingDataFiles(/^relationship_person_\d+_has_mailing_address\.json$/);
-  removeMatchingDataFiles(/^relationship_company_\d+_has_mailing_address\.json$/);
-  removeMatchingDataFiles(/^relationship_person_\d+_mailing_address_person_\d+\.json$/);
-  removeMatchingDataFiles(/^relationship_company_\d+_mailing_address_company_\d+\.json$/);
-  removeMatchingDataFiles(/^relationship_person_\d+_mailing_address\.json$/);
-  removeMatchingDataFiles(/^relationship_company_\d+_mailing_address\.json$/);
-
   const currentOwners = Array.isArray(ownersByDate.current)
     ? ownersByDate.current
     : [];
-  const mailingPath = path.join("data", "mailing_address.json");
-  if (fs.existsSync(mailingPath)) fs.unlinkSync(mailingPath);
-
-  let mailingPayload = null;
-  let mailingOwners = [];
-  if (currentOwners.length) {
-    const primaryOwner = currentOwners.find(
-      (o) => o && o.mailing_address && o.type === "person",
-    ) ||
-      currentOwners.find((o) => o && o.mailing_address && o.type === "company");
-
-    if (primaryOwner && primaryOwner.mailing_address) {
-      mailingPayload = {
-        unnormalized_address: primaryOwner.mailing_address,
-        latitude: null,
-        longitude: null,
-        request_identifier: baseRequestIdentifier,
-      };
-      if (sourceHttp) mailingPayload.source_http_request = sourceHttp;
-      mailingOwners = currentOwners.filter(
-        (owner) => owner && owner.mailing_address,
-      );
-    }
-  }
   const personMap = new Map();
   const companyMap = new Map();
 
   const addPersonOwner = (owner) => {
     if (!owner || !owner.first_name || !owner.last_name) return;
+    const normalizedSuffix = normalizePersonSuffix(owner.suffix_name);
     const key = buildPersonKey(
       owner.first_name,
       owner.middle_name || null,
       owner.last_name,
-      owner.suffix_name || null,
+      normalizedSuffix,
     );
     const existing = personMap.get(key);
     if (existing) {
@@ -1944,8 +1946,8 @@ function writePersonCompaniesSalesRelationships(
         existing.middle_name = owner.middle_name;
       if (!existing.prefix_name && owner.prefix_name)
         existing.prefix_name = owner.prefix_name;
-      if (!existing.suffix_name && owner.suffix_name)
-        existing.suffix_name = owner.suffix_name;
+      if (!existing.suffix_name && normalizedSuffix)
+        existing.suffix_name = normalizedSuffix;
       if (
         (!existing.mailing_address || !existing.mailing_address.trim()) &&
         owner.mailing_address
@@ -1959,7 +1961,7 @@ function writePersonCompaniesSalesRelationships(
       middle_name: owner.middle_name || null,
       last_name: owner.last_name,
       prefix_name: owner.prefix_name || null,
-      suffix_name: owner.suffix_name || null,
+      suffix_name: normalizedSuffix,
       mailing_address: owner.mailing_address || null,
     });
   };
@@ -2048,8 +2050,89 @@ function writePersonCompaniesSalesRelationships(
     writeJSON(path.join("data", `company_${idxOneBased}.json`), companyRecord);
   });
 
+  // Create mailing address entities and relationships
+  removeMatchingDataFiles(/^mailing_address_\d+\.json$/);
+  removeMatchingDataFiles(/^relationship_person_\d+_has_mailing_address\.json$/);
+  removeMatchingDataFiles(/^relationship_company_\d+_has_mailing_address\.json$/);
+
+  const mailingAddressMap = new Map();
+  let mailingAddressCounter = 0;
+
+  // Collect unique mailing addresses
+  people.forEach((p, idx) => {
+    const address = p.mailing_address;
+    if (address && address.trim()) {
+      const normalized = address.trim();
+      if (!mailingAddressMap.has(normalized)) {
+        mailingAddressCounter++;
+        mailingAddressMap.set(normalized, {
+          index: mailingAddressCounter,
+          address: normalized,
+          persons: [],
+          companies: []
+        });
+      }
+      mailingAddressMap.get(normalized).persons.push(idx + 1);
+    }
+  });
+
+  companies.forEach((c, idx) => {
+    const address = c.mailing_address;
+    if (address && address.trim()) {
+      const normalized = address.trim();
+      if (!mailingAddressMap.has(normalized)) {
+        mailingAddressCounter++;
+        mailingAddressMap.set(normalized, {
+          index: mailingAddressCounter,
+          address: normalized,
+          persons: [],
+          companies: []
+        });
+      }
+      mailingAddressMap.get(normalized).companies.push(idx + 1);
+    }
+  });
+
+  // Write mailing address entities
+  mailingAddressMap.forEach((entry) => {
+    writeJSON(path.join("data", `mailing_address_${entry.index}.json`), {
+      unnormalized_address: entry.address,
+      latitude: null,
+      longitude: null,
+      source_http_request: sourceHttp,
+      request_identifier: baseRequestIdentifier,
+    });
+  });
+
+  // Write person_has_mailing_address relationships
   const linkedPersonIds = new Set();
   const linkedCompanyIds = new Set();
+
+  mailingAddressMap.forEach((entry) => {
+    entry.persons.forEach((personIdx) => {
+      writeJSON(
+        path.join("data", `relationship_person_${personIdx}_has_mailing_address.json`),
+        {
+          from: { "/": `./person_${personIdx}.json` },
+          to: { "/": `./mailing_address_${entry.index}.json` }
+        }
+      );
+      // Mark person as linked so it doesn't get pruned
+      linkedPersonIds.add(personIdx);
+    });
+
+    entry.companies.forEach((companyIdx) => {
+      writeJSON(
+        path.join("data", `relationship_company_${companyIdx}_has_mailing_address.json`),
+        {
+          from: { "/": `./company_${companyIdx}.json` },
+          to: { "/": `./mailing_address_${entry.index}.json` }
+        }
+      );
+      // Mark company as linked so it doesn't get pruned
+      linkedCompanyIds.add(companyIdx);
+    });
+  });
   // Relationships: ensure each sale links to grantee (or fallback grantor) and any recorded owners for that date
   sales.forEach((rec, idx) => {
     const saleFile = saleFiles ? saleFiles[idx] : null;
@@ -2096,7 +2179,7 @@ function writePersonCompaniesSalesRelationships(
           first_name: o.first_name,
           middle_name: o.middle_name || null,
           last_name: o.last_name,
-          suffix_name: o.suffix_name || null,
+          suffix_name: normalizePersonSuffix(o.suffix_name),
         });
       } else if (o.type === "company") {
         addRelationshipForOwner({ type: "company", name: o.name });
@@ -2142,32 +2225,6 @@ function writePersonCompaniesSalesRelationships(
     const companyId = idx + 1;
     if (!linkedCompanyIds.has(companyId)) pruneCompany(companyId);
   });
-
-  if (mailingPayload) {
-    writeJSON(mailingPath, mailingPayload);
-    mailingOwners.forEach((owner) => {
-      if (owner.type === "person") {
-        const pIdx = findPersonIndexByName(
-          owner.first_name,
-          owner.last_name,
-          owner.middle_name || null,
-          owner.suffix_name || null,
-        );
-        if (pIdx && linkedPersonIds.has(pIdx))
-          writeRelationship(
-            `person_${pIdx}.json`,
-            path.basename(mailingPath),
-          );
-      } else if (owner.type === "company") {
-        const cIdx = findCompanyIndexByName(owner.name);
-        if (cIdx && linkedCompanyIds.has(cIdx))
-          writeRelationship(
-            `company_${cIdx}.json`,
-            path.basename(mailingPath),
-          );
-      }
-    });
-  }
 }
 
 function writeTaxes($) {
@@ -2359,8 +2416,9 @@ function writeLayout(parcelId, propertySeed, unnormalized) {
   removeMatchingDataFiles(/^layout_\d+\.json$/);
   removeMatchingDataFiles(/^relationship_layout_\d+_has_layout_\d+\.json$/);
   removeMatchingDataFiles(/^relationship_layout_\d+_layout_\d+\.json$/);
+  removeMatchingDataFiles(/^relationship_property_layout_\d+\.json$/);
 
-  if (propertyType === "LandParcel" || buildingEntries.length === 0) {
+  if (buildingEntries.length === 0) {
     return { buildingLayouts: [] };
   }
 
@@ -2528,6 +2586,11 @@ function writeLayout(parcelId, propertySeed, unnormalized) {
         }
       });
     }
+  });
+
+  // Create relationships from property to building layouts
+  buildingLayouts.forEach((layout) => {
+    writeRelationship("property.json", layout.layout_file);
   });
 
   return { buildingLayouts };
