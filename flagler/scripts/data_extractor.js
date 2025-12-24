@@ -40,6 +40,24 @@ function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
+const BOOLEAN_TRUE_VALUES = new Set(["y", "yes", "true", "t", "1"]);
+const BOOLEAN_FALSE_VALUES = new Set(["n", "no", "false", "f", "0"]);
+
+function normalizeBooleanFlag(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  if (value == null) return false;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return false;
+    return value !== 0;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized.length) return false;
+  if (BOOLEAN_TRUE_VALUES.has(normalized)) return true;
+  if (BOOLEAN_FALSE_VALUES.has(normalized)) return false;
+  return false;
+}
+
 function slugify(value) {
   const text = value == null ? "" : String(value);
   const sanitized = text.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
@@ -446,7 +464,9 @@ function cleanText(text) {
 }
 
 function titleCase(str) {
-  return (str || "").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  // Only capitalize letter sequences, ignore special characters
+  // This ensures names match the pattern ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  return (str || "").replace(/[A-Za-z]+/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 }
 
 const COMPANY_KEYWORDS =
@@ -490,9 +510,21 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   if (!tokens || !tokens.length) return null;
   if (tokens.length === 1) return null;
 
-  let last = tokens[0];
-  let first = tokens[1] || null;
-  let middle = tokens.length > 2 ? tokens.slice(2).join(" ") : null;
+  // Helper to clean name parts - remove trailing periods and special chars
+  const cleanNamePart = (part) => {
+    if (!part) return part;
+    // Remove any non-letter characters except internal spaces, hyphens, apostrophes, commas, periods
+    let cleaned = part.replace(/[^A-Za-z\s\-',.]/g, "").trim();
+    // Remove leading delimiters (periods, commas, hyphens, apostrophes) to match pattern
+    cleaned = cleaned.replace(/^[ \-',.]+/, '');
+    // Remove trailing delimiters (periods, commas, hyphens, apostrophes) to match pattern
+    cleaned = cleaned.replace(/[ \-',.]+$/, '');
+    return cleaned;
+  };
+
+  let last = cleanNamePart(tokens[0]);
+  let first = cleanNamePart(tokens[1]) || null;
+  let middle = tokens.length > 2 ? tokens.slice(2).map(cleanNamePart).join(" ").trim() : null;
 
   if (
     fallbackLastName &&
@@ -501,20 +533,23 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     tokens[0] === tokens[0].toUpperCase() &&
     tokens[1]
   ) {
-    first = tokens[0];
-    middle = tokens[1] || null;
+    first = cleanNamePart(tokens[0]);
+    middle = cleanNamePart(tokens[1]) || null;
     last = fallbackLastName;
   }
 
   if (middle) {
     const mids = middle.split(" ").filter((t) => !SUFFIXES_IGNORE.test(t));
-    middle = mids.join(" ") || null;
+    middle = mids.join(" ").trim() || null;
   }
+
+  // Don't create person if essential name parts are empty after cleaning
+  if (!first || !last) return null;
 
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
+    first_name: titleCase(first),
+    last_name: titleCase(last),
     middle_name: middle ? titleCase(middle) : null,
   };
 }
@@ -769,7 +804,7 @@ const PROPERTY_USE_DESCRIPTION_MAP = new Map([
   ["MINERAL PROCESSING", { property_usage_type: "MineralProcessing" }],
   ["MINI MART", { property_usage_type: "RetailStore" }],
   ["MISCELLANEOUS", { property_usage_type: "Unknown" }],
-  ["MIXED COMMERCIAL", { property_usage_type: "MixedUse" }],
+  ["MIXED COMMERCIAL", { property_usage_type: "Commercial" }],
   ["MOBILE HOME", { property_usage_type: "Residential", property_type: "ManufacturedHome", structure_form: "ManufacturedHousing" }],
   ["MODULAR HOME", { property_usage_type: "Residential", property_type: "ManufacturedHome", structure_form: "ManufacturedHousing" }],
   ["MORTUARY CEMETE", { property_usage_type: "MortuaryCemetery", property_type: "LandParcel", build_status: "Improved" }],
@@ -880,7 +915,7 @@ const PROPERTY_USE_DESCRIPTION_PATTERNS = [
   },
   {
     pattern: /MIXED/i,
-    overrides: { property_usage_type: "MixedUse" },
+    overrides: { property_usage_type: "Commercial" },
   },
 ];
 
@@ -1927,11 +1962,16 @@ function normalizeOwner(owner, ownersByDate) {
         c.first_name &&
         c.first_name.toLowerCase().startsWith(owner.first_name.toLowerCase())
       ) {
+        // Apply titleCase to ensure proper formatting from external data
+        const normalizedFirst = titleCase(c.first_name || owner.first_name || "");
+        const normalizedMiddle = c.middle_name != null ? titleCase(c.middle_name) : owner.middle_name;
+        const normalizedLast = titleCase(c.last_name || owner.last_name || "");
+
         return {
           ...owner,
-          first_name: c.first_name || owner.first_name,
-          middle_name:
-            c.middle_name != null ? c.middle_name : owner.middle_name,
+          first_name: normalizedFirst,
+          middle_name: normalizedMiddle,
+          last_name: normalizedLast,
         };
       }
     }
@@ -2068,22 +2108,42 @@ function main() {
 
   function createPersonRecord(personData) {
     if (!personData) return null;
-    const firstName =
+    // Clean and normalize names: remove extra whitespace and apply titleCase
+    const firstRaw =
       personData.first_name != null
-        ? String(personData.first_name).trim()
+        ? cleanText(String(personData.first_name))
         : "";
-    const lastName =
-      personData.last_name != null ? String(personData.last_name).trim() : "";
+    const lastRaw =
+      personData.last_name != null
+        ? cleanText(String(personData.last_name))
+        : "";
     const middleRaw =
       personData.middle_name != null
-        ? String(personData.middle_name).trim()
+        ? cleanText(String(personData.middle_name))
         : "";
+
+    // Apply titleCase to ensure proper capitalization
+    const firstName = firstRaw ? titleCase(firstRaw) : "";
+    const lastName = lastRaw ? titleCase(lastRaw) : "";
+    const middleFormatted = middleRaw ? titleCase(middleRaw) : "";
+
+    // Validate first_name and last_name against required pattern
+    const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+
+    // If first_name or last_name don't match the pattern, don't create the person
+    if (!firstName || !namePattern.test(firstName)) {
+      return null;
+    }
+    if (!lastName || !namePattern.test(lastName)) {
+      return null;
+    }
+
     // Validate middle_name matches pattern ^[A-Z][a-zA-Z\s\-',.]*$ or set to null
     const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-    const middleName = middleRaw && middleNamePattern.test(middleRaw) ? middleRaw : null;
+    const middleName = middleFormatted && middleNamePattern.test(middleFormatted) ? middleFormatted : null;
     const key =
       firstName || lastName
-        ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
+        ? `${firstName.toLowerCase()}|${(middleName || "").toLowerCase()}|${lastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {
@@ -2094,8 +2154,8 @@ function main() {
     const filename = `person_${personIndex}.json`;
     const personObj = {
       birth_date: personData.birth_date || null,
-      first_name: firstName || "",
-      last_name: lastName || "",
+      first_name: firstName,
+      last_name: lastName,
       middle_name: middleName,
       prefix_name:
         personData && personData.prefix_name != null
@@ -2147,13 +2207,7 @@ function main() {
     structure_form: propertyUse.structure_form || null,
     property_usage_type: propertyUse.property_usage_type || null,
     property_type: propertyUse.property_type,
-    number_of_units_type: binfo.type === "DUPLEX" ? "Two" :
-                          binfo.type === "TRI/QUADRAPLEX" ? "TwoToFour" : "One",
     property_structure_built_year: parseIntSafe(binfo.actYear),
-    property_effective_built_year: parseIntSafe(binfo.effYear),
-    livable_floor_area: binfo.heatedArea ? `${parseIntSafe(binfo.heatedArea).toLocaleString()} sq ft` : null,
-    total_area: binfo.totalArea ? `${parseIntSafe(binfo.totalArea).toLocaleString()} sq ft` : null,
-    area_under_air: binfo.heatedArea ? `${parseIntSafe(binfo.heatedArea).toLocaleString()} sq ft` : null,
     property_legal_description_text: legalDesc || null,
     subdivision: subdivision && subdivision.length ? subdivision : null,
     zoning: zoning || null,
@@ -2165,7 +2219,6 @@ function main() {
   };
   if (property.property_type === "LandParcel") {
     property.number_of_units = null;
-    property.number_of_units_type = null;
   }
   const propertyFilename = "property.json";
   const propertyPath = `./${propertyFilename}`;
@@ -2235,25 +2288,123 @@ function main() {
     request_identifier: requestIdentifier,
   };
 
-  const structureItems = (() => {
-    const wrap = (entry, buildingIndex = null) => ({
-      data: {
-        ...baseStructure,
-        ...entry,
-        source_http_request:
-          entry && entry.source_http_request != null
-            ? entry.source_http_request
-            : clone(defaultSourceHttpRequest),
-        request_identifier:
-          entry && entry.request_identifier != null
-            ? entry.request_identifier
-            : requestIdentifier,
-      },
-      buildingIndex:
-        Number.isFinite(parseIntSafe(buildingIndex)) ?
-          parseIntSafe(buildingIndex) :
-          null,
+  const cleanStructureEntry = (entry) => {
+    if (!entry || typeof entry !== "object") return {};
+    const cleaned = { ...entry };
+    delete cleaned.buildings;
+    return cleaned;
+  };
+
+  const baseUtility = {
+    heating_system_type: null,
+    heating_fuel_type: null,
+    cooling_system_type: null,
+    public_utility_type: null,
+    sewer_type: null,
+    water_source_type: null,
+    plumbing_system_type: null,
+    plumbing_system_type_other_description: null,
+    electrical_panel_capacity: null,
+    electrical_wiring_type: null,
+    hvac_condensing_unit_present: null,
+    electrical_wiring_type_other_description: null,
+    solar_panel_present: null,
+    solar_panel_type: null,
+    solar_panel_type_other_description: null,
+    solar_inverter_visible: null,
+    smart_home_features: null,
+    smart_home_features_other_description: null,
+    hvac_unit_condition: null,
+    hvac_unit_issues: null,
+  };
+
+  const UTILITY_ALLOWED_KEYS = new Set([
+    "heating_system_type",
+    "heating_fuel_type",
+    "cooling_system_type",
+    "public_utility_type",
+    "sewer_type",
+    "water_source_type",
+    "plumbing_system_type",
+    "plumbing_system_type_other_description",
+    "electrical_panel_capacity",
+    "electrical_wiring_type",
+    "hvac_condensing_unit_present",
+    "electrical_wiring_type_other_description",
+    "solar_panel_present",
+    "solar_panel_type",
+    "solar_panel_type_other_description",
+    "solar_inverter_visible",
+    "smart_home_features",
+    "smart_home_features_other_description",
+    "hvac_unit_condition",
+    "hvac_unit_issues",
+    "source_http_request",
+    "request_identifier",
+  ]);
+
+  const UTILITY_VALUE_KEYS = [
+    "heating_system_type",
+    "heating_fuel_type",
+    "cooling_system_type",
+    "public_utility_type",
+    "sewer_type",
+    "water_source_type",
+    "plumbing_system_type",
+    "plumbing_system_type_other_description",
+    "electrical_panel_capacity",
+    "electrical_wiring_type",
+    "hvac_condensing_unit_present",
+    "electrical_wiring_type_other_description",
+    "solar_panel_present",
+    "solar_panel_type",
+    "solar_panel_type_other_description",
+    "solar_inverter_visible",
+    "smart_home_features",
+    "smart_home_features_other_description",
+    "hvac_unit_condition",
+    "hvac_unit_issues",
+  ];
+
+  const sanitizeUtilityEntry = (entry) => {
+    if (!entry || typeof entry !== "object") return {};
+    return Object.keys(entry).reduce((acc, key) => {
+      if (UTILITY_ALLOWED_KEYS.has(key)) {
+        acc[key] = entry[key];
+      }
+      return acc;
+    }, {});
+  };
+
+  const hasUtilityValues = (entry) =>
+    UTILITY_VALUE_KEYS.some((key) => {
+      const value = entry[key];
+      if (Array.isArray(value)) return value.length > 0;
+      return value !== null && value !== undefined;
     });
+
+  const structureItems = (() => {
+    const wrap = (entry, buildingIndex = null) => {
+      const sanitizedEntry = cleanStructureEntry(entry);
+      return {
+        data: {
+          ...baseStructure,
+          ...sanitizedEntry,
+          source_http_request:
+            sanitizedEntry && sanitizedEntry.source_http_request != null
+              ? sanitizedEntry.source_http_request
+              : clone(defaultSourceHttpRequest),
+          request_identifier:
+            sanitizedEntry && sanitizedEntry.request_identifier != null
+              ? sanitizedEntry.request_identifier
+              : requestIdentifier,
+        },
+        buildingIndex:
+          Number.isFinite(parseIntSafe(buildingIndex)) ?
+            parseIntSafe(buildingIndex) :
+            null,
+      };
+    };
 
     if (
       structureEntry &&
@@ -2262,15 +2413,19 @@ function main() {
       Array.isArray(structureEntry.buildings) &&
       structureEntry.buildings.length
     ) {
-      return structureEntry.buildings.map((rec) => {
-        const entry =
-          rec && typeof rec === "object" && rec.structure
-            ? rec.structure
-            : rec;
-        const buildingIndex =
-          rec && rec.building_index != null ? rec.building_index : null;
-        return wrap(entry || {}, buildingIndex);
-      });
+      const mapped = structureEntry.buildings
+        .map((rec) => {
+          const entry =
+            rec && typeof rec === "object" && rec.structure
+              ? rec.structure
+              : rec;
+          const buildingIndex =
+            rec && rec.building_index != null ? rec.building_index : null;
+          return wrap(entry || {}, buildingIndex);
+        })
+        .filter(Boolean);
+      if (mapped.length) return mapped;
+      return [];
     }
 
     if (Array.isArray(structureEntry)) {
@@ -2316,23 +2471,48 @@ function main() {
   });
 
   const utilityItems = (() => {
-    const wrap = (entry, buildingIndex = null) => ({
-      data: {
-        ...entry,
-        source_http_request:
-          entry && entry.source_http_request != null
-            ? entry.source_http_request
-            : clone(defaultSourceHttpRequest),
-        request_identifier:
-          entry && entry.request_identifier != null
-            ? entry.request_identifier
-            : requestIdentifier,
-      },
-      buildingIndex:
-        Number.isFinite(parseIntSafe(buildingIndex)) ?
-          parseIntSafe(buildingIndex) :
-          null,
-    });
+    const wrap = (entry, buildingIndex = null) => {
+      const sanitizedEntry = sanitizeUtilityEntry(entry);
+      if (!hasUtilityValues(sanitizedEntry)) return null;
+      const payload = {
+        ...baseUtility,
+        ...sanitizedEntry,
+      };
+      payload.source_http_request =
+        sanitizedEntry && sanitizedEntry.source_http_request != null
+          ? sanitizedEntry.source_http_request
+          : clone(defaultSourceHttpRequest);
+      payload.request_identifier =
+        sanitizedEntry && sanitizedEntry.request_identifier != null
+          ? sanitizedEntry.request_identifier
+          : requestIdentifier;
+      const hasSolarPanelPresent = Object.prototype.hasOwnProperty.call(
+        sanitizedEntry,
+        "solar_panel_present",
+      );
+      const hasSolarInverterVisible = Object.prototype.hasOwnProperty.call(
+        sanitizedEntry,
+        "solar_inverter_visible",
+      );
+      payload.solar_panel_present = normalizeBooleanFlag(
+        hasSolarPanelPresent ?
+          sanitizedEntry.solar_panel_present :
+          payload.solar_panel_present,
+      );
+      payload.solar_inverter_visible = normalizeBooleanFlag(
+        hasSolarInverterVisible ?
+          sanitizedEntry.solar_inverter_visible :
+          payload.solar_inverter_visible,
+      );
+
+      return {
+        data: payload,
+        buildingIndex:
+          Number.isFinite(parseIntSafe(buildingIndex)) ?
+            parseIntSafe(buildingIndex) :
+            null,
+      };
+    };
 
     if (
       utilitiesEntry &&
@@ -2341,19 +2521,25 @@ function main() {
       Array.isArray(utilitiesEntry.buildings) &&
       utilitiesEntry.buildings.length
     ) {
-      return utilitiesEntry.buildings.map((rec) => {
-        const entry =
-          rec && typeof rec === "object" && rec.utility
-            ? rec.utility
-            : rec;
-        const buildingIndex =
-          rec && rec.building_index != null ? rec.building_index : null;
-        return wrap(entry || {}, buildingIndex);
-      });
+      const mapped = utilitiesEntry.buildings
+        .map((rec) => {
+          const entry =
+            rec && typeof rec === "object" && rec.utility
+              ? rec.utility
+              : rec;
+          const buildingIndex =
+            rec && rec.building_index != null ? rec.building_index : null;
+          return wrap(entry || {}, buildingIndex);
+        })
+        .filter(Boolean);
+      if (mapped.length) return mapped;
+      return [];
     }
 
     if (Array.isArray(utilitiesEntry)) {
-      return utilitiesEntry.map((entry) => wrap(entry || {}, null));
+      return utilitiesEntry
+        .map((entry) => wrap(entry || {}, null))
+        .filter(Boolean);
     }
 
     if (
@@ -2361,11 +2547,14 @@ function main() {
       typeof utilitiesEntry === "object" &&
       Array.isArray(utilitiesEntry.utilities)
     ) {
-      return utilitiesEntry.utilities.map((entry) => wrap(entry || {}, null));
+      return utilitiesEntry.utilities
+        .map((entry) => wrap(entry || {}, null))
+        .filter(Boolean);
     }
 
     if (utilitiesEntry && typeof utilitiesEntry === "object") {
-      return [wrap(utilitiesEntry, null)];
+      const wrapped = wrap(utilitiesEntry, null);
+      return wrapped ? [wrapped] : [];
     }
 
     return [];
@@ -2796,9 +2985,8 @@ function main() {
   if (Array.isArray(rawLayouts) && rawLayouts.length) {
     rawLayouts.forEach((layout) => {
       const source = layout || {};
-      const { parent_building_index, ...overrides } = source;
-      const rawSpaceType =
-        overrides && overrides.space_type ? overrides.space_type : "Living Area";
+      const { parent_building_index, space_type, ...overrides } = source;
+      const rawSpaceType = space_type || "Living Area";
       const validSpaceType = validateSpaceType(rawSpaceType);
       const normalized = createLayoutRecord(validSpaceType, overrides);
       if (!normalized.floor_level) {
@@ -3231,12 +3419,35 @@ function main() {
     }
   }
 
-  // Only create mailing address files if there are owners to reference them
-  const mailingAddressFiles = [];
+  // First, determine which unique addresses will actually be used by owners
+  const usedAddressIndices = new Set();
   if (currentOwners.length > 0) {
-    ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
+    currentOwners.forEach((owner, idx) => {
+      if (!owner || !owner.type) return;
+      if (ownerMailingInfo.rawAddresses[idx] != null) {
+        const rawAddr = ownerMailingInfo.rawAddresses[idx];
+        const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
+        if (uniqueIdx >= 0) {
+          usedAddressIndices.add(uniqueIdx);
+        }
+      } else if (ownerMailingInfo.uniqueAddresses.length > 0) {
+        // Fallback: use index or last address
+        const fallbackIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
+        usedAddressIndices.add(fallbackIdx);
+      }
+    });
+  }
+
+  // Prepare mailing address data but don't write files yet
+  // We'll only write them if they're actually referenced by owner entities
+  const mailingAddressData = [];
+  const oldToNewIndexMap = new Map();
+  if (currentOwners.length > 0 && usedAddressIndices.size > 0) {
+    const sortedIndices = Array.from(usedAddressIndices).sort((a, b) => a - b);
+    sortedIndices.forEach((oldIdx, newIdx) => {
+      const addr = ownerMailingInfo.uniqueAddresses[oldIdx];
       if (!addr) return;
-      const fileName = `mailing_address_${idx + 1}.json`;
+      const fileName = `mailing_address_${newIdx + 1}.json`;
       const mailingObj = {
         unnormalized_address: addr,
         latitude: null,
@@ -3244,8 +3455,13 @@ function main() {
         source_http_request: clone(defaultSourceHttpRequest),
         request_identifier: requestIdentifier,
       };
-      writeJSON(path.join(dataDir, fileName), mailingObj);
-      mailingAddressFiles.push({ path: `./${fileName}` });
+      mailingAddressData.push({
+        path: `./${fileName}`,
+        oldIdx,
+        fileName,
+        data: mailingObj
+      });
+      oldToNewIndexMap.set(oldIdx, newIdx);
     });
   }
 
@@ -3285,18 +3501,25 @@ function main() {
     let mailingIdx = null;
     if (
       ownerMailingInfo.rawAddresses[idx] != null &&
-      mailingAddressFiles.length
+      mailingAddressData.length
     ) {
       const rawAddr = ownerMailingInfo.rawAddresses[idx];
       const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-      if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
+      if (uniqueIdx >= 0 && oldToNewIndexMap.has(uniqueIdx)) {
+        mailingIdx = oldToNewIndexMap.get(uniqueIdx);
+      }
     }
-    if (mailingIdx == null && mailingAddressFiles.length) {
-      mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
+    if (mailingIdx == null && mailingAddressData.length) {
+      const fallbackUniqueIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
+      if (oldToNewIndexMap.has(fallbackUniqueIdx)) {
+        mailingIdx = oldToNewIndexMap.get(fallbackUniqueIdx);
+      } else if (mailingAddressData.length > 0) {
+        mailingIdx = 0;
+      }
     }
     const mailingRecord =
       mailingIdx != null && mailingIdx >= 0
-        ? mailingAddressFiles[mailingIdx]
+        ? mailingAddressData[mailingIdx]
         : null;
 
     if (owner.type === "person") {
@@ -3321,15 +3544,24 @@ function main() {
     }
   });
 
-  Object.keys(previousOwnersByDate).forEach((dateKey) => {
-    if (dateKey === "current") return;
-    const ownersArr = previousOwnersByDate[dateKey];
-    if (!Array.isArray(ownersArr)) return;
-    ownersArr.forEach((owner) => {
-      registerPreviousOwner(owner, dateKey);
-    });
+  // Don't pre-register previous owners - only register them when they're actually referenced by a sale
+  // This prevents creating unused person/company files
+
+  // Write only the mailing address files that are actually referenced by valid owner entities
+  const referencedMailingPaths = new Set();
+  currentOwnerEntities.forEach((entity) => {
+    if (entity.mailingPath) {
+      referencedMailingPaths.add(entity.mailingPath);
+    }
   });
 
+  mailingAddressData.forEach((mailingData) => {
+    if (referencedMailingPaths.has(mailingData.path)) {
+      writeJSON(path.join(dataDir, mailingData.fileName), mailingData.data);
+    }
+  });
+
+  // Create relationships between owner entities and their mailing addresses
   const mailingRelationshipKeys = new Set();
   currentOwnerEntities.forEach((entity) => {
     if (!entity.path || !entity.mailingPath) return;
@@ -3654,6 +3886,21 @@ function main() {
     });
     saleBuyerStatus.set(latestSaleRef.salesPath, true);
   }
+
+  // Don't process previous_owners_by_date separately - the grantors from sales HTML
+  // are already processed above and will be connected to relationships.
+  // Processing them again here would create duplicate person files with slight differences.
+
+  // Add previous owners from previousOwnerLookup to saleGrantorRelations
+  previousOwnerLookup.forEach((meta, ownerPath) => {
+    if (!ownerPath || !meta.dates || meta.dates.size === 0) return;
+    meta.dates.forEach((dateISO) => {
+      saleGrantorRelations.push({
+        ownerPath,
+        saleDateISO: dateISO,
+      });
+    });
+  });
 
   const saleOwnerRelationshipKeys = new Set();
   saleOwnerRelations.forEach((entry) => {

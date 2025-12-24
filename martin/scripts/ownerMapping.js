@@ -159,12 +159,263 @@ function parsePersonName(raw) {
     }
   }
   if (!first || !last) return null;
+
+  // Apply title casing and validation
+  const firstTitled = titleCaseName(first);
+  const lastTitled = titleCaseName(last);
+  let middleTitled = middle ? cleanMiddleName(middle) : null;
+
+  // Ensure first and last names are valid after title casing
+  if (!firstTitled || !lastTitled) return null;
+  // Middle name is already validated by cleanMiddleName (returns null if invalid)
+
   return {
     type: "person",
-    first_name: first,
-    last_name: last,
-    middle_name: middle || null,
+    first_name: firstTitled,
+    last_name: lastTitled,
+    middle_name: middleTitled,
   };
+}
+
+// Title case a name to match Elephant schema pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+function titleCaseName(s) {
+  if (s == null) return null;
+  s = String(s).trim();
+  if (!s) return null;
+
+  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
+  s = s.replace(/[^a-zA-Z\s\-',.]/g, '');
+  if (!s) return null;
+
+  // Remove leading/trailing separators and collapse multiple spaces
+  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '').replace(/\s+/g, ' ');
+  if (!s) return null;
+
+  // Convert to lowercase for processing
+  s = s.toLowerCase();
+
+  // Split by separators while preserving them
+  const parts = [];
+  let currentWord = '';
+  let lastWasSeparator = false;
+
+  for (let i = 0; i < s.length; i++) {
+    const char = s[i];
+    if (/[\s\-',.]/.test(char)) {
+      if (currentWord) {
+        parts.push({ type: 'word', value: currentWord });
+        currentWord = '';
+      }
+      if (!lastWasSeparator) {
+        parts.push({ type: 'sep', value: char });
+        lastWasSeparator = true;
+      }
+    } else {
+      currentWord += char;
+      lastWasSeparator = false;
+    }
+  }
+  if (currentWord) {
+    parts.push({ type: 'word', value: currentWord });
+  }
+
+  // Build result with proper capitalization
+  let result = '';
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.type === 'word') {
+      // Capitalize first letter, rest lowercase
+      result += part.value.charAt(0).toUpperCase() + part.value.slice(1);
+    } else {
+      result += part.value;
+    }
+  }
+
+  result = result.trim();
+
+  // Ensure result matches the required Elephant schema pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  if (!result || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) return null;
+  return result;
+}
+
+// Clean and validate middle name using the more lenient pattern
+function cleanMiddleName(s) {
+  if (s == null) return null;
+  s = String(s).trim();
+  if (!s) return null;
+
+  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
+  s = s.replace(/[^a-zA-Z\s\-',.]/g, '');
+  if (!s) return null;
+
+  // Remove leading/trailing separators and collapse multiple spaces
+  s = s.replace(/^[\s\-',.]+|[\s\-',.]+$/g, '').replace(/\s+/g, ' ');
+  if (!s) return null;
+
+  // For middle names, we use title case but preserve the more lenient pattern
+  // Convert to lowercase for processing
+  const lower = s.toLowerCase();
+
+  // Split by separators while preserving them
+  const parts = [];
+  let currentWord = '';
+  let lastWasSeparator = false;
+
+  for (let i = 0; i < lower.length; i++) {
+    const char = lower[i];
+    if (/[\s\-',.]/.test(char)) {
+      if (currentWord) {
+        parts.push({ type: 'word', value: currentWord });
+        currentWord = '';
+      }
+      if (!lastWasSeparator) {
+        parts.push({ type: 'sep', value: char });
+        lastWasSeparator = true;
+      }
+    } else {
+      currentWord += char;
+      lastWasSeparator = false;
+    }
+  }
+  if (currentWord) {
+    parts.push({ type: 'word', value: currentWord });
+  }
+
+  // Build result with proper capitalization
+  let result = '';
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.type === 'word') {
+      // Capitalize first letter, rest lowercase
+      result += part.value.charAt(0).toUpperCase() + part.value.slice(1);
+    } else {
+      result += part.value;
+    }
+  }
+
+  // Final cleanup: trim and ensure no consecutive spaces or trailing separators
+  result = result.trim().replace(/\s+/g, ' ');
+
+  // Remove trailing separators
+  result = result.replace(/[\s\-',.]+$/g, '');
+
+  // Remove leading separators
+  result = result.replace(/^[\s\-',.]+/g, '');
+
+  if (!result) return null;
+
+  // Ensure result matches the middle name pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  // This pattern is more lenient than first/last name pattern
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+
+  // Additional validation: ensure the string only contains valid characters
+  // and doesn't have any edge cases that might pass regex but fail validation
+  for (let i = 0; i < result.length; i++) {
+    const char = result[i];
+    const code = char.charCodeAt(0);
+    // Check if it's a letter (A-Z, a-z)
+    const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    // Check if it's an allowed separator
+    const isSeparator = char === ' ' || char === '-' || char === "'" || char === ',' || char === '.';
+    if (!isLetter && !isSeparator) {
+      // Invalid character found
+      return null;
+    }
+  }
+
+  return result;
+}
+
+const PERSON_FRAGMENT_BLOCKLIST = new Set([
+  "sons",
+  "heirs",
+  "estate",
+  "est",
+  "trust",
+  "trustee",
+  "associates",
+]);
+
+function isLikelyPersonFragment(raw) {
+  const cleaned = stripRoleTokens(cleanName(raw));
+  if (!cleaned) return false;
+  if (COMPANY_REGEX.test(cleaned)) return false;
+  if (/\b(revocable|trust|agreement)\b/i.test(cleaned)) return false;
+  if (/[^a-z\s\-',.]/i.test(cleaned)) return false;
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  if (!tokens.length || tokens.length > 3) return false;
+  const normalized = tokens.map((t) => t.replace(/\.$/, "").toLowerCase());
+  if (normalized.some((t) => PERSON_FRAGMENT_BLOCKLIST.has(t))) return false;
+  return tokens.every((t) => /^[A-Za-z][A-Za-z'.-]*\.?$/.test(t));
+}
+
+function inferPersonWithFallback(raw, fallbackLast) {
+  if (!fallbackLast) return null;
+  if (!isLikelyPersonFragment(raw)) return null;
+  const cleanedTokens = stripRoleTokens(cleanName(raw))
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!cleanedTokens.length) return null;
+  const first = cleanedTokens[0];
+  const middle = cleanedTokens.length > 1 ? cleanedTokens.slice(1).join(" ") : null;
+
+  // Apply title casing and validation
+  const firstTitled = titleCaseName(first);
+  let middleTitled = middle ? cleanMiddleName(middle) : null;
+
+  // Ensure first name is valid after title casing
+  if (!firstTitled) return null;
+  // Middle name is already validated by cleanMiddleName (returns null if invalid)
+  // Note: fallbackLast should already be title-cased from the previous person
+
+  return {
+    type: "person",
+    first_name: firstTitled,
+    middle_name: middleTitled,
+    last_name: fallbackLast,
+  };
+}
+
+function classifySingleOwner(raw, fallbackLastName = null) {
+  const s = cleanName(raw);
+  if (!s) return { owners: [], invalid: { raw, reason: "empty name" } };
+
+  const isCompany =
+    COMPANY_REGEX.test(s) || /\b(revocable|trust|agreement)\b/i.test(s);
+  if (isCompany) {
+    return { owners: [{ type: "company", name: s }], invalid: null };
+  }
+
+  let person = looksLikePerson(s) ? parsePersonName(s) : null;
+  if (!person) person = inferPersonWithFallback(s, fallbackLastName);
+
+  if (person) return { owners: [person], invalid: null };
+
+  return {
+    owners: [],
+    invalid: { raw: s, reason: "unclassifiable or ambiguous" },
+  };
+}
+
+function classifyOwnerParts(parts) {
+  const owners = [];
+  const invalids = [];
+  let fallbackLast = null;
+
+  for (const part of parts) {
+    const result = classifySingleOwner(part, fallbackLast);
+    if (result.owners && result.owners.length) {
+      owners.push(...result.owners);
+      const lastPerson = [...result.owners]
+        .reverse()
+        .find((o) => o.type === "person" && o.last_name);
+      if (lastPerson) fallbackLast = lastPerson.last_name;
+    } else if (result.invalid) {
+      invalids.push(result.invalid);
+    }
+  }
+
+  return { owners, invalids };
 }
 
 // Parse an owner raw string into one or more structured owners (person/company)
@@ -174,31 +425,11 @@ function classifyOwner(raw) {
 
   const parts = splitRawOwners(s);
   if (parts.length > 1) {
-    const owners = [];
-    const invalids = [];
-    for (const p of parts) {
-      const res = classifyOwner(p);
-      owners.push(...res.owners);
-      if (res.invalid) invalids.push(res.invalid);
-    }
+    const { owners, invalids } = classifyOwnerParts(parts);
     return { owners, invalid: invalids.length ? invalids[0] : null };
   }
 
-  const isCompany =
-    COMPANY_REGEX.test(s) || /\b(revocable|trust|agreement)\b/i.test(s);
-  if (isCompany) {
-    return { owners: [{ type: "company", name: s }], invalid: null };
-  }
-
-  if (looksLikePerson(s)) {
-    const person = parsePersonName(s);
-    if (person) return { owners: [person], invalid: null };
-  }
-
-  return {
-    owners: [],
-    invalid: { raw: s, reason: "unclassifiable or ambiguous" },
-  };
+  return classifySingleOwner(s);
 }
 
 // Normalize owner key for deduplication
@@ -235,6 +466,7 @@ function getCurrentOwners() {
   if (ownersField && ownersField.valueHtml) {
     const segments = ownersField.valueHtml
       .replace(/<\/?strong[^>]*>/gi, "")
+      .replace(/<a[^>]*>.*?<\/a>/gi, "")
       .split(/<br\s*\/?\s*>/i)
       .map((seg) => cleanName(cheerio.load(`<div>${seg}</div>`)("div").text()))
       .filter(Boolean);

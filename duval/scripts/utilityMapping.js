@@ -280,7 +280,7 @@ pushExactCodeMapping(["BA", "BAL", "BP"], {
 });
 
 pushExactCodeMapping(["BAS"], {
-  layout: { spaceType: "First Floor", isFinished: true },
+  layout: { spaceType: "Floor", isFinished: true },
 });
 
 pushExactCodeMapping(["BSM", "SFB", "UBM"], {
@@ -337,14 +337,7 @@ const FINISHED_UPPER_STORY_CODES = Array.from({ length: 20 }, (_, index) =>
 
 FINISHED_UPPER_STORY_CODES.forEach((code, idx) => {
   const floorNumber = idx + 2;
-  const spaceType =
-    floorNumber === 2
-      ? "Second Floor"
-      : floorNumber === 3
-        ? "Third Floor"
-        : floorNumber === 4
-          ? "Fourth Floor"
-          : "Floor";
+  const spaceType = "Floor";
   pushExactCodeMapping([code], {
     layout: { spaceType, isFinished: true },
   });

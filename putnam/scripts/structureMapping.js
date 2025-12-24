@@ -293,7 +293,7 @@ function parseFloorFinish(value) {
     "17 - Rough Pine": null,
     "20 - Earth": null,
     "08 - Carpeting 2": "Carpet",
-    "01 - Terrazzo Mono": "Terazzo",
+    "01 - Terrazzo Mono": "Terrazzo",
     "18 - Roll Congoleum": null,
   }
   if (value in valueMapping) {
@@ -322,7 +322,7 @@ function parseInterior(value) {
     "11 - Ceiling Only - Avg": null,
     "07 - 1x6 V Joint (RES)": null,
     "14 - Redwood-Cedar-Cypress": null,
-    "15 - Log (RES)": "Log",
+    "15 - Log (RES)": null,
   }
   if (value in valueMapping) {
     return valueMapping[value];
