@@ -3017,9 +3017,6 @@ function main() {
     }
   }
 
-  // Determine if we have a valid unnormalized address (must be non-empty and have meaningful content)
-  const hasValidUnnormalizedAddress = situsAddress && situsAddress.trim().length > 0;
-
   const address = {
     source_http_request: {
           method: "GET",
@@ -3028,26 +3025,8 @@ function main() {
     request_identifier: parcelIdentifier || seed.parcel_id || ""
   };
 
-  // Use normalized format when unnormalized address is empty or invalid
-  if (!hasValidUnnormalizedAddress) {
-    // Normalized format - all required fields must be present (can be null)
-    address.street_number = street_number || null;
-    address.street_name = street_name || null;
-    address.street_suffix_type = street_suffix_type || null;
-    address.street_pre_directional_text = pre_dir || null;
-    address.street_post_directional_text = post_dir || null;
-    address.unit_identifier = null;
-    address.city_name = (cityUpper || "").toUpperCase() || null;
-    address.state_code = "FL";
-    address.postal_code = postal_code || null;
-    address.plus_four_postal_code = plus_four_postal_code || null;
-    address.country_code = "US";
-    address.route_number = null;
-    address.block = null;
-  } else {
-    // Unnormalized format - only use unnormalized_address
-    address.unnormalized_address = situsAddress;
-  }
+  // Set unnormalized_address: use situsAddress if available, otherwise null
+  address.unnormalized_address = (situsAddress && situsAddress.trim().length > 0) ? situsAddress : null;
 
   // Common fields for both formats
   address.county_name = "Franklin";
@@ -3169,7 +3148,7 @@ function main() {
       },
       request_identifier: parcelIdentifier || seed.parcel_id || "",
       // county_name: null,
-      unnormalized_address: mailingAddr,
+      unnormalized_address: (mailingAddr && mailingAddr.trim().length > 0) ? mailingAddr : null,
       longitude: null,
       latitude: null
     };
@@ -3573,7 +3552,7 @@ function main() {
           },
           request_identifier: parcelIdentifier || seed.parcel_id || "",
           // county_name: null,
-          unnormalized_address: mailingAddr,
+          unnormalized_address: (mailingAddr && mailingAddr.trim().length > 0) ? mailingAddr : null,
           longitude: null,
           latitude: null
         };
