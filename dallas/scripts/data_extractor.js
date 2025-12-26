@@ -872,14 +872,10 @@ async function main() {
     block: blockVal,
     lot: lotVal,
   } : {
+    // Unnormalized format - MUST NOT include street-level fields per oneOf schema
     source_http_request: address.source_http_request || null,
     request_identifier: address.request_identifier || null,
     unnormalized_address: unnormalizedAddr,
-    street_number: null,
-    street_name: null,
-    street_suffix_type: null,
-    street_pre_directional_text: null,
-    street_post_directional_text: null,
     unit_identifier: unitIdentifier,
     route_number: routeNumber,
     township: townshipVal,
@@ -913,15 +909,11 @@ async function main() {
     const ensureCityFormatMailing = (val) => val ? val.replace(/\s+/g, " ").trim().toUpperCase() : null;
     const mailingCityFormatted = ensureCityFormatMailing(mailingCity);
 
+    // Mailing address uses unnormalized format - MUST NOT include street-level fields per oneOf schema
     const mailingAddrOut = {
       source_http_request: ownersAndGenSource,
       request_identifier: parcelId || null,
       unnormalized_address: mailingAddressRaw,
-      street_number: null,
-      street_name: null,
-      street_suffix_type: null,
-      street_pre_directional_text: null,
-      street_post_directional_text: null,
       unit_identifier: null,
       route_number: null,
       township: null,
