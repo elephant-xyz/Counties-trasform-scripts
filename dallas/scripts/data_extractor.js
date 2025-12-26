@@ -852,7 +852,6 @@ async function main() {
   const addrOut = hasNormalizedData ? {
     source_http_request: address.source_http_request || null,
     request_identifier: address.request_identifier || null,
-    unnormalized_address: null,
     street_number: streetNumber,
     street_name: streetNameBase,
     street_suffix_type: streetSuffixType,
