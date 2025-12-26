@@ -842,7 +842,7 @@ async function main() {
   const cityFormatted = ensureCityFormat(resolvedCity);
   const unnormalizedAddr =
     address.unnormalized_address ||
-    address.full_address ||
+    streetLine ||
     null;
 
   // Use normalized address format with street-level fields IF we have sufficient data
@@ -875,6 +875,11 @@ async function main() {
     source_http_request: address.source_http_request || null,
     request_identifier: address.request_identifier || null,
     unnormalized_address: unnormalizedAddr,
+    unit_identifier: unitIdentifier,
+    city_name: cityFormatted,
+    state_code: stateCode,
+    postal_code: postalCode,
+    plus_four_postal_code: plusFour,
     county_name: countyName,
     country_code: countryCode,
   };
@@ -901,6 +906,11 @@ async function main() {
       source_http_request: ownersAndGenSource,
       request_identifier: parcelId || null,
       unnormalized_address: mailingAddressRaw,
+      unit_identifier: null,
+      city_name: mailingCityFormatted,
+      state_code: mailingStateCode,
+      postal_code: mailingPostalCode,
+      plus_four_postal_code: mailingPlusFour,
       county_name: "Dallas",
       country_code: "US",
     };
