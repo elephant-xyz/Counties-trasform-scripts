@@ -377,7 +377,34 @@ function parseStreetNameDetails(name) {
 function parseFullAddress(line) {
   if (!line) return {};
   const cleaned = line.replace(/\s+/g, " ").trim();
-  const match = cleaned.match(
+
+  // Try Dallas CAD format first: "STREET CITY, STATE ZIP" (one comma)
+  // Example: "10135 HEDGEWAY DR DALLAS, TEXAS 752296158"
+  let match = cleaned.match(
+    /^(.*?)\s+([A-Z]+),\s*([A-Z]+)\s+(\d{5,9})$/i,
+  );
+  if (match) {
+    const [, streetAndCity, state, postalRaw] = match;
+    // Split street from city - city is typically last word before comma
+    const parts = streetAndCity.trim().split(/\s+/);
+    const city = parts[parts.length - 1]; // Last word is city
+    const street = parts.slice(0, -1).join(" "); // Everything before is street
+    const digits = postalRaw.replace(/\D/g, "");
+    const postal = digits.slice(0, 5) || null;
+    const plus4 = digits.length > 5 ? digits.slice(5, 9) : null;
+    return {
+      street: street.trim(),
+      city: city.trim(),
+      stateRaw: state.trim(),
+      stateCode: normalizeStateCode(state),
+      postal,
+      plus4,
+      postalRaw: postalRaw.trim(),
+    };
+  }
+
+  // Try standard format: "STREET, CITY, STATE ZIP" (two commas)
+  match = cleaned.match(
     /^(.*?),\s*([A-Za-z.\s]+),\s*([A-Za-z.\s]+)\s+(\d{5}(?:-\d{4})?|\d{9})$/,
   );
   if (!match) {
@@ -845,11 +872,15 @@ async function main() {
     streetLine ||
     null;
 
-  // Use normalized address format with street-level fields IF we have sufficient data
-  // Otherwise use unnormalized format
-  const hasNormalizedData = streetNumber && streetNameBase;
+  // Validate we have data for at least one valid format
+  const hasValidNormalized = streetNumber && streetNameBase;
+  const hasValidUnnormalized = unnormalizedAddr && unnormalizedAddr.trim().length > 0;
 
-  const addrOut = hasNormalizedData ? {
+  // Choose format: prefer normalized if available, otherwise use unnormalized
+  // If neither is valid, default to normalized with available data
+  const useNormalized = hasValidNormalized || !hasValidUnnormalized;
+
+  const addrOut = useNormalized ? {
     source_http_request: address.source_http_request || null,
     request_identifier: address.request_identifier || null,
     unnormalized_address: null,
