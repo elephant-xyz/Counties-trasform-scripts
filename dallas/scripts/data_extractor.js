@@ -381,22 +381,18 @@ function parseFullAddress(line) {
   // Try Dallas CAD format first: "STREET CITY, STATE ZIP" (one comma)
   // Example: "10135 HEDGEWAY DR DALLAS, TEXAS 752296158"
   let match = cleaned.match(
-    /^(.*?)\s+([A-Z]+),\s*([A-Z]+)\s+(\d{5,9})$/i,
+    /^(.*?)\s+([A-Za-z.\s'-]+),\s*([A-Za-z.\s]+)\s+(\d{5,9})$/i,
   );
   if (match) {
-    const [, streetAndCity, state, postalRaw] = match;
-    // Split street from city - city is typically last word before comma
-    const parts = streetAndCity.trim().split(/\s+/);
-    const city = parts[parts.length - 1]; // Last word is city
-    const street = parts.slice(0, -1).join(" "); // Everything before is street
+    const [, streetPart, cityPart, statePart, postalRaw] = match;
     const digits = postalRaw.replace(/\D/g, "");
     const postal = digits.slice(0, 5) || null;
     const plus4 = digits.length > 5 ? digits.slice(5, 9) : null;
     return {
-      street: street.trim(),
-      city: city.trim(),
-      stateRaw: state.trim(),
-      stateCode: normalizeStateCode(state),
+      street: streetPart.replace(/,\s*$/, "").trim(),
+      city: cityPart.trim(),
+      stateRaw: statePart.trim(),
+      stateCode: normalizeStateCode(statePart),
       postal,
       plus4,
       postalRaw: postalRaw.trim(),
@@ -416,7 +412,7 @@ function parseFullAddress(line) {
   const plus4 =
     digits.length > 5 ? digits.slice(5, Math.min(9, digits.length)) : null;
   return {
-    street: street.trim(),
+    street: street.replace(/,\s*$/, "").trim(),
     city: city.trim(),
     stateRaw: stateRaw.trim(),
     stateCode: normalizeStateCode(stateRaw),
@@ -883,7 +879,6 @@ async function main() {
   const addrOut = useNormalized ? {
     source_http_request: address.source_http_request || null,
     request_identifier: address.request_identifier || null,
-    unnormalized_address: null,
     street_number: streetNumber,
     street_name: streetNameBase,
     street_suffix_type: streetSuffixType,
