@@ -100,10 +100,47 @@ function mapRoofCovering(text) {
       roof_material_type: "Shingle",
     };
   }
+  // Check for generic shingles (fallback)
+  if (t.includes("SHING")) {
+    return {
+      roof_covering_material: "3-Tab Asphalt Shingle",
+      roof_material_type: "Shingle",
+    };
+  }
   if (t.includes("METAL")) {
     return {
       roof_covering_material: "Metal Standing Seam",
       roof_material_type: "Metal",
+    };
+  }
+  if (t.includes("SLATE")) {
+    return {
+      roof_covering_material: "Natural Slate",
+      roof_material_type: "Slate",
+    };
+  }
+  if (t.includes("TPO")) {
+    return {
+      roof_covering_material: "TPO Membrane",
+      roof_material_type: "Membrane",
+    };
+  }
+  if (t.includes("EPDM")) {
+    return {
+      roof_covering_material: "EPDM Membrane",
+      roof_material_type: "Membrane",
+    };
+  }
+  if (t.includes("BITUMEN")) {
+    return {
+      roof_covering_material: "Modified Bitumen",
+      roof_material_type: "Modified Bitumen",
+    };
+  }
+  if (t.includes("BUILT")) {
+    return {
+      roof_covering_material: "Built-Up Roof",
+      roof_material_type: "Built-Up",
     };
   }
   if (t.includes("TILE")) {
@@ -117,6 +154,11 @@ function mapFoundationType(text) {
   const t = text.toUpperCase();
   if (t.includes("SLAB")) return "Slab on Grade";
   if (t.includes("CRAWL")) return "Crawl Space";
+  if (t.includes("FULL BASEMENT")) return "Full Basement";
+  if (t.includes("PARTIAL BASEMENT")) return "Partial Basement";
+  if (t.includes("PIER") || t.includes("BEAM")) return "Pier and Beam";
+  if (t.includes("WALKOUT")) return "Basement with Walkout";
+  if (t.includes("STEM")) return "Stem Wall";
   if (t.includes("BASEMENT")) return "Full Basement";
   return null;
 }
@@ -125,12 +167,14 @@ function mapExteriorWall(text) {
   if (!text) return null;
   const t = text.toUpperCase();
   if (t.includes("BRICK")) return "Brick";
-  if (t.includes("VINYL")) return "Vinyl Siding";
-  if (t.includes("STUCCO")) return "Stucco";
   if (t.includes("STONE")) return "Natural Stone";
+  if (t.includes("STUCCO")) return "Stucco";
+  if (t.includes("VINYL")) return "Vinyl Siding";
+  if (t.includes("WOOD")) return "Wood Siding";
+  if (t.includes("FIBER") || t.includes("HARDIE")) return "Fiber Cement Siding";
+  if (t.includes("METAL")) return "Metal Siding";
   if (t.includes("CONCRETE BLOCK") || t.includes("C.BLOCK") || t === "BLOCK")
     return "Concrete Block";
-  if (t.includes("WOOD")) return "Wood Siding";
   return null;
 }
 
@@ -148,10 +192,10 @@ function mapFence(text) {
   if (!text) return null;
   const t = text.toUpperCase();
   if (t.includes("WOOD")) return "Wood";
-  if (t.includes("CHAIN")) return "ChainLink";
+  if (t.includes("CHAIN")) return "Chain Link";
   if (t.includes("VINYL")) return "Vinyl";
   if (t.includes("ALUM")) return "Aluminum";
-  if (t.includes("WROUGHT")) return "WroughtIron";
+  if (t.includes("WROUGHT")) return "Wrought Iron";
   return null;
 }
 
@@ -673,7 +717,6 @@ async function main() {
   }
 
   const legalText = legalParts.length ? legalParts.join("; ") : null;
-  const propType = landStateCode ? mapPropertyType(landStateCode) : null;
   const livingAreaText = $own
     ? cleanText($own("#MainImpRes1_lblLivingArea").text())
     : null;
@@ -681,6 +724,20 @@ async function main() {
   const hasLayoutSignals = layouts.length > 0;
   const hasUtilitySignals = hasMeaningfulValues(utilitiesForProperty, ['source_http_request', 'request_identifier']);
   const landCodeUpper = landStateCode ? landStateCode.toUpperCase() : "";
+
+  // Determine property type from landStateCode or infer from data
+  let propType = landStateCode ? mapPropertyType(landStateCode) : null;
+
+  // If property type is null, infer from available data
+  if (!propType) {
+    if (yearBuilt || hasLayoutSignals || hasUtilitySignals || hasLivingAreaData) {
+      // Has improvement indicators - default to SingleFamily as most common residential
+      propType = "SingleFamily";
+    } else {
+      // No improvement indicators - likely vacant land
+      propType = "VacantLand";
+    }
+  }
 
   // Determine build_status based on property type
   let buildStatus = null;
@@ -792,6 +849,7 @@ async function main() {
   const addrOut = {
     source_http_request: address.source_http_request || null,
     request_identifier: address.request_identifier || null,
+    unnormalized_address: null,
     street_number: streetNumber,
     street_name: streetNameBase,
     street_suffix_type: streetSuffixType,
@@ -834,6 +892,11 @@ async function main() {
       source_http_request: ownersAndGenSource,
       request_identifier: parcelId || null,
       unnormalized_address: mailingAddressRaw,
+      street_number: null,
+      street_name: null,
+      street_suffix_type: null,
+      street_pre_directional_text: null,
+      street_post_directional_text: null,
       unit_identifier: null,
       route_number: null,
       township: null,
@@ -1119,9 +1182,9 @@ async function main() {
         source_http_request: historySource,
         tax_year: year,
         property_assessed_value_amount: 0, // Not present in Dallas County (Texas is non-assessment state)
-        property_market_value_amount: m.total,
-        property_building_amount: m.imp,
-        property_land_amount: m.land,
+        property_market_value_amount: m.total || 0,
+        property_building_amount: m.imp || 0,
+        property_land_amount: m.land || 0,
         property_exemption_amount: totalExemption,
         property_taxable_value_amount: 0, // Not present as single value (only jurisdiction-specific values exist)
         city_taxable_value_amount: cityTaxable,

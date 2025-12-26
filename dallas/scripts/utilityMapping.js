@@ -51,7 +51,7 @@ function main() {
   function mapHeating(txt) {
     if (!txt) return null;
     const t = txt.toUpperCase();
-    if (t.includes("HEAT PUMP")) return "HeatPump";
+    if (t.includes("HEAT PUMP")) return "Heat Pump";
     if (t.includes("CENTRAL")) return "Central";
     if (t.includes("GAS")) return "Gas";
     if (t.includes("ELECTRIC")) return "Electric";
@@ -60,8 +60,8 @@ function main() {
   function mapCooling(txt) {
     if (!txt) return null;
     const t = txt.toUpperCase();
-    if (t.includes("CENTRAL")) return "CentralAir";
-    if (t.includes("WINDOW")) return "WindowAirConditioner";
+    if (t.includes("CENTRAL")) return "Central Air";
+    if (t.includes("WINDOW")) return "Window Air Conditioner";
     if (t.includes("DUCTLESS") || t.includes("MINI SPLIT")) return "Ductless";
     return null;
   }
@@ -76,7 +76,7 @@ function main() {
     plumbing_system_type_other_description: null,
     electrical_panel_capacity: null,
     electrical_wiring_type: null,
-    hvac_condensing_unit_present: "Unknown",
+    hvac_condensing_unit_present: null,
     electrical_wiring_type_other_description: null,
     solar_panel_present: false,
     solar_panel_type: null,
@@ -89,7 +89,6 @@ function main() {
 
     electrical_panel_installation_date: null,
     electrical_rewire_date: null,
-    electrical_wiring_type_other_description2: undefined,
     heating_fuel_type: null,
     hvac_capacity_kw: null,
     hvac_capacity_tons: null,
@@ -103,9 +102,7 @@ function main() {
     plumbing_fixture_quality: null,
     plumbing_fixture_type_primary: null,
     plumbing_system_installation_date: null,
-    public_utility_type2: undefined,
     sewer_connection_date: null,
-    smart_home_features_other_description2: undefined,
     solar_installation_date: null,
     solar_inverter_installation_date: null,
     solar_inverter_manufacturer: null,

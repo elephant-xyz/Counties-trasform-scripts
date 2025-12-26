@@ -198,7 +198,7 @@ function main() {
     roof_material_type:
       roofMat && roofMat.toUpperCase().includes("SHING") ? "Shingle" : null,
     roof_structure_material: null,
-    roof_underlayment_type: "Unknown",
+    roof_underlayment_type: null,
     secondary_framing_material: null,
     siding_installation_date: null,
     structural_damage_indicators: null,

@@ -67,7 +67,7 @@ function main() {
   for (let i = 1; i <= beds; i++) {
     layouts.push({
       space_type: "Bedroom",
-      space_type_index: `1.${i}`,
+      space_type_index: String(i),
       flooring_material_type: null,
       size_square_feet: null,
       has_windows: null,
@@ -103,7 +103,7 @@ function main() {
   for (let i = 1; i <= fullBaths; i++) {
     layouts.push({
       space_type: "Full Bathroom",
-      space_type_index: `2.${i}`,
+      space_type_index: String(i),
       flooring_material_type: null,
       size_square_feet: null,
       has_windows: null,
@@ -139,7 +139,7 @@ function main() {
   for (let i = 1; i <= halfBaths; i++) {
     layouts.push({
       space_type: "Half Bathroom / Powder Room",
-      space_type_index: `3.${i}`,
+      space_type_index: String(i),
       flooring_material_type: null,
       size_square_feet: null,
       has_windows: null,
