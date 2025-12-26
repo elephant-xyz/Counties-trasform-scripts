@@ -845,8 +845,11 @@ async function main() {
     streetLine ||
     null;
 
-  // Use normalized address format with street-level fields
-  const addrOut = {
+  // Use normalized address format with street-level fields IF we have sufficient data
+  // Otherwise use unnormalized format
+  const hasNormalizedData = streetNumber && streetNameBase;
+
+  const addrOut = hasNormalizedData ? {
     source_http_request: address.source_http_request || null,
     request_identifier: address.request_identifier || null,
     unnormalized_address: null,
@@ -868,6 +871,17 @@ async function main() {
     country_code: countryCode,
     block: blockVal,
     lot: lotVal,
+  } : {
+    source_http_request: address.source_http_request || null,
+    request_identifier: address.request_identifier || null,
+    unnormalized_address: unnormalizedAddr,
+    unit_identifier: unitIdentifier,
+    city_name: cityFormatted,
+    state_code: stateCode,
+    postal_code: postalCode,
+    plus_four_postal_code: plusFour,
+    county_name: countyName,
+    country_code: countryCode,
   };
   await fsp.writeFile(
     path.join(dataDir, "address.json"),
@@ -892,24 +906,13 @@ async function main() {
       source_http_request: ownersAndGenSource,
       request_identifier: parcelId || null,
       unnormalized_address: mailingAddressRaw,
-      street_number: null,
-      street_name: null,
-      street_suffix_type: null,
-      street_pre_directional_text: null,
-      street_post_directional_text: null,
       unit_identifier: null,
-      route_number: null,
-      township: null,
-      range: null,
-      section: null,
       city_name: mailingCityFormatted,
       state_code: mailingStateCode,
       postal_code: mailingPostalCode,
       plus_four_postal_code: mailingPlusFour,
       county_name: "Dallas",
       country_code: "US",
-      block: null,
-      lot: null,
     };
     await fsp.writeFile(
       path.join(dataDir, "mailing_address.json"),
