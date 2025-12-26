@@ -15,8 +15,6 @@ const companyKeywords = [
   "llp",
   "l.l.p",
   "lllp",
-  "lc",
-  "l.c",
   "pllc",
   "pc",
   "p.c",
@@ -182,7 +180,7 @@ const companyKeywords = [
   "alliance",
 ];
 const companyRe = new RegExp(
-  `(^|[^a-zA-Z])(${companyKeywords.join("|")})(?=$|[^a-zA-Z])`,
+  `(^|[^a-zA-Z])(${companyKeywords.join("|")})([^a-zA-Z]|$)`,
   "i",
 );
 
@@ -222,32 +220,25 @@ function sanitizeMiddleName(middle) {
 }
 
 function titleCaseName(name) {
-  if (!name || typeof name !== "string") return "";
-  const trimmed = normSpace(name);
-  if (trimmed === "") return "";
+  if (!name || typeof name !== 'string') return "";
+  const trimmed = name.trim();
+  if (trimmed === '') return "";
 
-  // Allow single-letter initials such as "S." or "j"
-  if (/^[A-Za-z]\.?$/.test(trimmed)) {
-    return trimmed.charAt(0).toUpperCase();
-  }
+  // Remove special separator characters (hyphens, slashes, pipes, plus signs) that might be used to separate multiple people
+  // Keep legitimate name characters like apostrophes (O'Brien) and spaces
+  const cleaned = trimmed.replace(/[-\/\|+]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (cleaned === '') return "";
 
-  // Strip characters that are not supported by the lexicon schema
-  let cleaned = trimmed
-    .replace(/[\u2012-\u2015]/g, "-")
-    .replace(/[^A-Za-z \-',.]/g, " ")
-    .replace(/[-\/\|+]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (cleaned === "") return "";
-
+  // Convert to title case: First letter uppercase, rest lowercase
+  // Pattern for first/last names: ^[A-Z][a-z]*([ ',][A-Za-z][a-z]*)*$
   const titleCased = cleaned
     .toLowerCase()
     .split(/\s+/)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+    .join(' ');
 
-  if (!/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(titleCased)) {
+  // Validate against the required pattern (no hyphens, slashes, pipes, or plus signs allowed)
+  if (!/^[A-Z][a-z]*([ ',][A-Za-z][a-z]*)*$/.test(titleCased)) {
     return "";
   }
 
@@ -273,84 +264,6 @@ function splitTokens(raw) {
   return normSpace(raw).split(/\s+/).filter(Boolean);
 }
 
-function findNextValidToken(tokens, startIndex = 0, skipIndices = new Set()) {
-  for (let i = startIndex; i < tokens.length; i++) {
-    if (skipIndices.has(i)) continue;
-    const normalized = titleCaseName(tokens[i]);
-    if (normalized) return { index: i, value: normalized };
-  }
-  return null;
-}
-
-function findPrevValidToken(tokens, startIndex = tokens.length - 1, skipIndices = new Set()) {
-  for (let i = startIndex; i >= 0; i--) {
-    if (skipIndices.has(i)) continue;
-    const normalized = titleCaseName(tokens[i]);
-    if (normalized) return { index: i, value: normalized };
-  }
-  return null;
-}
-
-function buildMiddleNameBetween(tokens, leftIndex, rightIndex) {
-  const start = Math.min(leftIndex, rightIndex) + 1;
-  const end = Math.max(leftIndex, rightIndex);
-  if (start >= end) return null;
-
-  const parts = [];
-  for (let i = start; i < end; i++) {
-    const normalized = titleCaseName(tokens[i]);
-    if (normalized) parts.push(normalized);
-  }
-
-  if (!parts.length) return null;
-  return sanitizeMiddleName(parts.join(" "));
-}
-
-function selectFirstNameTokenAllCaps(tokens, lastIndex) {
-  let fallback = null;
-  for (let i = tokens.length - 1; i > lastIndex; i--) {
-    const normalized = titleCaseName(tokens[i]);
-    if (!normalized) continue;
-    const record = { index: i, value: normalized };
-    if (normalized.length > 1) return record;
-    if (!fallback) fallback = record;
-  }
-  return fallback;
-}
-
-function isSingleLetterInitial(token) {
-  const trimmed = normSpace(token);
-  return /^[A-Za-z]\.?$/.test(trimmed);
-}
-
-function findValidTokenForward(tokens, startIndex = 0) {
-  for (let i = startIndex; i < tokens.length; i++) {
-    const normalized = titleCaseName(tokens[i]);
-    if (normalized) {
-      return { index: i, value: normalized };
-    }
-  }
-  return null;
-}
-
-function findValidTokenBackward(tokens, startIndex) {
-  for (let i = startIndex; i >= 0; i--) {
-    const normalized = titleCaseName(tokens[i]);
-    if (normalized) {
-      return { index: i, value: normalized };
-    }
-  }
-  return null;
-}
-
-function buildMiddleNameFromTokens(tokens) {
-  const middleTokens = tokens
-    .map((token) => titleCaseName(token))
-    .filter(Boolean);
-  if (!middleTokens.length) return null;
-  return sanitizeMiddleName(middleTokens.join(" "));
-}
-
 function parsePersonSingle(raw) {
   const name = normSpace(raw).replace(/\.+/g, ".");
   if (!name) return { valid: false, reason: "empty" };
@@ -361,9 +274,18 @@ function parsePersonSingle(raw) {
     const tokens = splitTokens(rest || "");
     if (!normSpace(last) || tokens.length === 0)
       return { valid: false, reason: "insufficient tokens after comma" };
-    const parsedComma = parseCommaSeparatedName(last, tokens);
-    if (parsedComma) return parsedComma;
-    return { valid: false, reason: "unable to parse comma style" };
+    const first = tokens[0];
+    const middleStr = tokens.slice(1).join(" ").trim();
+    const middle = sanitizeMiddleName(middleStr);
+    return {
+      valid: true,
+      owner: {
+        type: "person",
+        first_name: titleCaseName(first),
+        last_name: titleCaseName(normSpace(last)),
+        middle_name: middle,
+      },
+    };
   }
 
   const tokens = splitTokens(name);
@@ -373,79 +295,33 @@ function parsePersonSingle(raw) {
   }
 
   if (isAllCaps(name)) {
-    const parsedAllCaps = parseAllCapsTokens(tokens);
-    if (parsedAllCaps) return parsedAllCaps;
-    return { valid: false, reason: "unable to parse all-caps style" };
+    // CAD-style: LAST FIRST [MIDDLE...]
+    const last = tokens[0];
+    const first = tokens[1];
+    const middleStr = tokens.slice(2).join(" ").trim();
+    const middle = sanitizeMiddleName(middleStr);
+    return {
+      valid: true,
+      owner: {
+        type: "person",
+        first_name: titleCaseName(first),
+        last_name: titleCaseName(last),
+        middle_name: middle,
+      },
+    };
   }
 
-  const parsedDefault = parseStandardOrderTokens(tokens);
-  if (parsedDefault) return parsedDefault;
-  return { valid: false, reason: "unable to parse standard style" };
-}
-
-function parseCommaSeparatedName(lastRaw, tokens) {
-  const last = titleCaseName(normSpace(lastRaw));
-  if (!last) return null;
-
-  const first = findNextValidToken(tokens);
-  if (!first) return null;
-
-  const middleParts = [];
-  tokens.forEach((token, idx) => {
-    if (idx === first.index) return;
-    const normalized = titleCaseName(token);
-    if (normalized) middleParts.push(normalized);
-  });
-  const middle = middleParts.length ? sanitizeMiddleName(middleParts.join(" ")) : null;
-
+  // Default: FIRST [MIDDLE] LAST
+  const first = tokens[0];
+  const last = tokens[tokens.length - 1];
+  const middleStr = tokens.slice(1, -1).join(" ").trim();
+  const middle = sanitizeMiddleName(middleStr);
   return {
     valid: true,
     owner: {
       type: "person",
-      first_name: first.value,
-      last_name: last,
-      middle_name: middle,
-    },
-  };
-}
-
-function parseAllCapsTokens(tokens) {
-  const last = findNextValidToken(tokens);
-  if (!last) return null;
-
-  const first = selectFirstNameTokenAllCaps(tokens, last.index);
-  if (!first) return null;
-
-  const middle = buildMiddleNameBetween(tokens, first.index, last.index);
-
-  return {
-    valid: true,
-    owner: {
-      type: "person",
-      first_name: first.value,
-      last_name: last.value,
-      middle_name: middle,
-    },
-  };
-}
-
-function parseStandardOrderTokens(tokens) {
-  const first = findNextValidToken(tokens);
-  if (!first) return null;
-
-  const skip = new Set([first.index]);
-  const last = findPrevValidToken(tokens, tokens.length - 1, skip);
-  if (!last) return null;
-  if (last.index === first.index) return null;
-
-  const middle = buildMiddleNameBetween(tokens, first.index, last.index);
-
-  return {
-    valid: true,
-    owner: {
-      type: "person",
-      first_name: first.value,
-      last_name: last.value,
+      first_name: titleCaseName(first),
+      last_name: titleCaseName(last),
       middle_name: middle,
     },
   };
@@ -742,8 +618,8 @@ function parsePersonsFromString(raw) {
       first_name: owner.first_name || "",
       last_name: owner.last_name || "",
       middle_name: owner.middle_name || null,
-      prefix_name: owner.prefix_name || null,
-      suffix_name: owner.suffix_name || null,
+      prefix_name: owner.prefix_name || "",
+      suffix_name: owner.suffix_name || "",
       birth_date: null,
       us_citizenship_status: null,
       veteran_status: null,
