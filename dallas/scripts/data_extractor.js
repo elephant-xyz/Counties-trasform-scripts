@@ -192,10 +192,10 @@ function mapFence(text) {
   if (!text) return null;
   const t = text.toUpperCase();
   if (t.includes("WOOD")) return "Wood";
-  if (t.includes("CHAIN")) return "ChainLink";
+  if (t.includes("CHAIN")) return "Chain Link";
   if (t.includes("VINYL")) return "Vinyl";
   if (t.includes("ALUM")) return "Aluminum";
-  if (t.includes("WROUGHT")) return "WroughtIron";
+  if (t.includes("WROUGHT")) return "Wrought Iron";
   return null;
 }
 
@@ -377,30 +377,7 @@ function parseStreetNameDetails(name) {
 function parseFullAddress(line) {
   if (!line) return {};
   const cleaned = line.replace(/\s+/g, " ").trim();
-
-  // Try Dallas CAD format first: "STREET CITY, STATE ZIP" (one comma)
-  // Example: "10135 HEDGEWAY DR DALLAS, TEXAS 752296158"
-  let match = cleaned.match(
-    /^(.*?)\s+([A-Za-z.\s'-]+),\s*([A-Za-z.\s]+)\s+(\d{5,9})$/i,
-  );
-  if (match) {
-    const [, streetPart, cityPart, statePart, postalRaw] = match;
-    const digits = postalRaw.replace(/\D/g, "");
-    const postal = digits.slice(0, 5) || null;
-    const plus4 = digits.length > 5 ? digits.slice(5, 9) : null;
-    return {
-      street: streetPart.replace(/,\s*$/, "").trim(),
-      city: cityPart.trim(),
-      stateRaw: statePart.trim(),
-      stateCode: normalizeStateCode(statePart),
-      postal,
-      plus4,
-      postalRaw: postalRaw.trim(),
-    };
-  }
-
-  // Try standard format: "STREET, CITY, STATE ZIP" (two commas)
-  match = cleaned.match(
+  const match = cleaned.match(
     /^(.*?),\s*([A-Za-z.\s]+),\s*([A-Za-z.\s]+)\s+(\d{5}(?:-\d{4})?|\d{9})$/,
   );
   if (!match) {
@@ -412,7 +389,7 @@ function parseFullAddress(line) {
   const plus4 =
     digits.length > 5 ? digits.slice(5, Math.min(9, digits.length)) : null;
   return {
-    street: street.replace(/,\s*$/, "").trim(),
+    street: street.trim(),
     city: city.trim(),
     stateRaw: stateRaw.trim(),
     stateCode: normalizeStateCode(stateRaw),
@@ -868,40 +845,16 @@ async function main() {
     streetLine ||
     null;
 
-  // Validate we have data for at least one valid format
-  const hasValidNormalized = streetNumber && streetNameBase;
-  const hasValidUnnormalized = unnormalizedAddr && unnormalizedAddr.trim().length > 0;
-
-  // Choose format: prefer normalized if available, otherwise use unnormalized
-  // If neither is valid, default to normalized with available data
-  const useNormalized = hasValidNormalized || !hasValidUnnormalized;
-
-  const addrOut = useNormalized ? {
+  // Use normalized address format with street-level fields
+  const addrOut = {
     source_http_request: address.source_http_request || null,
     request_identifier: address.request_identifier || null,
+    unnormalized_address: null,
     street_number: streetNumber,
     street_name: streetNameBase,
     street_suffix_type: streetSuffixType,
     street_pre_directional_text: streetPreDir,
     street_post_directional_text: streetPostDir,
-    unit_identifier: unitIdentifier,
-    route_number: routeNumber,
-    township: townshipVal,
-    range: rangeVal,
-    section: sectionVal,
-    city_name: cityFormatted,
-    state_code: stateCode,
-    postal_code: postalCode,
-    plus_four_postal_code: plusFour,
-    county_name: countyName,
-    country_code: countryCode,
-    block: blockVal,
-    lot: lotVal,
-  } : {
-    // Unnormalized format - MUST NOT include street-level fields per oneOf schema
-    source_http_request: address.source_http_request || null,
-    request_identifier: address.request_identifier || null,
-    unnormalized_address: unnormalizedAddr,
     unit_identifier: unitIdentifier,
     route_number: routeNumber,
     township: townshipVal,
@@ -935,11 +888,15 @@ async function main() {
     const ensureCityFormatMailing = (val) => val ? val.replace(/\s+/g, " ").trim().toUpperCase() : null;
     const mailingCityFormatted = ensureCityFormatMailing(mailingCity);
 
-    // Mailing address uses unnormalized format - MUST NOT include street-level fields per oneOf schema
     const mailingAddrOut = {
       source_http_request: ownersAndGenSource,
       request_identifier: parcelId || null,
       unnormalized_address: mailingAddressRaw,
+      street_number: null,
+      street_name: null,
+      street_suffix_type: null,
+      street_pre_directional_text: null,
+      street_post_directional_text: null,
       unit_identifier: null,
       route_number: null,
       township: null,
