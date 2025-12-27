@@ -60,8 +60,8 @@ function main() {
   function mapCooling(txt) {
     if (!txt) return null;
     const t = txt.toUpperCase();
-    if (t.includes("CENTRAL")) return "Central Air";
-    if (t.includes("WINDOW")) return "Window Air Conditioner";
+    if (t.includes("CENTRAL")) return "CentralAir";
+    if (t.includes("WINDOW")) return "WindowAirConditioner";
     if (t.includes("DUCTLESS") || t.includes("MINI SPLIT")) return "Ductless";
     return null;
   }
