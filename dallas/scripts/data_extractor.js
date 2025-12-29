@@ -457,7 +457,7 @@ function mapImprovementToLayout(text) {
     return { spaceType: "Outdoor Pool", isExterior: true };
   }
   if (t.includes("SPA") || t.includes("HOT TUB")) {
-    return { spaceType: "Hot Tub / Spa Area", isExterior: false };
+    return { spaceType: "Spa", isExterior: false };
   }
   if (t.includes("SHED") || t.includes("STORAGE")) {
     return { spaceType: "Storage Room", isExterior: true };
@@ -1648,21 +1648,6 @@ async function main() {
     // Track Building layouts for relationships
     if (L.space_type === "Building") {
       buildingLayoutIndices.push(i + 1);
-    }
-  }
-
-  // Create property_has_layout relationships for ALL layouts
-  if (fs.existsSync(path.join(dataDir, "property.json"))) {
-    for (let i = 0; i < layouts.length; i++) {
-      const layoutIdx = i + 1;
-      const relOut = {
-        from: { "/": "./property.json" },
-        to: { "/": `./layout_${layoutIdx}.json` },
-      };
-      await fsp.writeFile(
-        path.join(dataDir, `relationship_property_layout_${layoutIdx}.json`),
-        JSON.stringify(relOut, null, 2),
-      );
     }
   }
 
