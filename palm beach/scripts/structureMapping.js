@@ -350,10 +350,12 @@ function buildStructureRecord(buildings) {
       interior_wall_structure_material: (function () {
         const m1 = mapWallAndFrameGuideline(exteriorWall1);
         if (m1 && m1.framing) return m1.framing;
+        return null;
       })(),
       interior_wall_structure_material_primary: (function () {
         const m1 = mapWallAndFrameGuideline(exteriorWall1);
         if (m1 && m1.framing) return m1.framing;
+        return null;
       })(),
       interior_wall_structure_material_secondary: null,
       interior_wall_surface_material_primary: null,
