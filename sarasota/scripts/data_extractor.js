@@ -3002,14 +3002,6 @@ function main() {
         const assessed = parseCurrencyToNumber($(tds[5]).text()) ?? null;
         const taxable = parseCurrencyToNumber($(tds[7]).text()) ?? null;
 
-        // Skip creating tax file if any required field is null or zero
-        // Required fields: assessed, market (just), and taxable amounts
-        if (!assessed || assessed <= 0 || 
-            !just || just <= 0 || 
-            !taxable || taxable <= 0) {
-          return; // Skip this tax year
-        }
-        
         const tax = {
           first_year_building_on_tax_roll: null,
           first_year_on_tax_roll: null,
@@ -3420,12 +3412,27 @@ function main() {
       }
     });
   }
-  
-  // Write exemptions
-  exemptions.forEach((exemption, idx) => {
+
+  // Get list of tax years that have files
+  const taxYears = new Set();
+  if (fs.existsSync(dataDir)) {
+    fs.readdirSync(dataDir).forEach(file => {
+      const match = file.match(/^tax_(\d{4})\.json$/);
+      if (match) {
+        taxYears.add(parseInt(match[1]));
+      }
+    });
+  }
+
+  // Write exemptions only if there's a corresponding tax file for the grant year
+  const validExemptions = exemptions.filter(exemption =>
+    exemption.grant_year && taxYears.has(exemption.grant_year)
+  );
+
+  validExemptions.forEach((exemption, idx) => {
     writeJSON(path.join(dataDir, `exemption_${idx + 1}.json`), exemption);
   });
-  
+
   if (floodRows.length > 0) {
     writeJSON(path.join(dataDir, "relationship_property_flood_storm_information.json"), {
       from: "./property.json",
@@ -3446,7 +3453,7 @@ function main() {
   });
   
   // Exemption relationships
-  exemptions.forEach((exemption, index) => {
+  validExemptions.forEach((_exemption, index) => {
     writeJSON(path.join(dataDir, `relationship_property_exemption_${index + 1}.json`), {
       from: "./property.json",
       to: `./exemption_${index + 1}.json`
