@@ -2970,8 +2970,8 @@ function main() {
   };
   writeJSON(path.join(dataDir, "lot.json"), lot);
   writeJSON(path.join(dataDir, "relationship_property_lot.json"), {
-    from: "./property.json",
-    to: "./lot.json"
+    from: {"/": "./property.json"},
+    to: {"/": "./lot.json"}
   });
 
   // Build tax files for each year present in the Values table (even if $0)
@@ -3404,9 +3404,8 @@ function main() {
         if (grantYear && value) {
           exemptions.push({
             exemption_type: value === 25000 ? "Homestead" : "Additional Homestead",
-            exemption_amount: value,
-            grant_year: grantYear,
-            is_active: !description.includes("not renew")
+            exemption_value: value,
+            tax_year: grantYear
           });
         }
       }
@@ -3424,10 +3423,19 @@ function main() {
     });
   }
 
-  // Write exemptions only if there's a corresponding tax file for the grant year
+  // Write exemptions only if there's a corresponding tax file for the tax year
   const validExemptions = exemptions.filter(exemption =>
-    exemption.grant_year && taxYears.has(exemption.grant_year)
+    exemption.tax_year && taxYears.has(exemption.tax_year)
   );
+
+  // Create tax_jurisdiction if there are exemptions
+  if (validExemptions.length > 0) {
+    const taxJurisdiction = {
+      jurisdiction_name: "Sarasota County",
+      jurisdiction_type: "County"
+    };
+    writeJSON(path.join(dataDir, "tax_jurisdiction.json"), taxJurisdiction);
+  }
 
   validExemptions.forEach((exemption, idx) => {
     writeJSON(path.join(dataDir, `exemption_${idx + 1}.json`), exemption);
@@ -3435,36 +3443,44 @@ function main() {
 
   if (floodRows.length > 0) {
     writeJSON(path.join(dataDir, "relationship_property_flood_storm_information.json"), {
-      from: "./property.json",
-      to: "./flood_storm_information.json"
+      from: {"/": "./property.json"},
+      to: {"/": "./flood_storm_information.json"}
     });
   }
-  
+
   // Tax relationships
   fs.readdirSync(dataDir).forEach(file => {
     const match = file.match(/^tax_(\d{4})\.json$/);
     if (match) {
       const year = match[1];
       writeJSON(path.join(dataDir, `relationship_property_tax_${year}.json`), {
-        from: "./property.json",
-        to: `./tax_${year}.json`
+        from: {"/": "./property.json"},
+        to: {"/": `./tax_${year}.json`}
       });
+
+      // Tax to tax_jurisdiction relationship (if tax_jurisdiction exists)
+      if (validExemptions.length > 0) {
+        writeJSON(path.join(dataDir, `relationship_tax_${year}_tax_jurisdiction.json`), {
+          from: {"/": `./tax_${year}.json`},
+          to: {"/": "./tax_jurisdiction.json"}
+        });
+      }
     }
   });
-  
-  // Exemption relationships
-  validExemptions.forEach((_exemption, index) => {
-    writeJSON(path.join(dataDir, `relationship_property_exemption_${index + 1}.json`), {
-      from: "./property.json",
-      to: `./exemption_${index + 1}.json`
+
+  // Tax jurisdiction to exemption relationships
+  validExemptions.forEach((exemption, index) => {
+    writeJSON(path.join(dataDir, `relationship_tax_jurisdiction_exemption_${index + 1}.json`), {
+      from: {"/": "./tax_jurisdiction.json"},
+      to: {"/": `./exemption_${index + 1}.json`}
     });
   });
 
   // Sales history relationships
   salesHistory.forEach((sale, index) => {
     writeJSON(path.join(dataDir, `relationship_property_sales_${index + 1}.json`), {
-      from: "./property.json",
-      to: `./sales_${index + 1}.json`
+      from: {"/": "./property.json"},
+      to: {"/": `./sales_${index + 1}.json`}
     });
     
     // Sales history to deed relationship
