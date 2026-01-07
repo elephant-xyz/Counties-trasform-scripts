@@ -1117,16 +1117,28 @@ function extractValuation($) {
 
 function normalizeUseCode(code) {
   if (!code) return null;
-  let normalized = code.replace(/\s*\([^)]*\)/g, '').replace(/\s+/g, '');
-  
+
+  // First, remove parenthetical content (like notes and explanations)
+  let normalized = code.replace(/\s*\([^)]*\)/g, '');
+
+  // Remove DOR codes (typically 4-digit numbers) that appear after the use code
+  // Pattern: use code might have numbers in it (like "80-89"), but DOR codes are standalone digits
+  normalized = normalized.replace(/\s+\d{4,5}\s*.*$/g, '');
+
+  // Trim any trailing/leading whitespace
+  normalized = normalized.trim();
+
+  // For matching purposes, remove spaces
+  let matchingCode = normalized.replace(/\s+/g, '');
+
   // Handle CROPLAND CLASS cases
-  if (normalized.match(/^CROPLANDCLASS\d+$/)) {
-    const match = normalized.match(/^CROPLANDCLASS(\d+)$/);
+  if (matchingCode.match(/^CROPLANDCLASS\d+$/)) {
+    const match = matchingCode.match(/^CROPLANDCLASS(\d+)$/);
     if (match) {
       normalized = `CROPLAND CLASS ${match[1]}`;
     }
   }
-  
+
   return normalized;
 }
 
@@ -1145,12 +1157,41 @@ function writeProperty($, parcelId) {
   const propertyMapping = propertyTypeMapping.find(mapping => {
     const mappingCode = mapping.property_usecode.replace(/\s+/g, '');
     const cleanUseCode = useCode.replace(/\s+/g, '');
-    return mappingCode === cleanUseCode || 
-           cleanUseCode.startsWith(mappingCode) || 
+    return mappingCode === cleanUseCode ||
+           cleanUseCode.startsWith(mappingCode) ||
            mappingCode === cleanUseCode.replace(/\d+$/, '');
   });
   console.log(">>>",propertyMapping)
-  
+
+  // If no mapping found, use defaults
+  if (!propertyMapping) {
+    console.log(`Warning: No property type mapping found for use code: ${useCode}`);
+    const propertyFields = {
+      property_type: "LandParcel",
+      property_usage_type: "Unknown",
+      ownership_estate_type: "FeeSimple",
+      structure_form: null,
+      build_status: "VacantLand"
+    };
+
+    const property = {
+      ...appendSourceInfo(seed),
+      parcel_identifier: parcelId || "",
+      property_legal_description_text: extractLegalDescription($) || null,
+      property_structure_built_year: extractBuildingYears($).actual || null,
+      subdivision: null,
+      number_of_units: null,
+      zoning: null,
+      property_type: propertyFields.property_type,
+      property_usage_type: propertyFields.property_usage_type,
+      ownership_estate_type: propertyFields.ownership_estate_type,
+      structure_form: propertyFields.structure_form,
+      build_status: propertyFields.build_status,
+    };
+    writeJSON(path.join("data", "property.json"), property);
+    return;
+  }
+
   const propertyFields = {
     property_type: propertyMapping.property_type,
     property_usage_type: propertyMapping.property_usage_type,
@@ -1289,10 +1330,38 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
+
+  // Collect persons who will have relationships (current owners OR involved in sales)
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "person") {
+  const currentOwners = ownersByDate['current'] || [];
+
+  // Add current owners
+  currentOwners.forEach((o) => {
+    if (o.type === "person") {
+      const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+      if (!personMap.has(k))
+        personMap.set(k, {
+          first_name: o.first_name,
+          middle_name: o.middle_name || null,
+          last_name: o.last_name,
+          prefix_name: o.prefix_name ||null,
+          suffix_name: o.suffix_name || null
+        });
+      else {
+        const existing = personMap.get(k);
+        if (!existing.middle_name && o.middle_name)
+          existing.middle_name = o.middle_name;
+      }
+    }
+  });
+
+  // Add persons involved in sales
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    const ownersOnDate = ownersByDate[d] || [];
+    ownersOnDate
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
         if (!personMap.has(k))
           personMap.set(k, {
@@ -1307,9 +1376,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           if (!existing.middle_name && o.middle_name)
             existing.middle_name = o.middle_name;
         }
-      }
-    });
+      });
   });
+
   people = Array.from(personMap.values()).map((p) => ({
   ...appendSourceInfo(seed),
   birth_date: null,
@@ -1325,20 +1394,36 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   validPeople.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
+
+  // Collect companies who will have relationships (current owners OR involved in sales)
   const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim());
-    });
+
+  // Add current owner companies
+  currentOwners.forEach((o) => {
+    if (o.type === "company" && (o.name || "").trim())
+      companyNames.add((o.name || "").trim());
   });
-  companies = Array.from(companyNames).map((n) => ({ 
+
+  // Add companies involved in sales
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    const ownersOnDate = ownersByDate[d] || [];
+    ownersOnDate
+      .filter((o) => o.type === "company")
+      .forEach((o) => {
+        if ((o.name || "").trim())
+          companyNames.add((o.name || "").trim());
+      });
+  });
+
+  companies = Array.from(companyNames).map((n) => ({
     ...appendSourceInfo(seed),
     name: n,
   }));
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
+
   // Relationships: link sale to owners present on that date (both persons and companies)
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
@@ -1678,37 +1763,45 @@ function createStructureFiles(seed,parcelIdentifier) {
         foundation_repair_date: struct?.foundation_repair_date ?? null,
         window_installation_date: struct?.window_installation_date ?? null
       };
-      writeJSON(path.join("data", `structure_${struct.structure_index || idx + 1}.json`), structureOut);
-      
-      // Create relationship between building layout and structure
-      const buildingNumber = struct.building_number || idx + 1;
       const structureIndex = struct.structure_index || idx + 1;
-      
+      writeJSON(path.join("data", `structure_${structureIndex}.json`), structureOut);
+
+      // Create property -> structure relationship (always create this)
+      writeJSON(
+        path.join("data", `relationship_property_has_structure_${structureIndex}.json`),
+        {
+          from: { "/": "./property.json" },
+          to: { "/": `./structure_${structureIndex}.json` }
+        }
+      );
+
+      // Also create layout -> structure relationship if layout exists
+      const buildingNumber = struct.building_number || idx + 1;
+
       // Find the correct building layout file index
       let buildingLayoutIndex = buildingNumber;
-      // console.log("BUILDING_NUMBER",buildingNumber)
       if (layoutsData && parcelIdentifier) {
-        // console.log(layoutsData)
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
-        // console.log(layouts)
-        const buildingLayout = layouts.find((layout, layoutIdx) => 
+        const buildingLayout = layouts.find((layout) =>
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
-        // console.log("BUILDING_LAYOUT", buildingLayout)
         if (buildingLayout) {
           buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
         }
       }
-      
-      const relationship = {
-        from: { "/": `./layout_${buildingLayoutIndex}.json` },
-        to: { "/": `./structure_${structureIndex}.json` }
-      };
-      writeJSON(
-        path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
-        relationship
-      );
+
+      // Only create layout relationship if buildingLayoutIndex was found (layout file exists)
+      if (buildingLayoutIndex && fs.existsSync(path.join("data", `layout_${buildingLayoutIndex}.json`))) {
+        const relationship = {
+          from: { "/": `./layout_${buildingLayoutIndex}.json` },
+          to: { "/": `./structure_${structureIndex}.json` }
+        };
+        writeJSON(
+          path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
+          relationship
+        );
+      }
     });
   }
 
@@ -1752,33 +1845,45 @@ function createUtilitiesFiles(seed,parcelIdentifier){
         solar_inverter_visible: util?.solar_inverter_visible ? true : false,
         hvac_unit_issues: util?.hvac_unit_issues ?? null
       };
-      writeJSON(path.join("data", `utility_${util.utility_index || idx + 1}.json`), utilityOut);
-      
-      // Create relationship between building layout and utility
-      const buildingNumber = util.building_number || idx + 1;
       const utilityIndex = util.utility_index || idx + 1;
-      
+      writeJSON(path.join("data", `utility_${utilityIndex}.json`), utilityOut);
+
+      // Create property -> utility relationship (always create this)
+      writeJSON(
+        path.join("data", `relationship_property_has_utility_${utilityIndex}.json`),
+        {
+          from: { "/": "./property.json" },
+          to: { "/": `./utility_${utilityIndex}.json` }
+        }
+      );
+
+      // Also create layout -> utility relationship if layout exists
+      const buildingNumber = util.building_number || idx + 1;
+
       // Find the correct building layout file index
       let buildingLayoutIndex = buildingNumber;
       if (layoutsData && parcelIdentifier) {
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
-        const buildingLayout = layouts.find((layout, layoutIdx) => 
+        const buildingLayout = layouts.find((layout) =>
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
         if (buildingLayout) {
           buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
         }
       }
-      
-      const relationship = {
-        from: { "/": `./layout_${buildingLayoutIndex}.json` },
-        to: { "/": `./utility_${utilityIndex}.json` }
-      };
-      writeJSON(
-        path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
-        relationship
-      );
+
+      // Only create layout relationship if buildingLayoutIndex was found (layout file exists)
+      if (buildingLayoutIndex && fs.existsSync(path.join("data", `layout_${buildingLayoutIndex}.json`))) {
+        const relationship = {
+          from: { "/": `./layout_${buildingLayoutIndex}.json` },
+          to: { "/": `./utility_${utilityIndex}.json` }
+        };
+        writeJSON(
+          path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
+          relationship
+        );
+      }
     });
   }
 
