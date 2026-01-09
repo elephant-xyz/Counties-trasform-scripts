@@ -2982,6 +2982,24 @@ function main() {
   writeJSON(path.join("data", "property.json"), property);
   console.log("finalPropertyy>>>>>>>>",property);
 
+  // Create parcel.json as a separate entity
+  const parcel = {
+    source_http_request: {
+      method: "GET",
+      url: seed.source_http_request.url
+    },
+    request_identifier: parcelIdentifier || seed.parcel_id || "",
+    parcel_identifier: parcelIdentifier || seed.parcel_id || ""
+  };
+  writeJSON(path.join("data", "parcel.json"), parcel);
+
+  // Create relationship between property and parcel
+  const relPropertyParcel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./parcel.json" }
+  };
+  writeJSON(path.join("data", "relationship_property_has_parcel.json"), relPropertyParcel);
+
   //Extra features extraction
   const lotExtras = extractExtraFeatures($, parcelIdentifier, seed, lotSizeAcre);
   if (lotExtras) {
