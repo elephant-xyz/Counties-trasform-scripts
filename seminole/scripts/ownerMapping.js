@@ -273,9 +273,6 @@ function parsePersonName(raw, inferredLastName) {
     let middle = middleTokens.length ? middleTokens.join(" ") : null;
     const middleValid = middle && isValidName(middle) ? normWS(middle) : null;
 
-    let middle = middleTokens.length ? middleTokens.join(" ") : null;
-    const middleValid = middle && isValidName(middle) ? normWS(middle) : null;
-
     // Validate first and last names
     if (!isValidName(first) || !isValidName(lastPart)) {
       return null;
