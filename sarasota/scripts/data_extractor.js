@@ -3403,7 +3403,7 @@ function main() {
         
         if (grantYear && value) {
           exemptions.push({
-            exemption_type: value === 25000 ? "Homestead" : "Additional Homestead",
+            exemption_type: value === 25000 ? "Homestead" : "Add. Homestead",
             exemption_value: value,
             tax_year: grantYear
           });
