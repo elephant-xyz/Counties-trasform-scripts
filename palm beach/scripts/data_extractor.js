@@ -7,6 +7,9 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const SCRIPT_DIR = __dirname;
+const WORKING_DIR = process.cwd();
+
 function readJSON(p) {
   try {
     return JSON.parse(fs.readFileSync(p, "utf8"));
@@ -1771,10 +1774,11 @@ function attemptWriteAddress(unnorm, siteAddress, mailingAddress) {
  * Minimal Geometry model that mirrors the Elephant Geometry class.
  */
 class Geometry {
-  constructor({ latitude, longitude, polygon }) {
+  constructor({ latitude, longitude, polygon, request_identifier }) {
     this.latitude = latitude ?? null;
     this.longitude = longitude ?? null;
     this.polygon = polygon ?? null;
+    this.request_identifier = request_identifier ?? null;
   }
 
   /**
@@ -1932,6 +1936,33 @@ function splitGeometry(record) {
 }
 
 /**
+ * Load CSV content from input.csv or seed.csv in working/scripts/parent directories.
+ */
+function loadGeometryCsvContent() {
+  const parentDir = path.dirname(SCRIPT_DIR);
+  const candidates = [
+    path.join(WORKING_DIR, "input.csv"),
+    path.join(SCRIPT_DIR, "input.csv"),
+    path.join(parentDir, "input.csv"),
+    path.join(WORKING_DIR, "seed.csv"),
+    path.join(SCRIPT_DIR, "seed.csv"),
+    path.join(parentDir, "seed.csv"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        return fs.readFileSync(candidate, "utf8");
+      } catch (err) {
+        console.warn(`Unable to read geometry CSV at ${candidate}: ${err.message}`);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Read the provided CSV file (defaults to ./input.csv) and return Geometry instances.
  */
 function createGeometryInstances(csvContent) {
@@ -1954,26 +1985,39 @@ function createGeometryInstances(csvContent) {
 }
 
 function createGeometryClass(geometryInstances) {
-  let geomIndex = 1;
-  for(let geom of geometryInstances) {
-    let polygon = [];
-    let geometry = {
-      "latitude": geom.latitude,
-      "longitude": geom.longitude,
-    }
-    if (geom && geom.polygon) {
-      for (const coordinate of geom.polygon.coordinates[0]) {
-        polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
-      }
-      geometry.polygon = polygon;
-    }
-    writeJSON(path.join("data", `geometry_${geomIndex}.json`), geometry);
-    writeJSON(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
-        from: { "/": `./parcel.json` },
-        to: { "/": `./geometry_${geomIndex}.json` },
-    });
-    geomIndex++;
+  if (!geometryInstances || !geometryInstances.length) {
+    return;
   }
+
+  geometryInstances.forEach((geom, geomIndex) => {
+    // Build Elephant Geometry payload with polygon array
+    const geometry = {
+      latitude: geom.latitude ?? null,
+      longitude: geom.longitude ?? null,
+    };
+
+    if (geom.polygon && Array.isArray(geom.polygon.coordinates)) {
+      const exteriorRing = geom.polygon.coordinates[0] || [];
+      const polygon = exteriorRing.map((coordinate) => ({
+        longitude: coordinate[0],
+        latitude: coordinate[1],
+      }));
+      if (polygon.length) {
+        geometry.polygon = polygon;
+      }
+    }
+
+    const geometryFile = `geometry_parcel_${geomIndex}.json`;
+    const relationshipFile = `relationship_parcel_has_geometry_parcel_${geomIndex}.json`;
+
+    writeJSON(path.join("data", geometryFile), geometry);
+
+    const relationship = {
+      from: { "/": "./parcel.json" },
+      to: { "/": `./${geometryFile}` },
+    };
+    writeJSON(path.join("data", relationshipFile), relationship);
+  });
 }
 
 function convertDateFormat(dateString) {
@@ -2057,21 +2101,34 @@ function main() {
     unaddr.request_identifier ||
     "";
   const key = `property_${parcelId}`;
-  try {
-    const seedCsvPath = fs.existsSync(path.join(".", "input.csv"))
-      ? path.join(".", "input.csv")
-      : path.join("input", "input.csv");
-    const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
-    createGeometryClass(createGeometryInstances(seedCsv));
-  } catch (e) {
+
+  // GEOMETRY: Create geometry with polygon support from CSV if available
+  const geometryCsv = loadGeometryCsvContent();
+  let geometryCreated = false;
+
+  if (geometryCsv) {
+    try {
+      const instances = createGeometryInstances(geometryCsv);
+      if (instances.length) {
+        createGeometryClass(instances);
+        geometryCreated = true;
+        console.log(`Created ${instances.length} geometry_parcel_<index>.json files from CSV`);
+      }
+    } catch (err) {
+      console.warn(`Unable to build geometry from CSV: ${err.message}`);
+    }
+  }
+
+  // Fall back to single point geometry if no CSV geometry was created
+  if (!geometryCreated) {
     const latitude = unaddr && unaddr.latitude ? unaddr.latitude : null;
     const longitude = unaddr && unaddr.longitude ? unaddr.longitude : null;
     if (latitude && longitude) {
-      const coordinate = new Geometry({
+      const geometry = {
         latitude: latitude,
         longitude: longitude
-      });
-      createGeometryClass([coordinate]);
+      };
+      writeJSON(path.join("data", "geometry.json"), geometry);
     }
   }
   let struct = null;
