@@ -1277,11 +1277,11 @@ function writeProperty($, parcelId) {
   console.log(">>>",propertyMapping)
   
   const propertyFields = {
-    property_type: propertyMapping?.property_type || null,
+    property_type: propertyMapping?.property_type || "LandParcel",
     property_usage_type: propertyMapping?.property_usage_type || null,
-    ownership_estate_type: propertyMapping?.ownership_estate_type || null,
+    ownership_estate_type: propertyMapping?.ownership_estate_type || "FeeSimple",
     structure_form: propertyMapping?.structure_form || null,
-    build_status: propertyMapping?.build_status || null
+    build_status: propertyMapping?.build_status || "VacantLand"
   };
   
 
@@ -2135,47 +2135,74 @@ function main() {
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($)
   console.log("---?",mailingAddressRaw);
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
 
-  // Create mailing address relationships with current owners
+  // Only create mailing address if we have data and can create relationships
   const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (owners) {
+  if (mailingAddressRaw && owners) {
     const key = `property_${parcelId}`;
     const record = owners[key];
     if (record && record.owners_by_date && record.owners_by_date['current']) {
       const currentOwners = record.owners_by_date['current'];
-      let relCounter = 0;
-      currentOwners.forEach((owner) => {
-        if (owner.type === "person") {
-          const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-          if (pIdx) {
-            relCounter++;
-            writeJSON(
-              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
-              {
-                from: { "/": `./person_${pIdx}.json` },
-                to: { "/": "./mailing_address.json" },
-              }
-            );
+
+      if (currentOwners && currentOwners.length > 0) {
+        // First, collect all valid relationships
+        let relCounter = 0;
+        const relationships = [];
+
+        currentOwners.forEach((owner) => {
+          if (owner.type === "person") {
+            const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
+            if (pIdx) {
+              relCounter++;
+              relationships.push({
+                type: 'person',
+                counter: relCounter,
+                data: {
+                  from: { "/": `./person_${pIdx}.json` },
+                  to: { "/": "./mailing_address.json" },
+                }
+              });
+            }
+          } else if (owner.type === "company") {
+            const cIdx = findCompanyIndexByName(owner.name);
+            if (cIdx) {
+              relCounter++;
+              relationships.push({
+                type: 'company',
+                counter: relCounter,
+                data: {
+                  from: { "/": `./company_${cIdx}.json` },
+                  to: { "/": "./mailing_address.json" }
+                }
+              });
+            }
           }
-        } else if (owner.type === "company") {
-          const cIdx = findCompanyIndexByName(owner.name);
-          if (cIdx) {
-            relCounter++;
-            writeJSON(
-              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
-              {
-                from: { "/": `./company_${cIdx}.json` },
-                to: { "/": "./mailing_address.json" }
-              }
-            );
-          }
+        });
+
+        // Only create mailing_address.json if we have at least one relationship
+        if (relationships.length > 0) {
+          const mailingAddressOutput = {
+            ...appendSourceInfo(seed),
+            unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+          };
+          writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+
+          // Write the relationships
+          relationships.forEach((rel) => {
+            if (rel.type === 'person') {
+              writeJSON(
+                path.join("data", `relationship_person_has_mailing_address_${rel.counter}.json`),
+                rel.data
+              );
+            } else if (rel.type === 'company') {
+              writeJSON(
+                path.join("data", `relationship_company_has_mailing_address_${rel.counter}.json`),
+                rel.data
+              );
+            }
+          });
         }
-      });
+      }
     }
   }  
 
