@@ -2015,7 +2015,11 @@ function parseCsv(content) {
     } else if (char === ',' && !insideQuotes) {
       row.push(current);
       current = '';
-    } else if (char === '\n' && !insideQuotes) {
+    } else if ((char === '\n' || char === '\r') && !insideQuotes) {
+      // Handle both \n and \r line breaks
+      if (char === '\r' && csvText[i + 1] === '\n') {
+        i++; // Skip the \n in \r\n
+      }
       row.push(current);
       rows.push(row);
       row = [];
@@ -2034,10 +2038,38 @@ function parseCsv(content) {
 }
 
 /**
+ * Validates a coordinate point [lon, lat]
+ */
+function isValidCoordinate(coord) {
+  return Array.isArray(coord) &&
+         coord.length >= 2 &&
+         typeof coord[0] === 'number' &&
+         typeof coord[1] === 'number' &&
+         !isNaN(coord[0]) &&
+         !isNaN(coord[1]);
+}
+
+/**
+ * Validates a ring (array of coordinates) has at least 3 points
+ */
+function isValidRing(ring) {
+  return Array.isArray(ring) &&
+         ring.length >= 3 &&
+         ring.every(isValidCoordinate);
+}
+
+/**
  * Parse a polygon string (either raw JSON coordinates or GeoJSON object) into a Polygon/MultiPolygon.
  */
 function parsePolygon(value) {
   if (!value) {
+    return null;
+  }
+
+  // Prevent DoS via extremely large JSON payloads (max 1MB)
+  const MAX_POLYGON_SIZE = 1024 * 1024;
+  if (typeof value === 'string' && value.length > MAX_POLYGON_SIZE) {
+    console.warn(`Polygon payload too large: ${value.length} bytes (max ${MAX_POLYGON_SIZE})`);
     return null;
   }
 
@@ -2049,6 +2081,17 @@ function parsePolygon(value) {
   }
 
   if (isGeoJsonGeometry(parsed)) {
+    // Validate GeoJSON coordinates
+    if (parsed.type === 'Polygon') {
+      if (!Array.isArray(parsed.coordinates) || !parsed.coordinates.every(isValidRing)) {
+        return null;
+      }
+    } else if (parsed.type === 'MultiPolygon') {
+      if (!Array.isArray(parsed.coordinates) ||
+          !parsed.coordinates.every(polygon => Array.isArray(polygon) && polygon.every(isValidRing))) {
+        return null;
+      }
+    }
     return parsed;
   }
 
@@ -2058,23 +2101,44 @@ function parsePolygon(value) {
 
   const depth = coordinatesDepth(parsed);
   if (depth === 4) {
-    return { type: 'MultiPolygon', coordinates: parsed };
+    // MultiPolygon - validate all rings
+    const isValid = parsed.every(polygon => Array.isArray(polygon) && polygon.every(isValidRing));
+    return isValid ? { type: 'MultiPolygon', coordinates: parsed } : null;
   }
 
   if (depth === 3) {
-    return { type: 'Polygon', coordinates: parsed };
+    // Polygon - validate all rings
+    const isValid = parsed.every(isValidRing);
+    return isValid ? { type: 'Polygon', coordinates: parsed } : null;
   }
 
   if (depth === 2) {
-    return { type: 'Polygon', coordinates: [parsed] };
+    // Single ring - validate it
+    return isValidRing(parsed) ? { type: 'Polygon', coordinates: [parsed] } : null;
   }
 
   return null;
 }
 
-function coordinatesDepth(arr, depth = 0) {
+function coordinatesDepth(arr, depth = 0, visited = new Set()) {
+  // Prevent infinite recursion with max depth limit
+  const MAX_DEPTH = 10;
+  if (depth >= MAX_DEPTH) return depth;
+
   if (!Array.isArray(arr) || !arr.length) return depth;
-  return coordinatesDepth(arr[0], depth + 1);
+
+  // Detect circular references to prevent infinite recursion
+  if (visited.has(arr)) {
+    console.warn('Circular reference detected in coordinate array');
+    return depth;
+  }
+
+  // Validate that nested element is also an array before recursing
+  if (!Array.isArray(arr[0])) return depth + 1;
+
+  // Add current array to visited set
+  visited.add(arr);
+  return coordinatesDepth(arr[0], depth + 1, visited);
 }
 
 function isGeoJsonGeometry(value) {
@@ -2161,10 +2225,12 @@ function loadGeometryCsvContent() {
   ];
 
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      try {
-        return fs.readFileSync(candidate, "utf8");
-      } catch (err) {
+    try {
+      // Try to read directly to avoid TOCTOU race condition
+      return fs.readFileSync(candidate, "utf8");
+    } catch (err) {
+      // File doesn't exist or can't be read, try next candidate
+      if (err.code !== 'ENOENT') {
         console.warn(`Unable to read geometry CSV at ${candidate}: ${err.message}`);
       }
     }
@@ -2184,6 +2250,15 @@ function createGeometryInstances(csvContent) {
   }
 
   const [header, ...dataRows] = rows;
+
+  // Validate required columns exist
+  const requiredColumns = ['latitude', 'longitude', 'parcel_polygon'];
+  const missingColumns = requiredColumns.filter(col => !header.includes(col));
+  if (missingColumns.length > 0) {
+    console.warn(`CSV missing required columns: ${missingColumns.join(', ')}`);
+    return [];
+  }
+
   const records = dataRows.map((row) =>
     header.reduce((acc, col, idx) => {
       acc[col] = row[idx] || '';
@@ -2197,8 +2272,9 @@ function createGeometryInstances(csvContent) {
 /**
  * Write geometry_parcel_<index>.json and relationship_parcel_has_geometry_parcel_<index>.json files.
  * @param {Geometry[]} geometries - Array of Geometry instances
+ * @param {Object} seedData - Seed data for source info
  */
-function createGeometryClass(geometries) {
+function createGeometryClass(geometries, seedData) {
   if (!geometries || !geometries.length) {
     return;
   }
@@ -2206,7 +2282,7 @@ function createGeometryClass(geometries) {
   geometries.forEach((geom, geomIndex) => {
     // Build Elephant Geometry payload with polygon array
     const geometry = {
-      ...appendSourceInfo(seed),
+      ...appendSourceInfo(seedData),
       latitude: geom.latitude ?? null,
       longitude: geom.longitude ?? null,
     };
@@ -2295,7 +2371,7 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng) {
 
   // Per evaluator expectation, set county_name from input jurisdiction
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
-  const county_name = inputCounty || "Hamilton" ||null;
+  const county_name = inputCounty || "Hamilton";
 
   const address = {
     ...appendSourceInfo(seed),
@@ -2315,7 +2391,7 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng) {
     try {
       const instances = createGeometryInstances(geometryCsv);
       if (instances.length) {
-        createGeometryClass(instances);
+        createGeometryClass(instances, seed);
         geometryCreated = true;
         console.log(`Created ${instances.length} geometry_parcel_<index>.json files from CSV`);
       }
@@ -2333,12 +2409,12 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng) {
     };
     writeJSON(path.join("data", "geometry.json"), geometry);
 
-    // Create relationship between address and geometry
-    const relAddressGeometry = {
-      from: { "/": "./address.json" },
+    // Create relationship between property and geometry (consistent with CSV geometry relationships)
+    const relPropertyGeometry = {
+      from: { "/": "./property.json" },
       to: { "/": "./geometry.json" }
     };
-    writeJSON(path.join("data", "relationship_address_has_geometry.json"), relAddressGeometry);
+    writeJSON(path.join("data", "relationship_parcel_has_geometry.json"), relPropertyGeometry);
   }
 
 }
