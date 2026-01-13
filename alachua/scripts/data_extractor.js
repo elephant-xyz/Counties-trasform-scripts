@@ -6,6 +6,10 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+// Constants for geometry CSV loading
+const WORKING_DIR = process.cwd();
+const SCRIPT_DIR = __dirname;
+
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
@@ -79,6 +83,322 @@ function cleanText(text) {
 function titleCase(str) {
   return (str || "").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 }
+
+// ============================================================================
+// CSV and Polygon Geometry Helpers
+// ============================================================================
+
+const NORMALIZE_EOL_REGEX = /\r\n/g;
+
+/**
+ * Parse CSV content into rows (array of arrays).
+ */
+function parseCsv(content) {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let insideQuotes = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    const nextChar = content[i + 1];
+
+    if (char === '"') {
+      if (insideQuotes && nextChar === '"') {
+        current += '"';
+        i++;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+    } else if (char === ',' && !insideQuotes) {
+      row.push(current);
+      current = '';
+    } else if (char === '\n' && !insideQuotes) {
+      row.push(current);
+      rows.push(row);
+      row = [];
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  if (current || row.length) {
+    row.push(current);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+/**
+ * Parse a polygon string (either raw JSON coordinates or GeoJSON object) into a Polygon/MultiPolygon.
+ */
+function parsePolygon(value) {
+  if (!value) {
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (isGeoJsonGeometry(parsed)) {
+    return parsed;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return null;
+  }
+
+  const depth = coordinatesDepth(parsed);
+  if (depth === 4) {
+    return { type: 'MultiPolygon', coordinates: parsed };
+  }
+
+  if (depth === 3) {
+    return { type: 'Polygon', coordinates: parsed };
+  }
+
+  if (depth === 2) {
+    return { type: 'Polygon', coordinates: [parsed] };
+  }
+
+  return null;
+}
+
+function coordinatesDepth(arr, depth = 0) {
+  if (!Array.isArray(arr) || !arr.length) return depth;
+  return coordinatesDepth(arr[0], depth + 1);
+}
+
+function isGeoJsonGeometry(value) {
+  return (
+    value &&
+    typeof value === 'object' &&
+    (value.type === 'Polygon' || value.type === 'MultiPolygon') &&
+    Array.isArray(value.coordinates)
+  );
+}
+
+function toNumber(value) {
+  if (value == null || value === '') {
+    return null;
+  }
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
+}
+
+/**
+ * Minimal Geometry model that mirrors the Elephant Geometry class.
+ */
+class Geometry {
+  constructor({ latitude, longitude, polygon, request_identifier }) {
+    this.latitude = latitude ?? null;
+    this.longitude = longitude ?? null;
+    this.polygon = polygon ?? null;
+    this.request_identifier = request_identifier ?? null;
+  }
+
+  /**
+   * Build a Geometry instance from a CSV record.
+   */
+  static fromRecord(record) {
+    return new Geometry({
+      latitude: toNumber(record.latitude),
+      longitude: toNumber(record.longitude),
+      polygon: parsePolygon(record.parcel_polygon),
+      request_identifier: record.request_identifier || null
+    });
+  }
+}
+
+/**
+ * Split MultiPolygons into separate Polygon geometries.
+ */
+function splitGeometry(record) {
+  const baseGeometry = Geometry.fromRecord(record);
+  const { polygon } = baseGeometry;
+
+  if (!polygon || polygon.type !== 'MultiPolygon') {
+    return [baseGeometry];
+  }
+
+  return polygon.coordinates.map((coords, index) => {
+    const identifier = baseGeometry.request_identifier
+      ? `${baseGeometry.request_identifier}#${index + 1}`
+      : null;
+
+    return new Geometry({
+      latitude: baseGeometry.latitude,
+      longitude: baseGeometry.longitude,
+      polygon: {
+        type: 'Polygon',
+        coordinates: coords,
+      },
+      request_identifier: identifier,
+    });
+  });
+}
+
+/**
+ * Load CSV content from input.csv or seed.csv in working/scripts/parent directories.
+ */
+function loadGeometryCsvContent() {
+  const parentDir = path.dirname(SCRIPT_DIR);
+  const candidates = [
+    path.join(WORKING_DIR, "input.csv"),
+    path.join(SCRIPT_DIR, "input.csv"),
+    path.join(parentDir, "input.csv"),
+    path.join(WORKING_DIR, "seed.csv"),
+    path.join(SCRIPT_DIR, "seed.csv"),
+    path.join(parentDir, "seed.csv"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        return fs.readFileSync(candidate, "utf8");
+      } catch (err) {
+        console.warn(`Unable to read geometry CSV at ${candidate}: ${err.message}`);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Read the provided CSV content and return Geometry instances.
+ */
+function createGeometryInstances(csvContent) {
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const [header, ...dataRows] = rows;
+  const records = dataRows.map((row) =>
+    header.reduce((acc, col, idx) => {
+      acc[col] = row[idx] || '';
+      return acc;
+    }, {})
+  );
+
+  return records.flatMap((record) => splitGeometry(record));
+}
+
+/**
+ * Write geometry_parcel_<index>.json and relationship_parcel_has_geometry_parcel_<index>.json files.
+ * @param {Geometry[]} geometries - Array of Geometry instances
+ */
+function createParcelGeometries(geometries) {
+  if (!geometries || !geometries.length) {
+    return;
+  }
+
+  geometries.forEach((geom, geomIndex) => {
+    // Build Elephant Geometry payload with polygon array for PARCEL
+    const geometry = {
+      latitude: geom.latitude ?? null,
+      longitude: geom.longitude ?? null,
+    };
+
+    if (geom.polygon && Array.isArray(geom.polygon.coordinates)) {
+      const exteriorRing = geom.polygon.coordinates[0] || [];
+      const polygon = exteriorRing.map((coordinate) => ({
+        longitude: coordinate[0],
+        latitude: coordinate[1],
+      }));
+      if (polygon.length) {
+        geometry.polygon = polygon;
+      }
+    }
+
+    const geometryFile = `geometry_parcel_${geomIndex}.json`;
+    const relationshipFile = `relationship_parcel_has_geometry_parcel_${geomIndex}.json`;
+
+    writeJSON(path.join("data", geometryFile), geometry);
+
+    const relationship = {
+      from: { "/": "./parcel.json" },
+      to: { "/": `./${geometryFile}` },
+    };
+    writeJSON(path.join("data", relationshipFile), relationship);
+  });
+}
+
+/**
+ * Create layout/building geometries from CSV building_polygon column
+ * @param {string} csvContent - CSV content
+ */
+function createLayoutGeometries(csvContent) {
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return;
+  }
+
+  const [header, ...dataRows] = rows;
+
+  // Check if building_polygon column exists
+  const buildingPolygonIdx = header.indexOf('building_polygon');
+  if (buildingPolygonIdx === -1) {
+    return; // No building polygon data
+  }
+
+  let layoutGeomIndex = 0;
+  dataRows.forEach((row, rowIdx) => {
+    const buildingPolygonValue = row[buildingPolygonIdx];
+    if (!buildingPolygonValue) return;
+
+    const polygon = parsePolygon(buildingPolygonValue);
+    if (!polygon) return;
+
+    // Create geometry for each layout
+    const geometry = {
+      latitude: null,
+      longitude: null,
+    };
+
+    if (Array.isArray(polygon.coordinates)) {
+      const exteriorRing = polygon.type === 'Polygon'
+        ? polygon.coordinates[0]
+        : polygon.coordinates[0]?.[0];
+
+      if (exteriorRing) {
+        const polygonArray = exteriorRing.map((coordinate) => ({
+          longitude: coordinate[0],
+          latitude: coordinate[1],
+        }));
+        if (polygonArray.length) {
+          geometry.polygon = polygonArray;
+        }
+      }
+    }
+
+    const geometryFile = `geometry_layout_${layoutGeomIndex + 1}.json`;
+    const relationshipFile = `relationship_layout_${layoutGeomIndex + 1}_has_geometry_layout_${layoutGeomIndex + 1}.json`;
+
+    writeJSON(path.join("data", geometryFile), geometry);
+
+    const relationship = {
+      from: { "/": `./layout_${layoutGeomIndex + 1}.json` },
+      to: { "/": `./${geometryFile}` },
+    };
+    writeJSON(path.join("data", relationshipFile), relationship);
+
+    layoutGeomIndex++;
+  });
+}
+
+// ============================================================================
+// End of CSV and Polygon Geometry Helpers
+// ============================================================================
 
 const COMPANY_KEYWORDS =
   /(\b|\s)(inc\.?|l\.l\.c\.|llc|ltd\.?|foundation|alliance|solutions|corp\.?|co\.?|services|trust\b|trustee\b|trustees\b|tr\b|associates|partners|partnership|investment|investments|lp\b|llp\b|bank\b|n\.a\.|na\b|pllc\b|company|enterprises|properties|holdings|estate)(\b|\s)/i;
@@ -1022,80 +1342,36 @@ function findSectionByTitle($, title) {
 
 function mapPermitImprovementType(typeText) {
   const txt = (typeText || "").toUpperCase();
-  if (!txt) return "GeneralBuilding";
-  if (txt.includes("ROOF")) return "Roofing";
-  if (txt.includes("POOL") || txt.includes("SPA")) return "PoolSpaInstallation";
+  if (!txt) return null;
+  if (txt.includes("ROOF")) return "Roof";
+  if (txt.includes("POOL")) return "Pool";
   if (txt.includes("SCREEN")) return "ScreenEnclosure";
-  if (txt.includes("FENC")) return "Fencing";
+  if (txt.includes("FENCE")) return "Fence";
   if (txt.includes("REMODEL") || txt.includes("RENOV")) {
-    return "ResidentialConstruction";
+    return "InteriorRenovation";
   }
-  if (txt.includes("WINDOW") || txt.includes("DOOR") || txt.includes("OPENING")) {
-    return "ExteriorOpeningsAndFinishes";
-  }
-  if (txt.includes("HVAC") || txt.includes("A/C") || txt.includes("AIR") || txt.includes("MECH")) {
-    return "MechanicalHVAC";
+  if (txt.includes("WINDOW") || txt.includes("DOOR")) return "WindowsDoors";
+  if (txt.includes("HVAC") || txt.includes("A/C") || txt.includes("AIR")) {
+    return "HVAC";
   }
   if (txt.includes("ELECTR")) return "Electrical";
   if (txt.includes("PLUMB")) return "Plumbing";
-  if (txt.includes("IRRIG") || txt.includes("SPRINK")) return "LandscapeIrrigation";
-  if (txt.includes("DOCK") || txt.includes("SHORE") || txt.includes("MARINE")) return "DockAndShore";
-  if (txt.includes("PAVE") || txt.includes("DRIVE") || txt.includes("SIDEWALK")) {
-    return "DrivewayPermit";
-  }
-  if (txt.includes("DECK") || txt.includes("ADD")) return "BuildingAddition";
+  if (txt.includes("PAVE")) return "Paving";
+  if (txt.includes("DOCK") || txt.includes("SHORE")) return "DockAndShore";
+  if (txt.includes("DECK")) return "Deck";
+  if (txt.includes("SIGN")) return "Signage";
   if (txt.includes("DEMOL")) return "Demolition";
+  if (txt.includes("IRRIG")) return "Irrigation";
   if (txt.includes("SOLAR")) return "Solar";
-  if (txt.includes("WELL")) return "WellPermit";
-  if (txt.includes("SITE") || txt.includes("DEV")) return "SiteDevelopment";
-  if (txt.includes("GENERAL") || txt.includes("BUILD")) return "GeneralBuilding";
-  // Return GeneralBuilding as a safe default for any unrecognized permit types
-  return "GeneralBuilding";
-}
-
-function mapPermitImprovementAction(typeText) {
-  const txt = (typeText || "").toUpperCase();
-  if (!txt) return "Other";
-  if (txt.includes("NEW") || txt.includes("CONSTRUCT")) return "New";
-  if (txt.includes("REPLACE") || txt.includes("REROOF")) return "Replacement";
-  if (txt.includes("REPAIR")) return "Repair";
-  if (txt.includes("REMODEL") || txt.includes("RENOV") || txt.includes("ALTER")) {
-    return "Alteration";
-  }
-  if (txt.includes("ADD")) return "Addition";
-  if (txt.includes("REMOVE") || txt.includes("DEMOL") || txt.includes("TEAR")) {
-    return "Remove";
-  }
   return "Other";
 }
 
 function mapPermitImprovementStatus(activeText) {
   const normalized = (activeText || "").trim().toLowerCase();
   if (!normalized) return null;
-  if (normalized === "yes" || normalized === "y" || normalized === "active" || normalized === "open") {
-    return "InProgress";
-  }
-  if (normalized === "no" || normalized === "n" || normalized === "final" || normalized === "closed") {
-    return "Completed";
-  }
-  if (normalized.includes("hold")) return "OnHold";
-  if (normalized.includes("permit")) return "Permitted";
-  if (normalized.includes("plan")) return "Planned";
-  if (normalized.includes("cancel")) return "Cancelled";
+  if (normalized === "yes" || normalized === "y") return "Active";
+  if (normalized === "no" || normalized === "n") return "Completed";
   return null;
-}
-
-function mapPermitContractorType(primaryText) {
-  const txt = (primaryText || "").toLowerCase();
-  if (!txt) return "Unknown";
-  if (txt.includes("owner")) return "DIY";
-  if (txt.includes("builder")) return "Builder";
-  if (txt.includes("manager")) return "PropertyManager";
-  if (txt.includes("handyman")) return "HandymanService";
-  if (txt.includes("contractor") || txt.includes("construction") || txt.includes("company")) {
-    return "GeneralContractor";
-  }
-  return "Specialist";
 }
 
 function parsePermitTable($) {
@@ -1110,48 +1386,22 @@ function parsePermitTable($) {
   const rows = [];
   table.find("tbody tr").each((_, tr) => {
     const $tr = $(tr);
-    const thCell = $tr.find("th").first();
-    const permitNumber = cleanText(thCell.text());
-
-    // Check if first cell is actually a td (not th) - this means column offset
-    const firstCell = $tr.find("> *").first();
-    const hasThForPermitNumber = firstCell.is("th");
-
+    const permitNumber = cleanText($tr.find("th").first().text());
     const cells = [];
     $tr.find("td").each((idx, td) => {
       cells.push(cleanText($(td).text()));
     });
-
     const hasContent =
       permitNumber ||
       cells.some((val) => val && val.length > 0);
     if (!hasContent) return;
-
-    // If first cell is td (not th), all columns are shifted by 1
-    let type, primary, active, issueDate, value;
-    if (!hasThForPermitNumber && cells.length >= 6) {
-      // Columns shifted: cells[0] is empty permit#, cells[1] is type, etc.
-      type = cells[1] || null;
-      primary = cells[2] || null;
-      active = cells[3] || null;
-      issueDate = cells[4] || null;
-      value = cells[5] || null;
-    } else {
-      // Normal case: cells[0] is type, cells[1] is primary, etc.
-      type = cells[0] || null;
-      primary = cells[1] || null;
-      active = cells[2] || null;
-      issueDate = cells[3] || null;
-      value = cells[4] || null;
-    }
-
     rows.push({
       permitNumber: permitNumber || null,
-      type,
-      primary,
-      active,
-      issueDate,
-      value,
+      type: cells[0] || null,
+      primary: cells[1] || null,
+      active: cells[2] || null,
+      issueDate: cells[3] || null,
+      value: cells[4] || null,
     });
   });
   return rows;
@@ -1655,76 +1905,11 @@ function main() {
     request_identifier: requestIdentifier,
   };
 
-  const baseUtility = {
-    cooling_system_type: null,
-    electrical_panel_capacity: null,
-    electrical_panel_installation_date: null,
-    electrical_rewire_date: null,
-    electrical_wiring_type: null,
-    electrical_wiring_type_other_description: null,
-    heating_fuel_type: null,
-    heating_system_type: null,
-    hvac_capacity_kw: null,
-    hvac_capacity_tons: null,
-    hvac_condensing_unit_present: null,
-    hvac_equipment_component: null,
-    hvac_equipment_manufacturer: null,
-    hvac_equipment_model: null,
-    hvac_installation_date: null,
-    hvac_seer_rating: null,
-    hvac_system_configuration: null,
-    hvac_unit_condition: null,
-    hvac_unit_issues: null,
-    plumbing_fixture_count: null,
-    plumbing_fixture_quality: null,
-    plumbing_fixture_type_primary: null,
-    plumbing_system_installation_date: null,
-    plumbing_system_type: null,
-    plumbing_system_type_other_description: null,
-    public_utility_type: null,
-    sewer_connection_date: null,
-    sewer_type: null,
-    smart_home_features: null,
-    smart_home_features_other_description: null,
-    solar_installation_date: null,
-    solar_inverter_installation_date: null,
-    solar_inverter_manufacturer: null,
-    solar_inverter_model: null,
-    solar_inverter_visible: false,
-    solar_panel_present: false,
-    solar_panel_type: null,
-    solar_panel_type_other_description: null,
-    water_connection_date: null,
-    water_heater_installation_date: null,
-    water_heater_manufacturer: null,
-    water_heater_model: null,
-    water_source_type: null,
-    well_installation_date: null,
-  };
-
   const structureItems = (() => {
-    const cleanStructureEntry = (entry) => {
-      if (!entry || typeof entry !== "object") return {};
-      const baseEntry =
-        entry.structure && typeof entry.structure === "object"
-          ? entry.structure
-          : entry;
-      const {
-        buildings,
-        structures,
-        utilities,
-        layouts,
-        structure,
-        utility,
-        ...rest
-      } = baseEntry;
-      return rest;
-    };
-
     const wrap = (entry, buildingIndex = null) => ({
       data: {
         ...baseStructure,
-        ...cleanStructureEntry(entry),
+        ...entry,
         source_http_request:
           entry && entry.source_http_request != null
             ? entry.source_http_request
@@ -1801,28 +1986,9 @@ function main() {
   });
 
   const utilityItems = (() => {
-    const cleanUtilityEntry = (entry) => {
-      if (!entry || typeof entry !== "object") return {};
-      const baseEntry =
-        entry.utility && typeof entry.utility === "object"
-          ? entry.utility
-          : entry;
-      const {
-        buildings,
-        utilities,
-        layouts,
-        structures,
-        structure,
-        utility,
-        ...rest
-      } = baseEntry;
-      return rest;
-    };
-
     const wrap = (entry, buildingIndex = null) => ({
       data: {
-        ...baseUtility,
-        ...cleanUtilityEntry(entry),
+        ...entry,
         source_http_request:
           entry && entry.source_http_request != null
             ? entry.source_http_request
@@ -1900,15 +2066,14 @@ function main() {
   permitEntries.forEach((permit, idx) => {
     const improvementType = mapPermitImprovementType(permit.type);
     const improvementStatus = mapPermitImprovementStatus(permit.active);
-    const improvementAction = mapPermitImprovementAction(permit.type);
-    const contractorType = mapPermitContractorType(permit.primary);
     const permitIssueDate = toISOFromMDY(permit.issueDate);
+    const estimatedCostAmount = moneyToNumber(permit.value);
     const permitNumber =
       permit.permitNumber && permit.permitNumber.length
         ? permit.permitNumber
         : null;
-    const completionDate =
-      improvementStatus === "Completed" ? permitIssueDate : null;
+    const improvementAction =
+      permit.type && permit.type.length ? permit.type : null;
 
     const baseRequestId =
       requestIdentifier || permitNumber || parcelId || propId || "permit";
@@ -1917,90 +2082,36 @@ function main() {
       : `${baseRequestId}-permit-${idx + 1}`;
 
     const improvement = {
-      improvement_type: improvementType || "GeneralBuilding",
+      improvement_type: improvementType || "Other",
       improvement_status: improvementStatus || null,
       improvement_action: improvementAction,
       permit_number: permitNumber,
       permit_issue_date: permitIssueDate,
-      completion_date: completionDate,
-      contractor_type: contractorType || "Unknown",
-      permit_required: Boolean(permitNumber),
+      completion_date: null,
+      permit_required: permitNumber ? true : null,
+      estimated_cost_amount:
+        typeof estimatedCostAmount === "number" ? estimatedCostAmount : null,
       request_identifier: improvementRequestId,
     };
 
     const cleanedImprovement = {};
-    Object.entries(improvement).forEach(([key, value]) => {
-      if (value === undefined) return;
-      if (value === null) {
-        cleanedImprovement[key] = null;
-        return;
-      }
+    Object.keys(improvement).forEach((key) => {
+      const value = improvement[key];
+      if (value === null || value === undefined) return;
       if (typeof value === "string") {
         const trimmed = value.trim();
-        cleanedImprovement[key] = trimmed || null;
-        return;
+        if (trimmed) cleanedImprovement[key] = trimmed;
+      } else {
+        cleanedImprovement[key] = value;
       }
-      cleanedImprovement[key] = value;
     });
 
     if (!cleanedImprovement.improvement_type && !cleanedImprovement.permit_number) {
       return;
     }
     if (!cleanedImprovement.improvement_type) {
-      cleanedImprovement.improvement_type = "GeneralBuilding";
+      cleanedImprovement.improvement_type = "Other";
     }
-
-    // Extra safety: ensure improvement_type is never an empty string
-    if (cleanedImprovement.improvement_type === "") {
-      cleanedImprovement.improvement_type = "GeneralBuilding";
-    }
-
-    // Ensure improvement_type is always a valid enum value or null
-    const validImprovementTypes = [
-      "GeneralBuilding", "ResidentialConstruction", "CommercialConstruction",
-      "BuildingAddition", "StructureMove", "Demolition", "PoolSpaInstallation",
-      "Electrical", "MechanicalHVAC", "GasInstallation", "Roofing", "Fencing",
-      "DockAndShore", "FireProtectionSystem", "Plumbing", "ExteriorOpeningsAndFinishes",
-      "MobileHomeRV", "LandscapeIrrigation", "ScreenEnclosure", "ShutterAwning",
-      "SiteDevelopment", "CodeViolation", "Complaint", "ContractorLicense",
-      "Sponsorship", "StateLicenseRegistration", "AdministrativeApproval",
-      "AdministrativeAppeal", "BlueSheetHearing", "PlannedDevelopment",
-      "DevelopmentOfRegionalImpact", "Rezoning", "SpecialExceptionZoning",
-      "Variance", "ZoningExtension", "ZoningVerificationLetter", "RequestForRelief",
-      "WaiverRequest", "InformalMeeting", "EnvironmentalMonitoring", "Vacation",
-      "VegetationRemoval", "ComprehensivePlanAmendment", "MinimumUseDetermination",
-      "TransferDevelopmentRightsDetermination", "MapBoundaryDetermination",
-      "TransferDevelopmentRightsCertificate", "UniformCommunityDevelopment",
-      "SpecialCertificateOfAppropriateness", "CertificateToDig", "HistoricDesignation",
-      "PlanningAdministrativeAppeal", "WellPermit", "Solar", "TestBoring",
-      "ExistingWellInspection", "NaturalResourcesComplaint", "NaturalResourcesViolation",
-      "LetterWaterSewer", "UtilitiesConnection", "DrivewayPermit", "RightOfWayPermit", null
-    ];
-    if (cleanedImprovement.improvement_type !== null &&
-        !validImprovementTypes.includes(cleanedImprovement.improvement_type)) {
-      cleanedImprovement.improvement_type = "GeneralBuilding";
-    }
-
-    // Ensure improvement_status is always a valid enum value or null
-    const validImprovementStatuses = [
-      "Completed", "InProgress", "Planned", "Permitted", "OnHold", "Cancelled", null
-    ];
-    // Convert empty strings to null first
-    if (cleanedImprovement.improvement_status === "") {
-      cleanedImprovement.improvement_status = null;
-    }
-    // Then validate against allowed values
-    if (!validImprovementStatuses.includes(cleanedImprovement.improvement_status)) {
-      cleanedImprovement.improvement_status = null;
-    }
-
-    // Ensure permit_required is always a boolean (required by schema, not nullable)
-    if (typeof cleanedImprovement.permit_required !== "boolean") {
-      // Default to false if not a boolean (e.g., if it's null, undefined, or any other type)
-      cleanedImprovement.permit_required = Boolean(cleanedImprovement.permit_number);
-    }
-    // Double-check: force conversion to boolean if somehow it's still not
-    cleanedImprovement.permit_required = Boolean(cleanedImprovement.permit_required);
 
     const filename = `property_improvement_${propertyImprovementOutputs.length + 1}.json`;
     writeJSON(path.join(dataDir, filename), cleanedImprovement);
@@ -2473,7 +2584,6 @@ function main() {
     });
   }
 
-  // Property to property_improvement relationships
   propertyImprovementOutputs.forEach(({ path }) => {
     writeRelationshipUnique(propertyPath, path);
   });
@@ -2602,6 +2712,65 @@ function main() {
   const addressPath = `./${addressFilename}`;
   writeJSON(path.join(dataDir, addressFilename), address);
 
+  // 1. ALWAYS create point-based geometry for address (latitude/longitude)
+  const general = {
+    parcelNumber: parcelId
+  };
+  const propSeed = seed;
+  const addrSeed = unaddr;
+  const parcelIdentifier = general.parcelNumber || propSeed?.parcel_id || null;
+
+  const geometry = {
+    source_http_request: {
+      method: "GET",
+      url: propSeed?.source_http_request?.url || ""
+    },
+    request_identifier: parcelIdentifier || propSeed?.parcel_id || "",
+    latitude: addrSeed?.latitude ?? null,
+    longitude: addrSeed?.longitude ?? null
+  };
+  writeJSON(path.join(dataDir, "geometry.json"), geometry);
+
+  // Create relationship between address and geometry
+  const relAddressGeometry = {
+    from: { "/": "./address.json" },
+    to: { "/": "./geometry.json" }
+  };
+  writeJSON(path.join(dataDir, "relationship_address_has_geometry.json"), relAddressGeometry);
+
+  // 2. Create parcel polygon geometries from CSV (if available)
+  const geometryCsv = loadGeometryCsvContent();
+  if (geometryCsv) {
+    try {
+      const instances = createGeometryInstances(geometryCsv);
+      if (instances.length) {
+        createParcelGeometries(instances);
+        console.log(`Created ${instances.length} geometry_parcel_<index>.json files from CSV`);
+      }
+    } catch (err) {
+      console.warn(`Unable to build parcel geometry from CSV: ${err.message}`);
+    }
+
+    // 3. Create layout/building polygon geometries from CSV (if available)
+    try {
+      createLayoutGeometries(geometryCsv);
+      console.log(`Created layout geometry files from CSV`);
+    } catch (err) {
+      console.warn(`Unable to build layout geometry from CSV: ${err.message}`);
+    }
+  }
+
+  // Create parcel.json
+  const parcel = {
+    source_http_request: propSeed?.source_http_request || {
+      method: "GET",
+      url: ""
+    },
+    request_identifier: propSeed?.request_identifier || parcelIdentifier || "",
+    parcel_identifier: parcelIdentifier || ""
+  };
+  writeJSON(path.join(dataDir, "parcel.json"), parcel);
+
   const lot = {
     lot_type:
       acres != null && acres > 0.25
@@ -2642,6 +2811,20 @@ function main() {
   }
 
   const ownerMailingInfo = parseOwnerMailingAddresses($);
+  const mailingAddressFiles = [];
+  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
+    if (!addr) return;
+    const fileName = `mailing_address_${idx + 1}.json`;
+    const mailingObj = {
+      unnormalized_address: addr,
+      latitude: null,
+      longitude: null,
+      source_http_request: clone(defaultSourceHttpRequest),
+      request_identifier: requestIdentifier,
+    };
+    writeJSON(path.join(dataDir, fileName), mailingObj);
+    mailingAddressFiles.push({ path: `./${fileName}` });
+  });
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -2664,20 +2847,25 @@ function main() {
     }
   }
 
-  const mailingAddressFiles = [];
-  const mailingAddressMap = new Map();
-
   const currentOwnerEntities = [];
   currentOwners.forEach((owner, idx) => {
     if (!owner || !owner.type) return;
-
-    // Determine which mailing address this owner should use
-    let mailingAddress = null;
-    if (ownerMailingInfo.rawAddresses[idx] != null) {
-      mailingAddress = ownerMailingInfo.rawAddresses[idx];
-    } else if (ownerMailingInfo.uniqueAddresses.length > 0) {
-      mailingAddress = ownerMailingInfo.uniqueAddresses[0];
+    let mailingIdx = null;
+    if (
+      ownerMailingInfo.rawAddresses[idx] != null &&
+      mailingAddressFiles.length
+    ) {
+      const rawAddr = ownerMailingInfo.rawAddresses[idx];
+      const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
+      if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
     }
+    if (mailingIdx == null && mailingAddressFiles.length) {
+      mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
+    }
+    const mailingRecord =
+      mailingIdx != null && mailingIdx >= 0
+        ? mailingAddressFiles[mailingIdx]
+        : null;
 
     if (owner.type === "person") {
       const normalizedPerson = normalizeOwner(owner, ownersByDate);
@@ -2686,7 +2874,7 @@ function main() {
         currentOwnerEntities.push({
           type: "person",
           path: personPath,
-          mailingAddress: mailingAddress,
+          mailingPath: mailingRecord ? mailingRecord.path : null,
         });
       }
     } else if (owner.type === "company") {
@@ -2695,37 +2883,10 @@ function main() {
         currentOwnerEntities.push({
           type: "company",
           path: companyPath,
-          mailingAddress: mailingAddress,
+          mailingPath: mailingRecord ? mailingRecord.path : null,
         });
       }
     }
-  });
-
-  // Now create mailing address files only for addresses that are actually used
-  currentOwnerEntities.forEach((entity) => {
-    if (!entity.mailingAddress) return;
-
-    // Check if we've already created a file for this address
-    if (mailingAddressMap.has(entity.mailingAddress)) {
-      entity.mailingPath = mailingAddressMap.get(entity.mailingAddress);
-      return;
-    }
-
-    // Create new mailing address file
-    const fileIndex = mailingAddressFiles.length + 1;
-    const fileName = `mailing_address_${fileIndex}.json`;
-    const mailingObj = {
-      unnormalized_address: entity.mailingAddress,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    const mailingPath = `./${fileName}`;
-    mailingAddressFiles.push({ path: mailingPath });
-    mailingAddressMap.set(entity.mailingAddress, mailingPath);
-    entity.mailingPath = mailingPath;
   });
 
   const mailingRelationshipKeys = new Set();
