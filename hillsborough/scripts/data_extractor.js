@@ -4207,7 +4207,7 @@ function createGeometryInstances(csvContent) {
  * Write geometry_parcel_<index>.json and relationship_parcel_has_geometry_parcel_<index>.json files.
  * @param {Geometry[]} geometries - Array of Geometry instances
  */
-function createGeometryClass(geometries) {
+function createParcelGeometries(geometries) {
   if (!geometries || !geometries.length) {
     return;
   }
@@ -4236,10 +4236,74 @@ function createGeometryClass(geometries) {
     writeJson(path.join("data", geometryFile), geometry);
 
     const relationship = {
-      from: { "/": "./parcel.json" },
+      from: { "/": "./property.json" },
       to: { "/": `./${geometryFile}` },
     };
     writeJson(path.join("data", relationshipFile), relationship);
+  });
+}
+
+/**
+ * Create layout/building geometries from CSV building_polygon column
+ * @param {string} csvContent - CSV content
+ */
+function createLayoutGeometries(csvContent) {
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return;
+  }
+
+  const [header, ...dataRows] = rows;
+
+  // Check if building_polygon column exists
+  const buildingPolygonIdx = header.indexOf('building_polygon');
+  if (buildingPolygonIdx === -1) {
+    return; // No building polygon data
+  }
+
+  let layoutGeomIndex = 0;
+  dataRows.forEach((row) => {
+    const buildingPolygonValue = row[buildingPolygonIdx];
+    if (!buildingPolygonValue) return;
+
+    const polygon = parsePolygon(buildingPolygonValue);
+    if (!polygon) return;
+
+    // Create geometry for each layout
+    const geometry = {
+      latitude: null,
+      longitude: null,
+    };
+
+    if (Array.isArray(polygon.coordinates)) {
+      const exteriorRing = polygon.type === 'Polygon'
+        ? polygon.coordinates[0]
+        : polygon.coordinates[0]?.[0];
+
+      if (exteriorRing) {
+        const polygonArray = exteriorRing.map((coordinate) => ({
+          longitude: coordinate[0],
+          latitude: coordinate[1],
+        }));
+        if (polygonArray.length) {
+          geometry.polygon = polygonArray;
+        }
+      }
+    }
+
+    const geometryFile = `geometry_layout_${layoutGeomIndex + 1}.json`;
+    const relationshipFile = `relationship_layout_${layoutGeomIndex + 1}_has_geometry_layout_${layoutGeomIndex + 1}.json`;
+
+    writeJson(path.join("data", geometryFile), geometry);
+
+    const relationship = {
+      from: { "/": `./layout_${layoutGeomIndex + 1}.json` },
+      to: { "/": `./${geometryFile}` },
+    };
+    writeJson(path.join("data", relationshipFile), relationship);
+
+    layoutGeomIndex++;
   });
 }
 
@@ -4385,12 +4449,20 @@ function main() {
     try {
       const instances = createGeometryInstances(geometryCsv);
       if (instances.length) {
-        createGeometryClass(instances);
+        createParcelGeometries(instances);
         geometryCreated = true;
         console.log(`Created ${instances.length} geometry_parcel_<index>.json files from CSV`);
       }
     } catch (err) {
       console.warn(`Unable to build geometry from CSV: ${err.message}`);
+    }
+
+    // Create layout/building polygon geometries from CSV (if available)
+    try {
+      createLayoutGeometries(geometryCsv);
+      console.log(`Created layout geometry files from CSV`);
+    } catch (err) {
+      console.warn(`Unable to build layout geometry from CSV: ${err.message}`);
     }
   }
 
