@@ -10,8 +10,8 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-const SCRIPT_DIR = __dirname;
 const WORKING_DIR = process.cwd();
+const SCRIPT_DIR = __dirname;
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -1986,6 +1986,133 @@ function isNumeric(value) {
     return /^-?\d+$/.test(value);
 }
 
+function attemptWriteAddressAndGeometry(unnorm, secTwpRng) {
+  const full =
+    unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
+  // if (!full || full.length < 10) return;
+  // let city = null;
+  // let zip = null;
+  // const fullAddressParts = (full || "").split(",");
+  // if (fullAddressParts.length >= 3 && fullAddressParts[2]) {
+  //   state_and_pin = fullAddressParts[2].split(/\s+/);
+  //   if (state_and_pin.length >= 1 && state_and_pin[state_and_pin.length - 1] && state_and_pin[state_and_pin.length - 1].trim().match(/^\d{5}$/)) {
+  //     zip = state_and_pin[state_and_pin.length - 1].trim();
+  //     city = fullAddressParts[1].trim();
+  //   }
+  // }
+  // const parts = (fullAddressParts[0] || "").split(/\s+/);
+  // let street_number = null;
+  // if (parts && parts.length > 1) {
+  //   street_number_candidate = parts[0];
+  //   if ((street_number_candidate || "") && isNumeric(street_number_candidate)) {
+  //     street_number = parts.shift() || null;
+  //   }
+  // }
+  // let suffix = null;
+  // if (parts && parts.length > 1) {
+  //   suffix_candidate = parts[parts.length - 1];
+  //   if (normalizeSuffix(suffix_candidate)) {
+  //     suffix = parts.pop() || null;
+  //   }
+  // }
+  // let street_name = parts.join(" ") || null;
+  // if (street_name) {
+  //   street_name = street_name.replace(/\b(E|N|NE|NW|S|SE|SW|W)\b/g, "");
+  // }
+  // const m = full.match(
+  //   /^(\d+)\s+([^,]+),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/i,
+  // );
+  // if (!m) return;
+  // const [, streetNumber, streetRest, city, state, zip, plus4] = m;
+
+  // let street_name = streetRest.trim();
+  // let route_number = null;
+  // let street_suffix_type = null;
+  // const m2 = streetRest.trim().match(/^([A-Za-z]+)\s+(\d+)$/);
+  // if (m2) {
+  //   street_name = m2[1].toUpperCase();
+  //   route_number = m2[2];
+  //   if (street_name === "HWY" || street_name === "HIGHWAY")
+  //     street_suffix_type = "Hwy";
+  // }
+  // const city_name = city ? city.toUpperCase() : null;
+  // const state_code = state.toUpperCase();
+  // const postal_code = zip;
+  // const plus_four_postal_code = plus4 || null;
+
+  // Per evaluator expectation, set county_name from input jurisdiction
+  const inputCounty = (unnorm.county_jurisdiction || "").trim();
+  const county_name = inputCounty || "Hamilton" ||null;
+
+  const address = {
+    ...appendSourceInfo(seed),
+    county_name,
+    unnormalized_address: full,
+    township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
+    range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
+    section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
+  };
+  writeJSON(path.join("data", "address.json"), address);
+
+  //Geometry creation
+  const geometry = {
+    ...appendSourceInfo(seed),
+    latitude: unnorm.latitude || null,
+    longitude: unnorm.longitude || null
+  };
+  writeJSON(path.join("data", "geometry.json"), geometry);
+  
+  // Create relationship between address and geometry
+  const relAddressGeometry = {
+    from: { "/": "./address.json" },
+    to: { "/": "./geometry.json" }
+  };
+  writeJSON(path.join("data", "relationship_address_has_geometry.json"), relAddressGeometry);
+
+  // 2. Create parcel polygon geometries from CSV (if available)
+  const geometryCsv = loadGeometryCsvContent();
+  if (geometryCsv) {
+    try {
+      const instances = createGeometryInstances(geometryCsv);
+      if (instances.length) {
+        createParcelGeometries(instances);
+        console.log(`Created ${instances.length} geometry_parcel_<index>.json files from CSV`);
+      }
+    } catch (err) {
+      console.warn(`Unable to build parcel geometry from CSV: ${err.message}`);
+    }
+
+    // 3. Create layout/building polygon geometries from CSV (if available)
+    try {
+      createLayoutGeometries(geometryCsv);
+      console.log(`Created layout geometry files from CSV`);
+    } catch (err) {
+      console.warn(`Unable to build layout geometry from CSV: ${err.message}`);
+    }
+  }
+
+}
+
+function extractMailingAddress($) {
+  const addressElement = $('#ctlBodyPane_ctl03_ctl01_rptOwner_ctl00_lblOwnerAddress');
+  
+  if (!addressElement.length) return null;
+  
+  const addressText = addressElement.html();
+  if (!addressText || !addressText.trim()) return null;
+  
+  // Split by <br> tags and clean up each line
+  const lines = addressText
+    .split(/<br\s*\/?>/i)
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+  
+  if (lines.length === 0) return null;
+  
+  // Join lines with proper formatting
+  return lines.join(', ');
+}
+
 // ============================================================================
 // CSV and Polygon Geometry Helpers
 // ============================================================================
@@ -2203,8 +2330,9 @@ function createParcelGeometries(geometries) {
     return;
   }
 
+  const dataDir = path.join(".", "data");
   geometries.forEach((geom, geomIndex) => {
-    // Build Elephant Geometry payload with polygon array
+    // Build Elephant Geometry payload with polygon array for PARCEL
     const geometry = {
       latitude: geom.latitude ?? null,
       longitude: geom.longitude ?? null,
@@ -2224,13 +2352,13 @@ function createParcelGeometries(geometries) {
     const geometryFile = `geometry_parcel_${geomIndex}.json`;
     const relationshipFile = `relationship_parcel_has_geometry_parcel_${geomIndex}.json`;
 
-    writeJSON(path.join("data", geometryFile), geometry);
+    writeJSON(path.join(dataDir, geometryFile), geometry);
 
     const relationship = {
       from: { "/": "./property.json" },
       to: { "/": `./${geometryFile}` },
     };
-    writeJSON(path.join("data", relationshipFile), relationship);
+    writeJSON(path.join(dataDir, relationshipFile), relationship);
   });
 }
 
@@ -2253,6 +2381,7 @@ function createLayoutGeometries(csvContent) {
     return; // No building polygon data
   }
 
+  const dataDir = path.join(".", "data");
   let layoutGeomIndex = 0;
   dataRows.forEach((row) => {
     const buildingPolygonValue = row[buildingPolygonIdx];
@@ -2286,13 +2415,13 @@ function createLayoutGeometries(csvContent) {
     const geometryFile = `geometry_layout_${layoutGeomIndex + 1}.json`;
     const relationshipFile = `relationship_layout_${layoutGeomIndex + 1}_has_geometry_layout_${layoutGeomIndex + 1}.json`;
 
-    writeJSON(path.join("data", geometryFile), geometry);
+    writeJSON(path.join(dataDir, geometryFile), geometry);
 
     const relationship = {
       from: { "/": `./layout_${layoutGeomIndex + 1}.json` },
       to: { "/": `./${geometryFile}` },
     };
-    writeJSON(path.join("data", relationshipFile), relationship);
+    writeJSON(path.join(dataDir, relationshipFile), relationship);
 
     layoutGeomIndex++;
   });
@@ -2301,138 +2430,6 @@ function createLayoutGeometries(csvContent) {
 // ============================================================================
 // End of CSV and Polygon Geometry Helpers
 // ============================================================================
-
-function attemptWriteAddressAndGeometry(unnorm, secTwpRng) {
-  const full =
-    unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
-  // if (!full || full.length < 10) return;
-  // let city = null;
-  // let zip = null;
-  // const fullAddressParts = (full || "").split(",");
-  // if (fullAddressParts.length >= 3 && fullAddressParts[2]) {
-  //   state_and_pin = fullAddressParts[2].split(/\s+/);
-  //   if (state_and_pin.length >= 1 && state_and_pin[state_and_pin.length - 1] && state_and_pin[state_and_pin.length - 1].trim().match(/^\d{5}$/)) {
-  //     zip = state_and_pin[state_and_pin.length - 1].trim();
-  //     city = fullAddressParts[1].trim();
-  //   }
-  // }
-  // const parts = (fullAddressParts[0] || "").split(/\s+/);
-  // let street_number = null;
-  // if (parts && parts.length > 1) {
-  //   street_number_candidate = parts[0];
-  //   if ((street_number_candidate || "") && isNumeric(street_number_candidate)) {
-  //     street_number = parts.shift() || null;
-  //   }
-  // }
-  // let suffix = null;
-  // if (parts && parts.length > 1) {
-  //   suffix_candidate = parts[parts.length - 1];
-  //   if (normalizeSuffix(suffix_candidate)) {
-  //     suffix = parts.pop() || null;
-  //   }
-  // }
-  // let street_name = parts.join(" ") || null;
-  // if (street_name) {
-  //   street_name = street_name.replace(/\b(E|N|NE|NW|S|SE|SW|W)\b/g, "");
-  // }
-  // const m = full.match(
-  //   /^(\d+)\s+([^,]+),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/i,
-  // );
-  // if (!m) return;
-  // const [, streetNumber, streetRest, city, state, zip, plus4] = m;
-
-  // let street_name = streetRest.trim();
-  // let route_number = null;
-  // let street_suffix_type = null;
-  // const m2 = streetRest.trim().match(/^([A-Za-z]+)\s+(\d+)$/);
-  // if (m2) {
-  //   street_name = m2[1].toUpperCase();
-  //   route_number = m2[2];
-  //   if (street_name === "HWY" || street_name === "HIGHWAY")
-  //     street_suffix_type = "Hwy";
-  // }
-  // const city_name = city ? city.toUpperCase() : null;
-  // const state_code = state.toUpperCase();
-  // const postal_code = zip;
-  // const plus_four_postal_code = plus4 || null;
-
-  // Per evaluator expectation, set county_name from input jurisdiction
-  const inputCounty = (unnorm.county_jurisdiction || "").trim();
-  const county_name = inputCounty || "Hamilton" ||null;
-
-  const address = {
-    ...appendSourceInfo(seed),
-    county_name,
-    unnormalized_address: full,
-    township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
-    range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
-    section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
-  };
-  writeJSON(path.join("data", "address.json"), address);
-
-  // GEOMETRY: Create geometry with polygon support from CSV if available
-  const geometryCsv = loadGeometryCsvContent();
-  let geometryCreated = false;
-
-  if (geometryCsv) {
-    try {
-      const instances = createGeometryInstances(geometryCsv);
-      if (instances.length) {
-        createParcelGeometries(instances);
-        geometryCreated = true;
-        console.log(`Created ${instances.length} geometry_parcel_<index>.json files from CSV`);
-      }
-    } catch (err) {
-      console.warn(`Unable to build geometry from CSV: ${err.message}`);
-    }
-
-    // Create layout/building polygon geometries from CSV (if available)
-    try {
-      createLayoutGeometries(geometryCsv);
-      console.log(`Created layout geometry files from CSV`);
-    } catch (err) {
-      console.warn(`Unable to build layout geometry from CSV: ${err.message}`);
-    }
-  }
-
-  // Fall back to single point geometry if no CSV geometry was created
-  if (!geometryCreated) {
-    const geometry = {
-      ...appendSourceInfo(seed),
-      latitude: unnorm.latitude || null,
-      longitude: unnorm.longitude || null
-    };
-    writeJSON(path.join("data", "geometry.json"), geometry);
-
-    // Create relationship between address and geometry
-    const relAddressGeometry = {
-      from: { "/": "./address.json" },
-      to: { "/": "./geometry.json" }
-    };
-    writeJSON(path.join("data", "relationship_address_has_geometry.json"), relAddressGeometry);
-  }
-
-}
-
-function extractMailingAddress($) {
-  const addressElement = $('#ctlBodyPane_ctl03_ctl01_rptOwner_ctl00_lblOwnerAddress');
-  
-  if (!addressElement.length) return null;
-  
-  const addressText = addressElement.html();
-  if (!addressText || !addressText.trim()) return null;
-  
-  // Split by <br> tags and clean up each line
-  const lines = addressText
-    .split(/<br\s*\/?>/i)
-    .map(line => line.trim())
-    .filter(line => line.length > 0);
-  
-  if (lines.length === 0) return null;
-  
-  // Join lines with proper formatting
-  return lines.join(', ');
-}
 
 function main() {
   ensureDir("data");
