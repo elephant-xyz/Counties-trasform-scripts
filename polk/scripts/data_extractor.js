@@ -4180,7 +4180,17 @@ function main() {
   // Property
   const property = extractProperty($, seed);
   writeJSON(path.join("data", "property.json"), property);
-  writeJSON(path.join("data", "parcel.json"), {parcel_identifier: parcelId || ""});
+
+  // Create parcel.json
+  const parcel = {
+    source_http_request: seed?.source_http_request || {
+      method: "GET",
+      url: ""
+    },
+    request_identifier: seed?.request_identifier || parcelId || "",
+    parcel_identifier: parcelId || ""
+  };
+  writeJSON(path.join("data", "parcel.json"), parcel);
 
   const addressText = extractAddressText($);
   const mailingAddress = extractOwnerMailingAddress($);
