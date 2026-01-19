@@ -4983,6 +4983,70 @@ function createGeometryClass(geometries) {
   });
 }
 
+/**
+ * Create layout/building geometries from CSV building_polygon column
+ * @param {string} csvContent - CSV content
+ */
+function createLayoutGeometries(csvContent) {
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return;
+  }
+
+  const [header, ...dataRows] = rows;
+
+  // Check if building_polygon column exists
+  const buildingPolygonIdx = header.indexOf('building_polygon');
+  if (buildingPolygonIdx === -1) {
+    return; // No building polygon data
+  }
+
+  let layoutGeomIndex = 0;
+  dataRows.forEach((row, rowIdx) => {
+    const buildingPolygonValue = row[buildingPolygonIdx];
+    if (!buildingPolygonValue) return;
+
+    const polygon = parsePolygon(buildingPolygonValue);
+    if (!polygon) return;
+
+    // Create geometry for each layout
+    const geometry = {
+      latitude: null,
+      longitude: null,
+    };
+
+    if (Array.isArray(polygon.coordinates)) {
+      const exteriorRing = polygon.type === 'Polygon'
+        ? polygon.coordinates[0]
+        : polygon.coordinates[0]?.[0];
+
+      if (exteriorRing) {
+        const polygonArray = exteriorRing.map((coordinate) => ({
+          longitude: coordinate[0],
+          latitude: coordinate[1],
+        }));
+        if (polygonArray.length) {
+          geometry.polygon = polygonArray;
+        }
+      }
+    }
+
+    const geometryFile = `geometry_layout_${layoutGeomIndex + 1}.json`;
+    const relationshipFile = `relationship_layout_${layoutGeomIndex + 1}_has_geometry_layout_${layoutGeomIndex + 1}.json`;
+
+    writeJson(path.join("data", geometryFile), geometry);
+
+    const relationship = {
+      from: { "/": `./layout_${layoutGeomIndex + 1}.json` },
+      to: { "/": `./${geometryFile}` },
+    };
+    writeJson(path.join("data", relationshipFile), relationship);
+
+    layoutGeomIndex++;
+  });
+}
+
 // ============================================================================
 // End of CSV and Polygon Geometry Helpers
 // ============================================================================
@@ -5247,6 +5311,21 @@ function extractMailingAddress(inputObj) {
     subdivision: subdivision
   };
   writeJson(path.join(dataDir, "property.json"), property);
+
+  // Create parcel.json as a separate entity
+  const parcel = {
+    ...appendSourceInfo(seed),
+    request_identifier: parcelId || "",
+    parcel_identifier: parcelId || ""
+  };
+  writeJson(path.join(dataDir, "parcel.json"), parcel);
+
+  // Create relationship between property and parcel
+  const relPropertyParcel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./parcel.json" }
+  };
+  writeJson(path.join(dataDir, "relationship_property_has_parcel.json"), relPropertyParcel);
 
   const mailingAddressRaw =
     extractMailingAddress(input);
@@ -5592,6 +5671,17 @@ function extractMailingAddress(inputObj) {
       const layout = { ...appendSourceInfo(seed), ...lay };
       writeJson(path.join(dataDir, `layout_${idx + 1}.json`), layout);
     });
+  }
+
+  // Create layout/building polygon geometries from CSV (if available)
+  // This must happen AFTER layout files are created since relationships reference them
+  if (geometryCsv) {
+    try {
+      createLayoutGeometries(geometryCsv);
+      console.log(`Created layout geometry files from CSV`);
+    } catch (err) {
+      console.warn(`Unable to build layout geometry from CSV: ${err.message}`);
+    }
   }
 
   // STRUCTURE minimal file with nulls for all fields
