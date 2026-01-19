@@ -10,6 +10,9 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const SCRIPT_DIR = __dirname;
+const WORKING_DIR = process.cwd();
+
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
@@ -2517,6 +2520,227 @@ function extractMailingAddress($) {
   return parts.length > 0 ? parts.join(', ') : null;
 }
 
+//Geometry class and related functions
+class Geometry {
+  constructor({ latitude, longitude, polygon }) {
+    this.latitude = latitude ?? null;
+    this.longitude = longitude ?? null;
+    this.polygon = polygon ?? null;
+  }
+
+  /**
+   * Build a Geometry instance from a CSV record.
+   */
+  static fromRecord(record) {
+    return new Geometry({
+      latitude: toNumber(record.latitude),
+      longitude: toNumber(record.longitude),
+      polygon: parsePolygon(
+        record.parcel_polygon
+      )
+    });
+  }
+}
+
+const NORMALIZE_EOL_REGEX = /\r\n/g;
+
+function writeJSON(p, obj) {
+  ensureDir(path.dirname(p));
+  fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8");
+}
+
+function coordinatesDepth(value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    return 0;
+  }
+
+  return 1 + coordinatesDepth(value[0]);
+}
+
+function isGeoJsonGeometry(value) {
+  return (
+    value &&
+    typeof value === 'object' &&
+    (value.type === 'Polygon' || value.type === 'MultiPolygon') &&
+    Array.isArray(value.coordinates)
+  );
+}
+
+function toNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
+}
+
+function splitGeometry(record) {
+  const baseGeometry = Geometry.fromRecord(record);
+  const { polygon } = baseGeometry;
+
+  if (!polygon || polygon.type !== 'MultiPolygon') {
+    return [baseGeometry];
+  }
+
+  return polygon.coordinates.map((coords, index) => {
+    const identifier = baseGeometry.request_identifier
+      ? `${baseGeometry.request_identifier}#${index + 1}`
+      : null;
+
+    return new Geometry({
+      latitude: baseGeometry.latitude,
+      longitude: baseGeometry.longitude,
+      polygon: {
+        type: 'Polygon',
+        coordinates: coords,
+      },
+      request_identifier: identifier,
+    });
+  });
+}
+
+
+function parseCsv(content) {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let insideQuotes = false;
+
+  for (let i = 0; i < content.length; i += 1) {
+    const char = content[i];
+
+    if (char === '"') {
+      if (insideQuotes && content[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !insideQuotes) {
+      row.push(current);
+      current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !insideQuotes) {
+      if (char === '\r' && content[i + 1] === '\n') {
+        i += 1;
+      }
+      row.push(current);
+      if (row.some((value) => value.length > 0)) {
+        rows.push(row);
+      }
+      row = [];
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0 || row.length > 0) {
+    row.push(current);
+    if (row.some((value) => value.length > 0)) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
+}
+
+function parsePolygon(value) {
+  if (!value) {
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (isGeoJsonGeometry(parsed)) {
+    return parsed;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return null;
+  }
+
+  const depth = coordinatesDepth(parsed);
+  if (depth === 4) {
+    return { type: 'MultiPolygon', coordinates: parsed };
+  }
+
+  if (depth === 3) {
+    return { type: 'Polygon', coordinates: parsed };
+  }
+
+  if (depth === 2) {
+    return { type: 'Polygon', coordinates: [parsed] };
+  }
+
+  return null;
+}
+
+function writeOut(filePath, obj) {
+  const outPath = path.join("data", filePath);
+  ensureDir(path.dirname(outPath));
+  fs.writeFileSync(outPath, JSON.stringify(obj, null, 2), "utf8");
+}
+
+
+/**
+ * Read the provided CSV file (defaults to ./input.csv) and return Geometry instances.
+ */
+function createGeometryInstances(csvContent) {
+
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const headers = rows[0].map((header) => header.trim());
+  const records = rows.slice(1).map((values) =>
+    headers.reduce((acc, header, index) => {
+      acc[header] = values[index] ?? '';
+      return acc;
+    }, {})
+  );
+
+  return records.flatMap((record) => splitGeometry(record));
+}
+
+function createGeometryClass(geometryInstances) {
+  let geomIndex = 1;
+  for(let geom of geometryInstances) {
+    let polygon = [];
+    let geometry = {
+      "latitude": geom.latitude,
+      "longitude": geom.longitude,
+    }
+    if (geom && geom.polygon) {
+      for (const coordinate of geom.polygon.coordinates[0]) {
+        polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
+      }
+      geometry.polygon = polygon;
+    }
+    writeJSON(path.join("data", `geometry_${geomIndex}.json`), geometry);
+    writeJSON(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
+        from: { "/": `./parcel.json` },
+        to: { "/": `./geometry_${geomIndex}.json` },
+    });
+    geomIndex++;
+  }
+}
+
+
 function main() {
   ensureDir("data");
   const $ = loadHTML();
@@ -2555,6 +2779,27 @@ function main() {
 
 
   }
+
+    //Geometry
+     const geometryCsvCandidates = [
+        path.join(SCRIPT_DIR, "input.csv"),
+        path.join(SCRIPT_DIR, "..", "input.csv"),
+        path.join(WORKING_DIR, "input.csv"),
+        path.join(SCRIPT_DIR, "seed.csv"),
+        path.join(SCRIPT_DIR, "..", "seed.csv"),
+        path.join(WORKING_DIR, "seed.csv"),
+      ];
+      const seedCsvPath = geometryCsvCandidates.find((candidate) =>
+        fs.existsSync(candidate)
+      );
+      if (!seedCsvPath) {
+        throw new Error("Unable to locate input.csv or seed.csv for geometry creation.");
+      }
+      const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
+      const instance = createGeometryInstances(seedCsv);
+      createGeometryClass(instance);
+  
+
 
   // Address last
   const secTwpRng = extractSecTwpRng($);
