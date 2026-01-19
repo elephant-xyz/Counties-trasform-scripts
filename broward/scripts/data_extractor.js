@@ -4947,7 +4947,7 @@ function createGeometryInstances(csvContent) {
  * Write geometry_parcel_<index>.json and relationship_parcel_has_geometry_parcel_<index>.json files.
  * @param {Geometry[]} geometries - Array of Geometry instances
  */
-function createParcelGeometries(geometries) {
+function createGeometryClass(geometries) {
   if (!geometries || !geometries.length) {
     return;
   }
@@ -4976,7 +4976,7 @@ function createParcelGeometries(geometries) {
     writeJson(path.join("data", geometryFile), geometry);
 
     const relationship = {
-      from: { "/": "./property.json" },
+      from: { "/": "./parcel.json" },
       to: { "/": `./${geometryFile}` },
     };
     writeJson(path.join("data", relationshipFile), relationship);
@@ -5003,7 +5003,7 @@ function createLayoutGeometries(csvContent) {
   }
 
   let layoutGeomIndex = 0;
-  dataRows.forEach((row) => {
+  dataRows.forEach((row, rowIdx) => {
     const buildingPolygonValue = row[buildingPolygonIdx];
     if (!buildingPolygonValue) return;
 
@@ -5355,7 +5355,7 @@ function extractMailingAddress(inputObj) {
     try {
       const instances = createGeometryInstances(geometryCsv);
       if (instances.length) {
-        createParcelGeometries(instances);
+        createGeometryClass(instances);
         geometryCreated = true;
         console.log(`Created ${instances.length} geometry_parcel_<index>.json files from CSV`);
       }
