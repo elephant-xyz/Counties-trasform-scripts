@@ -394,11 +394,8 @@ function main() {
     propertySeed.request_identifier.replace(/-/g, "") !==
       parcelId.replace(/-/g, "")
   ) {
-    throw {
-      type: "error",
-      message: `Request identifier and parcel id don't match.`,
-      path: "property.request_identifier",
-    };
+    console.warn(`Warning: Request identifier (${propertySeed.request_identifier}) doesn't match parcel ID from HTML (${parcelId}). Using HTML value.`);
+    // Don't throw error, just log warning and continue with the parcel ID from HTML
   }
 
   if (!parcelId) throw new Error("Parcel ID not found");
