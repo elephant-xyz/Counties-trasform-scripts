@@ -5312,6 +5312,21 @@ function extractMailingAddress(inputObj) {
   };
   writeJson(path.join(dataDir, "property.json"), property);
 
+  // Create parcel.json as a separate entity
+  const parcel = {
+    ...appendSourceInfo(seed),
+    request_identifier: parcelId || "",
+    parcel_identifier: parcelId || ""
+  };
+  writeJson(path.join(dataDir, "parcel.json"), parcel);
+
+  // Create relationship between property and parcel
+  const relPropertyParcel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./parcel.json" }
+  };
+  writeJson(path.join(dataDir, "relationship_property_has_parcel.json"), relPropertyParcel);
+
   const mailingAddressRaw =
     extractMailingAddress(input);
   if (mailingAddressRaw) {
@@ -5361,14 +5376,6 @@ function extractMailingAddress(inputObj) {
       }
     } catch (err) {
       console.warn(`Unable to build geometry from CSV: ${err.message}`);
-    }
-
-    // Create layout/building polygon geometries from CSV (if available)
-    try {
-      createLayoutGeometries(geometryCsv);
-      console.log(`Created layout geometry files from CSV`);
-    } catch (err) {
-      console.warn(`Unable to build layout geometry from CSV: ${err.message}`);
     }
   }
 
@@ -5664,6 +5671,17 @@ function extractMailingAddress(inputObj) {
       const layout = { ...appendSourceInfo(seed), ...lay };
       writeJson(path.join(dataDir, `layout_${idx + 1}.json`), layout);
     });
+  }
+
+  // Create layout/building polygon geometries from CSV (if available)
+  // This must happen AFTER layout files are created since relationships reference them
+  if (geometryCsv) {
+    try {
+      createLayoutGeometries(geometryCsv);
+      console.log(`Created layout geometry files from CSV`);
+    } catch (err) {
+      console.warn(`Unable to build layout geometry from CSV: ${err.message}`);
+    }
   }
 
   // STRUCTURE minimal file with nulls for all fields
