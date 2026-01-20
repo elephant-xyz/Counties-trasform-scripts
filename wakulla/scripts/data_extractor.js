@@ -1408,6 +1408,24 @@ function writeProperty($, parcelId) {
     build_status: propertyFields.build_status,
   };
   writeJSON(path.join("data", "property.json"), property);
+
+  // Create parcel.json as a separate entity
+  const parcel = {
+    source_http_request: {
+      method: "GET",
+      url: seed.source_http_request.url
+    },
+    request_identifier: parcelId || seed.parcel_id || "",
+    parcel_identifier: parcelId || seed.parcel_id || ""
+  };
+  writeJSON(path.join("data", "parcel.json"), parcel);
+
+  // Create relationship between property and parcel
+  const relPropertyParcel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./parcel.json" }
+  };
+  writeJSON(path.join("data", "relationship_property_has_parcel.json"), relPropertyParcel);
 }
 
 function writeSalesDeedsFilesAndRelationships($) {
@@ -2455,7 +2473,7 @@ function createGeometryInstances(csvContent) {
  * Write geometry_parcel_<index>.json and relationship_parcel_has_geometry_parcel_<index>.json files.
  * @param {Geometry[]} geometries - Array of Geometry instances
  */
-function createParcelGeometries(geometries) {
+function createGeometryClass(geometries) {
   if (!geometries || !geometries.length) {
     return;
   }
@@ -2484,7 +2502,7 @@ function createParcelGeometries(geometries) {
     writeJSON(path.join("data", geometryFile), geometry);
 
     const relationship = {
-      from: { "/": "./property.json" },
+      from: { "/": "./parcel.json" },
       to: { "/": `./${geometryFile}` },
     };
     writeJSON(path.join("data", relationshipFile), relationship);
@@ -2633,7 +2651,7 @@ function attemptWriteAddressandGeometry(unnorm, secTwpRng) {
     try {
       const instances = createGeometryInstances(geometryCsv);
       if (instances.length) {
-        createParcelGeometries(instances);
+        createGeometryClass(instances);
         geometryCreated = true;
         console.log(`Created ${instances.length} geometry_parcel_<index>.json files from CSV`);
       }

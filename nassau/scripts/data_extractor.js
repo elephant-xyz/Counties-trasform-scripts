@@ -2479,7 +2479,7 @@ function main() {
   writeJSON(path.join("data", "property.json"), property);
   // console.log("finalPropertyy>>>>>>>>",property);
 
-  // Create parcel.json
+  // Create parcel.json as a separate entity
   const parcel = {
     source_http_request: seed?.source_http_request || {
       method: "GET",
@@ -2489,6 +2489,13 @@ function main() {
     parcel_identifier: parcelIdentifier || ""
   };
   writeJSON(path.join("data", "parcel.json"), parcel);
+
+  // Create relationship between property and parcel
+  const relPropertyParcel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./parcel.json" }
+  };
+  writeJSON(path.join("data", "relationship_property_has_parcel.json"), relPropertyParcel);
 
   //Extra Features Extraction
   extractExtraFeatures($, parcelIdentifier, seed);
