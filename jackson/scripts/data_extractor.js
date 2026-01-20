@@ -1192,47 +1192,54 @@ function writeProperty($, parcelId) {
       build_status: propertyFields.build_status,
     };
     writeJSON(path.join("data", "property.json"), property);
-    return;
+  } else {
+    const propertyFields = {
+      property_type: propertyMapping.property_type,
+      property_usage_type: propertyMapping.property_usage_type,
+      ownership_estate_type: propertyMapping.ownership_estate_type,
+      structure_form: propertyMapping.structure_form,
+      build_status: propertyMapping.build_status
+    };
+
+    const years = extractBuildingYears($);
+    const areas = extractAreas($);
+    const acreage = extractAcreage($);
+    const totalAreaSqFt = convertAcresToSqFt(acreage);
+
+    const property = {
+      ...appendSourceInfo(seed),
+    parcel_identifier: parcelId || "",
+      property_legal_description_text: legal || null,
+      property_structure_built_year: years.actual || null,
+      subdivision: null,
+      number_of_units: null,
+      zoning: null,
+      property_type: propertyFields.property_type,
+      property_usage_type: propertyFields.property_usage_type,
+      ownership_estate_type: propertyFields.ownership_estate_type,
+      structure_form: propertyFields.structure_form,
+      build_status: propertyFields.build_status,
+    };
+    writeJSON(path.join("data", "property.json"), property);
   }
 
-  const propertyFields = {
-    property_type: propertyMapping.property_type,
-    property_usage_type: propertyMapping.property_usage_type,
-    ownership_estate_type: propertyMapping.ownership_estate_type,
-    structure_form: propertyMapping.structure_form,
-    build_status: propertyMapping.build_status
+  // Create parcel.json as a separate entity
+  const parcel = {
+    source_http_request: {
+      method: seed.source_http_request.method,
+      url: seed.source_http_request.url
+    },
+    request_identifier: parcelId || "",
+    parcel_identifier: parcelId || ""
   };
+  writeJSON(path.join("data", "parcel.json"), parcel);
 
-
-  // const propertyType = mapPropertyTypeFromUseCode(useCode);
-  // console.log(propertyType)
-  // // if (!propertyType) {
-  // //   console.log(`Unknown enum value ${useCode}`);
-  // //   return;
-  // // }
-  const years = extractBuildingYears($);
-  const areas = extractAreas($);
-  const acreage = extractAcreage($);
-  const totalAreaSqFt = convertAcresToSqFt(acreage);
-
-
-
-  const property = {
-    ...appendSourceInfo(seed),
-    parcel_identifier: parcelId || "",
-    property_legal_description_text: legal || null,
-    property_structure_built_year: years.actual || null,
-    subdivision: null,
-    number_of_units: null,
-    zoning: null,
-    property_type: propertyFields.property_type,
-    property_usage_type: propertyFields.property_usage_type,
-    ownership_estate_type: propertyFields.ownership_estate_type,
-    structure_form: propertyFields.structure_form,
-    build_status: propertyFields.build_status,
-
+  // Create relationship between property and parcel
+  const relPropertyParcel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./parcel.json" }
   };
-  writeJSON(path.join("data", "property.json"), property);
+  writeJSON(path.join("data", "relationship_property_has_parcel.json"), relPropertyParcel);
 }
 
 function writeSalesDeedsFilesAndRelationships($) {
@@ -2350,7 +2357,7 @@ function createParcelGeometries(geometries) {
     writeJSON(path.join("data", geometryFile), geometry);
 
     const relationship = {
-      from: { "/": "./property.json" },
+      from: { "/": "./parcel.json" },
       to: { "/": `./${geometryFile}` },
     };
     writeJSON(path.join("data", relationshipFile), relationship);
