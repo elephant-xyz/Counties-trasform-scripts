@@ -213,6 +213,43 @@ function mapExemptionType(text) {
   return "Wid/Vet/Dis";
 }
 
+function mapDeedType(text) {
+  if (!text) return "Miscellaneous";
+  const t = text.toUpperCase().trim();
+  if (t.includes("WARRANTY") && t.includes("SPECIAL")) return "Special Warranty Deed";
+  if (t.includes("WARRANTY")) return "Warranty Deed";
+  if (t.includes("QUITCLAIM") || t.includes("QUIT CLAIM")) return "Quitclaim Deed";
+  if (t.includes("GRANT")) return "Grant Deed";
+  if (t.includes("BARGAIN") && t.includes("SALE")) return "Bargain and Sale Deed";
+  if (t.includes("LADY BIRD")) return "Lady Bird Deed";
+  if (t.includes("TRANSFER ON DEATH") || t.includes("TOD")) return "Transfer on Death Deed";
+  if (t.includes("SHERIFF")) return "Sheriff's Deed";
+  if (t.includes("TAX DEED") || t.includes("TAX SALE")) return "Tax Deed";
+  if (t.includes("TRUSTEE")) return "Trustee's Deed";
+  if (t.includes("PERSONAL REPRESENTATIVE")) return "Personal Representative Deed";
+  if (t.includes("CORRECTION")) return "Correction Deed";
+  if (t.includes("LIEU OF FORECLOSURE")) return "Deed in Lieu of Foreclosure";
+  if (t.includes("LIFE ESTATE")) return "Life Estate Deed";
+  if (t.includes("JOINT TENANCY")) return "Joint Tenancy Deed";
+  if (t.includes("TENANCY IN COMMON")) return "Tenancy in Common Deed";
+  if (t.includes("COMMUNITY PROPERTY")) return "Community Property Deed";
+  if (t.includes("GIFT")) return "Gift Deed";
+  if (t.includes("INTERSPOUSAL")) return "Interspousal Transfer Deed";
+  if (t.includes("WILD")) return "Wild Deed";
+  if (t.includes("SPECIAL MASTER")) return "Special Master's Deed";
+  if (t.includes("COURT ORDER")) return "Court Order Deed";
+  if (t.includes("CONTRACT FOR DEED")) return "Contract for Deed";
+  if (t.includes("QUIET TITLE")) return "Quiet Title Deed";
+  if (t.includes("ADMINISTRATOR")) return "Administrator's Deed";
+  if (t.includes("GUARDIAN")) return "Guardian's Deed";
+  if (t.includes("RECEIVER")) return "Receiver's Deed";
+  if (t.includes("RIGHT OF WAY")) return "Right of Way Deed";
+  if (t.includes("VACATION OF PLAT")) return "Vacation of Plat Deed";
+  if (t.includes("ASSIGNMENT OF CONTRACT")) return "Assignment of Contract";
+  if (t.includes("RELEASE OF CONTRACT")) return "Release of Contract";
+  return "Miscellaneous";
+}
+
 function parseIntLoose(text) {
   if (text == null) return null;
   const cleaned = String(text).replace(/[^0-9.]/g, "");
@@ -457,7 +494,7 @@ function mapImprovementToLayout(text) {
     return { spaceType: "Outdoor Pool", isExterior: true };
   }
   if (t.includes("SPA") || t.includes("HOT TUB")) {
-    return { spaceType: "Spa", isExterior: false };
+    return { spaceType: "Hot Tub / Spa Area", isExterior: false };
   }
   if (t.includes("SHED") || t.includes("STORAGE")) {
     return { spaceType: "Storage Room", isExterior: true };
@@ -466,9 +503,9 @@ function mapImprovementToLayout(text) {
     return { spaceType: "Gazebo", isExterior: true };
   }
   if (t.includes("BARN")) {
-    return { spaceType: "Barn", isExterior: true };
+    return { spaceType: "Shed", isExterior: true };
   }
-  return { spaceType: "Outbuilding", isExterior: true };
+  return { spaceType: "Shed", isExterior: true };
 }
 
 function normalizeParcelId(val) {
@@ -537,7 +574,7 @@ async function main() {
     removeIfMatch(dataDir, /^relationship_sales_person_\d+\.json$/),
     removeIfMatch(dataDir, /^relationship_sales_company_\d+\.json$/),
     removeIfMatch(dataDir, /^relationship_sales_deed_\d+\.json$/),
-    removeIfMatch(dataDir, /^relationship_property_(address|lot)\.json$/),
+    removeIfMatch(dataDir, /^relationship_property_(address|lot|mailing_address)\.json$/),
     removeIfMatch(dataDir, /^relationship_property_sales_\d+\.json$/),
     removeIfMatch(dataDir, /^relationship_property_tax_class_\d+\.json$/),
     removeIfMatch(dataDir, /^relationship_tax_class_\d+_jurisdiction_.*\.json$/),
@@ -603,6 +640,7 @@ async function main() {
   const ownersForProp = ownersData[propertyKey] || {};
   const ownersByDate = ownersForProp.owners_by_date || {};
   const mailingAddressRaw = ownersForProp.mailing_address || null;
+  let mailingAddressCreated = false;
   const utilitiesForProperty = utilitiesData[propertyKey] || {};
   const layoutEntry = layoutData[propertyKey] || {};
   const layoutList =
@@ -958,6 +996,7 @@ async function main() {
       path.join(dataDir, "mailing_address.json"),
       JSON.stringify(mailingAddrOut, null, 2),
     );
+    mailingAddressCreated = true;
   }
 
   // LOT
@@ -1433,6 +1472,7 @@ async function main() {
     const deedOut = {
       source_http_request: d.source || null,
       request_identifier: parcelId,
+      deed_type: mapDeedType(d.deed_type_raw || null),
     };
     const instrumentNumber = d.instrument_number || null;
     if (instrumentNumber) {
@@ -1873,7 +1913,8 @@ async function main() {
   }
 
   // person/company → mailing_address relationships (ONLY for current owners)
-  const mailingAddressExists = fs.existsSync(path.join(dataDir, "mailing_address.json"));
+  // Use mailingAddressCreated flag instead of fs.existsSync for reliability
+  const mailingAddressExists = mailingAddressCreated || fs.existsSync(path.join(dataDir, "mailing_address.json"));
   if (mailingAddressExists) {
     // Only create relationships for current person owners
     for (const [key, pIdx] of personIndexMap.entries()) {
