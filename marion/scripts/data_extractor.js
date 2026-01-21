@@ -2,6 +2,10 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+// Working directory constants for geometry file loading
+const WORKING_DIR = process.cwd();
+const SCRIPT_DIR = __dirname;
+
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
@@ -814,10 +818,11 @@ function writeOut(filePath, obj) {
  * Minimal Geometry model that mirrors the Elephant Geometry class.
  */
 class Geometry {
-  constructor({ latitude, longitude, polygon }) {
+  constructor({ latitude, longitude, polygon, request_identifier }) {
     this.latitude = latitude ?? null;
     this.longitude = longitude ?? null;
     this.polygon = polygon ?? null;
+    this.request_identifier = request_identifier ?? null;
   }
 
   /**
@@ -827,9 +832,8 @@ class Geometry {
     return new Geometry({
       latitude: toNumber(record.latitude),
       longitude: toNumber(record.longitude),
-      polygon: parsePolygon(
-        record.parcel_polygon
-      )
+      polygon: parsePolygon(record.parcel_polygon),
+      request_identifier: record.request_identifier || null
     });
   }
 }
@@ -996,6 +1000,138 @@ function createGeometryInstances(csvContent) {
   return records.flatMap((record) => splitGeometry(record));
 }
 
+/**
+ * Load CSV content from input.csv or seed.csv in working/scripts/parent directories.
+ */
+function loadGeometryCsvContent() {
+  const parentDir = path.dirname(SCRIPT_DIR);
+  const candidates = [
+    path.join(WORKING_DIR, "input.csv"),
+    path.join(SCRIPT_DIR, "input.csv"),
+    path.join(parentDir, "input.csv"),
+    path.join(WORKING_DIR, "seed.csv"),
+    path.join(SCRIPT_DIR, "seed.csv"),
+    path.join(parentDir, "seed.csv"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        return fs.readFileSync(candidate, "utf8");
+      } catch (err) {
+        console.warn(`Unable to read geometry CSV at ${candidate}: ${err.message}`);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Write geometry_parcel_<index>.json and relationship_parcel_has_geometry_parcel_<index>.json files.
+ * @param {Geometry[]} geometries - Array of Geometry instances
+ */
+function createParcelGeometries(geometries) {
+  if (!geometries || !geometries.length) {
+    return;
+  }
+
+  geometries.forEach((geom, geomIndex) => {
+    // Build Elephant Geometry payload with polygon array for PARCEL
+    const geometry = {
+      latitude: geom.latitude ?? null,
+      longitude: geom.longitude ?? null,
+    };
+
+    if (geom.polygon && Array.isArray(geom.polygon.coordinates)) {
+      const exteriorRing = geom.polygon.coordinates[0] || [];
+      const polygon = exteriorRing.map((coordinate) => ({
+        longitude: coordinate[0],
+        latitude: coordinate[1],
+      }));
+      if (polygon.length) {
+        geometry.polygon = polygon;
+      }
+    }
+
+    const geometryFile = `geometry_parcel_${geomIndex}.json`;
+    const relationshipFile = `relationship_parcel_has_geometry_parcel_${geomIndex}.json`;
+
+    writeJSON(path.join("data", geometryFile), geometry);
+
+    const relationship = {
+      from: { "/": "./parcel.json" },
+      to: { "/": `./${geometryFile}` },
+    };
+    writeJSON(path.join("data", relationshipFile), relationship);
+  });
+}
+
+/**
+ * Create layout/building geometries from CSV building_polygon column
+ * @param {string} csvContent - CSV content
+ */
+function createLayoutGeometries(csvContent) {
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return;
+  }
+
+  const [header, ...dataRows] = rows;
+
+  // Check if building_polygon column exists
+  const buildingPolygonIdx = header.indexOf('building_polygon');
+  if (buildingPolygonIdx === -1) {
+    return; // No building polygon data
+  }
+
+  let layoutGeomIndex = 0;
+  dataRows.forEach((row, rowIdx) => {
+    const buildingPolygonValue = row[buildingPolygonIdx];
+    if (!buildingPolygonValue) return;
+
+    const polygon = parsePolygon(buildingPolygonValue);
+    if (!polygon) return;
+
+    // Create geometry for each layout
+    const geometry = {
+      latitude: null,
+      longitude: null,
+    };
+
+    if (Array.isArray(polygon.coordinates)) {
+      const exteriorRing = polygon.type === 'Polygon'
+        ? polygon.coordinates[0]
+        : polygon.coordinates[0]?.[0];
+
+      if (exteriorRing) {
+        const polygonArray = exteriorRing.map((coordinate) => ({
+          longitude: coordinate[0],
+          latitude: coordinate[1],
+        }));
+        if (polygonArray.length) {
+          geometry.polygon = polygonArray;
+        }
+      }
+    }
+
+    const geometryFile = `geometry_layout_${layoutGeomIndex + 1}.json`;
+    const relationshipFile = `relationship_layout_${layoutGeomIndex + 1}_has_geometry_layout_${layoutGeomIndex + 1}.json`;
+
+    writeJSON(path.join("data", geometryFile), geometry);
+
+    const relationship = {
+      from: { "/": `./layout_${layoutGeomIndex + 1}.json` },
+      to: { "/": `./${geometryFile}` },
+    };
+    writeJSON(path.join("data", relationshipFile), relationship);
+
+    layoutGeomIndex++;
+  });
+}
+
+// Legacy function - kept for backward compatibility
 function createGeometryClass(geometryInstances) {
   let geomIndex = 1;
   for(let geom of geometryInstances) {
@@ -1084,20 +1220,39 @@ function main() {
   const key = `property_${key_part}`;
   const util = utilsData ? utilsData[key] : null;
   const struct = structuresData ? structuresData[key] : null;
-  
-  try {
-    const seedCsvPath = path.join(".", "input.csv");
-    const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
-    createGeometryClass(createGeometryInstances(seedCsv));
-  } catch (e) {
-    const latitude = unnorm && unnorm.latitude ? unnorm.latitude : null;
-    const longitude = unnorm && unnorm.longitude ? unnorm.longitude : null;
-    if (latitude && longitude) {
-      const coordinate = new Geometry({
-        latitude: latitude,
-        longitude: longitude
-      });
-      createGeometryClass([coordinate]);
+
+  // 1. ALWAYS create point-based geometry for address (latitude/longitude)
+  const latitude = unnorm && unnorm.latitude ? unnorm.latitude : null;
+  const longitude = unnorm && unnorm.longitude ? unnorm.longitude : null;
+  if (latitude !== null && longitude !== null) {
+    const geometry = {
+      latitude: latitude,
+      longitude: longitude,
+    };
+    writeJSON(path.join(dataDir, "geometry.json"), geometry);
+
+    // Note: relationship_address_has_geometry.json will be created after address.json
+  }
+
+  // 2. Create parcel polygon geometries from CSV (if available)
+  const geometryCsv = loadGeometryCsvContent();
+  if (geometryCsv) {
+    try {
+      const instances = createGeometryInstances(geometryCsv);
+      if (instances.length) {
+        createParcelGeometries(instances);
+        console.log(`Created ${instances.length} geometry_parcel_<index>.json files from CSV`);
+      }
+    } catch (err) {
+      console.warn(`Unable to build parcel geometry from CSV: ${err.message}`);
+    }
+
+    // 3. Create layout/building polygon geometries from CSV (if available)
+    try {
+      createLayoutGeometries(geometryCsv);
+      console.log(`Created layout geometry files from CSV`);
+    } catch (err) {
+      console.warn(`Unable to build layout geometry from CSV: ${err.message}`);
     }
   }
 
@@ -1142,6 +1297,14 @@ function main() {
                 to: { "/": `./address.json` },
                 from: { "/": `./property.json` },
               });
+
+    // Create relationship between address and geometry
+    if (latitude !== null && longitude !== null) {
+      writeJSON(path.join(dataDir, "relationship_address_has_geometry.json"), {
+        from: { "/": "./address.json" },
+        to: { "/": "./geometry.json" }
+      });
+    }
   } else if (legalDescriptionParsedInfo) {
     const addressObj = {
       county_name: "Marion",
@@ -1171,6 +1334,14 @@ function main() {
                 to: { "/": `./address.json` },
                 from: { "/": `./property.json` },
               });
+
+    // Create relationship between address and geometry
+    if (latitude !== null && longitude !== null) {
+      writeJSON(path.join(dataDir, "relationship_address_has_geometry.json"), {
+        from: { "/": "./address.json" },
+        to: { "/": "./geometry.json" }
+      });
+    }
   }
 
   // tax_*.json from history
