@@ -179,9 +179,6 @@ function formatNameToPattern(name) {
   if (!name) return null;
   let cleaned = name.trim();
 
-  // Return null if empty after trimming
-  if (!cleaned) return null;
-
   // Replace forward slashes with hyphens to conform to the schema pattern
   // This is a logical replacement as '/' often implies a separation similar to '-'
   cleaned = cleaned.replace(/\//g, '-');
@@ -189,14 +186,8 @@ function formatNameToPattern(name) {
   // Replace multiple spaces with a single space
   cleaned = cleaned.replace(/\s+/g, ' ');
 
-  // Remove trailing delimiters (periods, commas, hyphens, apostrophes)
-  cleaned = cleaned.replace(/[ \-',.]+$/, '');
-
-  // Return null if empty after removing trailing delimiters
-  if (!cleaned) return null;
-
   // Split by spaces, hyphens, apostrophes, commas, periods, keeping the delimiters
-  const result = cleaned.split(/([ \-',.])/)
+  return cleaned.split(/([ \-',.])/)
     .map((part) => {
       if (!part) return ''; // Handle empty parts from splitting
       if (part.match(/[ \-',.]/)) { // If it's a delimiter, return it as is
@@ -205,20 +196,7 @@ function formatNameToPattern(name) {
       // For actual name parts, capitalize the first letter and lowercase the rest
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     })
-    .join('')
-    .trim();
-
-  // Remove any trailing delimiters that might have been added during processing
-  const finalResult = result.replace(/[ \-',.]+$/, '');
-
-  // Validate the result matches the required pattern
-  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
-  if (!finalResult || !namePattern.test(finalResult)) {
-    return null;
-  }
-
-  return finalResult;
+    .join('');
 }
 
 
@@ -292,19 +270,16 @@ const structureData = fs.existsSync(structureDataPath)
   const ownerCompanyFiles = [];
   const personRegistry = new Map();
   const companyRegistry = new Map();
-  const personByPath = new Map();
-  const companyByPath = new Map();
   let utilityFilePath = null;
   let structureFilePath = null;
   const propertyRelationshipQueue = [];
 
   function ensurePersonFile(personPayload) {
     const key = normalizePersonKey(personPayload);
-    if (personRegistry.has(key)) return personRegistry.get(key).relPath;
+    if (personRegistry.has(key)) return personRegistry.get(key);
 
     personIndex += 1;
     const relPath = `./person_${personIndex}.json`;
-    const filePath = path.join(dataDir, `person_${personIndex}.json`);
     const record = {
       source_http_request: {
         method: "GET",
@@ -329,131 +304,22 @@ const structureData = fs.existsSync(structureDataPath)
       us_citizenship_status: null,
       veteran_status: null,
     };
-    writeJson(filePath, record);
-    const entry = {
-      key,
-      relPath,
-      filePath,
-      hasSalesRelationship: false,
-    };
-    personRegistry.set(key, entry);
-    personByPath.set(relPath, entry);
+    writeJson(path.join("data", `person_${personIndex}.json`), record);
+    personRegistry.set(key, relPath);
     return relPath;
   }
 
   function ensureCompanyFile(companyPayload) {
     const key = normalizeCompanyKey(companyPayload.name);
-    if (companyRegistry.has(key)) return companyRegistry.get(key).relPath;
+    if (companyRegistry.has(key)) return companyRegistry.get(key);
 
     companyIndex += 1;
     const relPath = `./company_${companyIndex}.json`;
-    const filePath = path.join(dataDir, `company_${companyIndex}.json`);
-    writeJson(filePath, {
+    writeJson(path.join("data", `company_${companyIndex}.json`), {
       name: companyPayload.name ? formatNameToPattern(companyPayload.name) : null,
     });
-    const entry = {
-      key,
-      relPath,
-      filePath,
-      hasSalesRelationship: false,
-    };
-    companyRegistry.set(key, entry);
-    companyByPath.set(relPath, entry);
+    companyRegistry.set(key, relPath);
     return relPath;
-  }
-
-  function markPersonSalesRelationship(relPath) {
-    if (!relPath) return;
-    const entry = personByPath.get(relPath);
-    if (entry) entry.hasSalesRelationship = true;
-  }
-
-  function markCompanySalesRelationship(relPath) {
-    if (!relPath) return;
-    const entry = companyByPath.get(relPath);
-    if (entry) entry.hasSalesRelationship = true;
-  }
-
-  function removeRelationshipsForTarget(relPath) {
-    if (!relPath || !fs.existsSync(dataDir)) return;
-    const entries = fs.readdirSync(dataDir).filter(
-      (fileName) =>
-        fileName.startsWith("relationship_") && fileName.endsWith(".json"),
-    );
-    entries.forEach((fileName) => {
-      const fullPath = path.join(dataDir, fileName);
-      let relData = null;
-      try {
-        relData = readJson(fullPath);
-      } catch (err) {
-        return;
-      }
-      const fromRef = relData?.from?.["/"];
-      const toRef = relData?.to?.["/"];
-      if (fromRef === relPath || toRef === relPath) {
-        try {
-          fs.unlinkSync(fullPath);
-        } catch (unlinkErr) {
-          console.error(`Failed to remove relationship file ${fullPath}:`, unlinkErr);
-        }
-      }
-    });
-  }
-
-  function pruneEntitiesWithoutSalesLinks() {
-    const orphanPersonEntries = [];
-    personByPath.forEach((entry) => {
-      if (!entry.hasSalesRelationship) orphanPersonEntries.push(entry);
-    });
-
-    orphanPersonEntries.forEach((entry) => {
-      if (fs.existsSync(entry.filePath)) {
-        try {
-          fs.unlinkSync(entry.filePath);
-        } catch (err) {
-          console.error(`Failed to remove person file ${entry.filePath}:`, err);
-        }
-      }
-      removeRelationshipsForTarget(entry.relPath);
-      personRegistry.delete(entry.key);
-      personByPath.delete(entry.relPath);
-    });
-
-    const orphanCompanyEntries = [];
-    companyByPath.forEach((entry) => {
-      if (!entry.hasSalesRelationship) orphanCompanyEntries.push(entry);
-    });
-
-    orphanCompanyEntries.forEach((entry) => {
-      if (fs.existsSync(entry.filePath)) {
-        try {
-          fs.unlinkSync(entry.filePath);
-        } catch (err) {
-          console.error(`Failed to remove company file ${entry.filePath}:`, err);
-        }
-      }
-      removeRelationshipsForTarget(entry.relPath);
-      companyRegistry.delete(entry.key);
-      companyByPath.delete(entry.relPath);
-    });
-
-    if (orphanPersonEntries.length > 0) {
-      const remaining = new Set(Array.from(personByPath.keys()));
-      ownerPersonFiles.splice(
-        0,
-        ownerPersonFiles.length,
-        ...ownerPersonFiles.filter((relPath) => remaining.has(relPath)),
-      );
-    }
-
-    if (orphanCompanyEntries.length > 0) {
-      const remaining = new Set(Array.from(companyByPath.keys()));
-      ownerCompanyFiles.splice(
-        0,
-        ownerCompanyFiles.length,
-        ...ownerCompanyFiles.filter((relPath) => remaining.has(relPath)),
-      );
-    }
   }
 
   function relationshipFileName(fromPath, toPath) {
@@ -492,7 +358,102 @@ const structureData = fs.existsSync(structureDataPath)
   globalThis.__ownerCompanyFiles = ownerCompanyFiles;
   globalThis.__ownerPersonFiles = ownerPersonFiles;
 
-  // Mailing address extraction removed - not supported in the current schema
+  // 1b) MAILING ADDRESS
+  // Pull mailing address lines from the Owner block, omitting the bolded owner names.
+  function extractMailingAddressLines($root) {
+    let lines = null;
+    $root("table.parcelDetails_insideTable tr").each((_, tr) => {
+      const tds = $root(tr).find("td");
+      if (tds.length >= 2) {
+        const label = $root(tds[0]).text().trim();
+        if (/^Owner$/i.test(label)) {
+          const cellHtml = $root(tds[1]).html() || "";
+          const htmlWithoutBold = cellHtml.replace(/<\s*\/?b[^>]*>/gi, "");
+          const parts = htmlWithoutBold
+            .split(/<br\s*\/?>/i)
+            .map((segment) => segment.replace(/<[^>]+>/g, ""))
+            .map((segment) => segment.replace(/\s+/g, " ").trim())
+            .filter(Boolean);
+          if (parts.length) {
+            // Remove leading owner name(s) if present (bold text originally)
+            const candidateLines = [];
+            parts.forEach((part, idx) => {
+              if (idx === 0) {
+                const looksLikeAddress =
+                  /^(\d+\s+.+)/.test(part) ||
+                  /^P\.?O\.?\s*BOX/i.test(part) ||
+                  /\b[A-Z]{2}\s+\d{5}(?:-\d{4})?$/.test(part);
+                if (looksLikeAddress) candidateLines.push(part);
+              } else {
+                candidateLines.push(part);
+              }
+            });
+            lines =
+              candidateLines.length
+                ? candidateLines
+                : parts.length > 1
+                  ? parts.slice(1)
+                  : parts;
+          }
+          return false;
+        }
+      }
+      return true;
+    });
+    return lines;
+  }
+
+  const mailingAddressLines = extractMailingAddressLines($);
+  if (mailingAddressLines && mailingAddressLines.length) {
+    const unnormalizedMailingAddress = mailingAddressLines.join(", ");
+    const defaultSource =
+      propertySeed?.source_http_request ||
+      unnormalizedAddress?.source_http_request || {
+        method: "GET",
+        url:
+          propertySeed?.source_http_request?.url ||
+          unnormalizedAddress?.source_http_request?.url ||
+          "https://www.desotopa.com/gis",
+        multiValueQueryString: {},
+      };
+    const mailingAddress = {
+      source_http_request: defaultSource,
+      request_identifier:
+        propertySeed?.request_identifier ||
+        unnormalizedAddress?.request_identifier ||
+        hyphenParcel ||
+        propertySeed?.parcel_id ||
+        null,
+      unnormalized_address: unnormalizedMailingAddress,
+      latitude: null,
+      longitude: null,
+    };
+    writeJson(path.join("data", "mailing_address.json"), mailingAddress);
+
+    const mailingPath = "./mailing_address.json";
+
+    ownerCompanyFiles.forEach((companyPath) => {
+      const relName = relationshipFileName(companyPath, mailingPath);
+      writeJson(
+        path.join("data", relName),
+        {
+          from: { "/": companyPath },
+          to: { "/": mailingPath },
+        },
+      );
+    });
+
+    ownerPersonFiles.forEach((personPath) => {
+      const relName = relationshipFileName(personPath, mailingPath);
+      writeJson(
+        path.join("data", relName),
+        {
+          from: { "/": personPath },
+          to: { "/": mailingPath },
+        },
+      );
+    });
+  }
 
   // 2) UTILITIES
   if (utilitiesData) {
@@ -903,7 +864,6 @@ const structureData = fs.existsSync(structureDataPath)
     });
 
     grantorCompanyPaths.forEach((companyPath) => {
-      markCompanySalesRelationship(companyPath);
       const relName = relationshipFileName(saleRelPath, companyPath);
       writeJson(
         path.join("data", relName),
@@ -915,7 +875,6 @@ const structureData = fs.existsSync(structureDataPath)
     });
 
     grantorPersonPaths.forEach((personPath) => {
-      markPersonSalesRelationship(personPath);
       const relName = relationshipFileName(saleRelPath, personPath);
       writeJson(
         path.join("data", relName),
@@ -927,42 +886,9 @@ const structureData = fs.existsSync(structureDataPath)
     });
   }
 
-  if (
-    saleHistoryFiles.length === 0 &&
-    (ownerCompanyFiles.length > 0 || ownerPersonFiles.length > 0)
-  ) {
-    saleIndex += 1;
-    const saleRelPath = `./sales_history_${saleIndex}.json`;
-    const defaultSaleRequest =
-      propertySeed?.source_http_request ||
-      unnormalizedAddress?.source_http_request || {
-        method: "GET",
-        url:
-          propertySeed?.source_http_request?.url ||
-          unnormalizedAddress?.source_http_request?.url ||
-          "https://www.desotopa.com/gis",
-      };
-    const fallbackSaleRecord = pruneNullish({
-      source_http_request: defaultSaleRequest,
-      request_identifier:
-        hyphenParcel ||
-        propertySeed?.parcel_id ||
-        propertySeed?.request_identifier ||
-        null,
-      ownership_transfer_date: new Date().toISOString().slice(0, 10),
-      purchase_price_amount: 0,
-    });
-    writeJson(
-      path.join("data", `sales_history_${saleIndex}.json`),
-      fallbackSaleRecord,
-    );
-    saleHistoryFiles.push(saleRelPath);
-  }
-
   if (saleHistoryFiles.length > 0) {
     const mostRecentSale = saleHistoryFiles[0];
     ownerCompanyFiles.forEach((companyPath) => {
-      markCompanySalesRelationship(companyPath);
       const relName = relationshipFileName(mostRecentSale, companyPath);
       writeJson(
         path.join("data", relName),
@@ -974,7 +900,6 @@ const structureData = fs.existsSync(structureDataPath)
     });
 
     ownerPersonFiles.forEach((personPath) => {
-      markPersonSalesRelationship(personPath);
       const relName = relationshipFileName(mostRecentSale, personPath);
       writeJson(
         path.join("data", relName),
@@ -985,8 +910,6 @@ const structureData = fs.existsSync(structureDataPath)
       );
     });
   }
-
-  pruneEntitiesWithoutSalesLinks();
 
   // 5) TAX
   function buildTaxRecord($table, taxYear) {
@@ -1464,14 +1387,6 @@ const structureData = fs.existsSync(structureDataPath)
       "property_type": "VacantLand"
     },
     {
-      "desoto_property_type": "5300 - Cropland, Class III",
-      "ownership_estate_type": "FeeSimple",
-      "build_status": "VacantLand",
-      "structure_form": null,
-      "property_usage_type": "CroplandClass3",
-      "property_type": "VacantLand"
-    },
-    {
       "desoto_property_type": "5400 - Timberland, Index 90+",
       "ownership_estate_type": "FeeSimple",
       "build_status": "VacantLand",
@@ -1818,16 +1733,13 @@ const structureData = fs.existsSync(structureDataPath)
 
   if (!mappedProperty) {
     raiseEnumError(useCodeVal, "property.property_type");
-    const useCodeText = (useCodeVal || "").toLowerCase();
-    const indicatesVacantLand = /\b(vacant|cropland|timber|grazing|orchard|pasture|agri)\b/.test(
-      useCodeText,
-    );
+    // Default to a generic type if not found to avoid script failure, or handle as an error
     mappedProperty = {
-      property_type: indicatesVacantLand ? "VacantLand" : "Building",
+      property_type: "Unknown",
       ownership_estate_type: null,
-      build_status: indicatesVacantLand ? "VacantLand" : "Improved",
+      build_status: null,
       structure_form: null,
-      property_usage_type: "Unknown",
+      property_usage_type: "Unknown"
     };
   }
 
