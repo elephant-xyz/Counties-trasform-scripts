@@ -3190,6 +3190,7 @@ function main() {
                   file_format: null,
                   ipfs_url: null,
                   name: "Deed Document",
+                  original_url: fileLink,
                 });
               }
             }
@@ -3227,16 +3228,12 @@ function main() {
     ownersByDate = ownerData[key].owners_by_date;
   }
   if (ownersByDate) {
-    // Collect all persons and companies that will be referenced in relationships
+    // Relationships: link sale to owners present on that date (both persons and companies)
       let relPersonCounter = 0;
       let relCompanyCounter = 0;
       const personMap = new Map();
-      const companyNames = new Set();
-
-      // Collect persons/companies from sales dates
-      for (const [date, owner] of Object.entries(salesOwnerMapping)) {
-        const ownersOnDate = ownersByDate[date] || [];
-        ownersOnDate.forEach((o) => {
+      Object.values(ownersByDate).forEach((arr) => {
+        (arr || []).forEach((o) => {
           if (o.type === "person") {
             const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
             if (!personMap.has(k))
@@ -3250,36 +3247,9 @@ function main() {
               if (!existing.middle_name && o.middle_name)
                 existing.middle_name = o.middle_name;
             }
-          } else if (o.type === "company" && (o.name || "").trim()) {
-            companyNames.add((o.name || "").trim().toUpperCase());
           }
         });
-      }
-
-      // Collect current owners only if there's a mailing address
-      if (hasOwnerMailingAddress) {
-        const currentOwner = ownersByDate["current"] || [];
-        currentOwner.forEach((o) => {
-          if (o.type === "person") {
-            const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-            if (!personMap.has(k))
-              personMap.set(k, {
-                first_name: o.first_name,
-                middle_name: o.middle_name,
-                last_name: o.last_name,
-              });
-            else {
-              const existing = personMap.get(k);
-              if (!existing.middle_name && o.middle_name)
-                existing.middle_name = o.middle_name;
-            }
-          } else if (o.type === "company" && (o.name || "").trim()) {
-            companyNames.add((o.name || "").trim().toUpperCase());
-          }
-        });
-      }
-
-      // Create person files only for collected persons
+      });
       people = Array.from(personMap.values()).map((p) => ({
         first_name: p.first_name ? titleCaseName(p.first_name) : null,
         middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
@@ -3290,22 +3260,27 @@ function main() {
         us_citizenship_status: null,
         veteran_status: null,
       }));
-
+      people.forEach((p, idx) => {
+        
+      });
       let loopIdx = 1;
       for (const p of people) {
         writeOut(`person_${loopIdx++}.json`, p);
       }
-
-      // Create company files only for collected companies
-      companies = Array.from(companyNames).map((n) => ({
+      const companyNames = new Set();
+      Object.values(ownersByDate).forEach((arr) => {
+        (arr || []).forEach((o) => {
+          if (o.type === "company" && (o.name || "").trim())
+            companyNames.add((o.name || "").trim().toUpperCase());
+        });
+      });
+      companies = Array.from(companyNames).map((n) => ({ 
         name: n,
       }));
       loopIdx = 1;
       for (const c of companies) {
         writeOut(`company_${loopIdx++}.json`, c);
       }
-
-      // Create sales-person/company relationships
       loopIdx = 1;
       for (const [date, owner] of Object.entries(salesOwnerMapping)) {
         const ownersOnDate = ownersByDate[date] || [];
@@ -3347,8 +3322,6 @@ function main() {
           });
         loopIdx++;
       };
-
-      // Create person/company-mailing_address relationships
       if (hasOwnerMailingAddress) {
         const currentOwner = ownersByDate["current"] || [];
         relPersonCounter = 0;
