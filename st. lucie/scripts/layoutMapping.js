@@ -645,7 +645,7 @@ function createDefaultLayout(
     space_type_index: spaceTypeIndex,
     flooring_material_type: null,
     size_square_feet: null,
-    floor_level: floorLevel, // Stored as schema-compliant string when available
+    floor_level: floorLevel, // Can be integer or string depending on schema
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
@@ -756,10 +756,6 @@ function extractLayouts($, parcelId) {
     "Marble", "Vinyl", "Tile", "PouredConcrete", "Metal", "Glass", "Laminate"
   ];
 
-  const FLOOR_LEVEL_ENUM = ["1st Floor", "2nd Floor", "3rd Floor", "4th Floor"];
-
-  const STORY_TYPE_ENUM = ["Full", "Half Story", "Three-Quarter Story"];
-
   const POOL_TYPE_ENUM = [
     "SaltWater", "AboveGround", "Concrete", "Heated", "BuiltIn", "Plunge", "Lap", "Infinity",
     "Fiberglass", "Vinyl", "Natural"
@@ -778,20 +774,6 @@ function extractLayouts($, parcelId) {
     "Fencing", "PoolCover", "Alarm", "SelfClosingGate", "SlipResistantSurface", "Lifebuoy",
     "WarningSignage", "SurveillanceCamera", "Lighting" // Removed "Screen Enclosure", "Screen Panels"
   ];
-
-  function mapFloorNumberToEnum(floorNumber) {
-    if (typeof floorNumber !== "number" || floorNumber < 1) {
-      return null;
-    }
-    const ordinalMap = {
-      1: "1st Floor",
-      2: "2nd Floor",
-      3: "3rd Floor",
-      4: "4th Floor",
-    };
-    const label = ordinalMap[floorNumber];
-    return label ? mapToSchemaEnum(label, FLOOR_LEVEL_ENUM) : null;
-  }
 
 
   // --- Extract Building Information ---
@@ -827,8 +809,6 @@ function extractLayouts($, parcelId) {
       interiorFlooring = mapToSchemaEnum("Concrete", FLOORING_MATERIAL_TYPE_ENUM);
     }
   }
-
-  const fullStoryTypeEnumValue = mapToSchemaEnum("Full", STORY_TYPE_ENUM);
 
   // Determine floor information
   let hasFloorInformation = false;
@@ -868,18 +848,15 @@ function extractLayouts($, parcelId) {
     if (hasFloorInformation) {
       for (let floorNum = 1; floorNum <= totalStories; floorNum++) {
         const floorSpaceTypeIndex = `${buildingSpaceTypeIndex}.${floorNum}`;
-        const floorLevelValue = mapFloorNumberToEnum(floorNum);
         const floorLayout = createDefaultLayout(
           parcelId,
           "Floor",
           spaceTypeCounters,
           b,
-          floorLevelValue,
+          floorNum,
           floorSpaceTypeIndex,
         );
-        if (fullStoryTypeEnumValue) {
-          floorLayout.story_type = fullStoryTypeEnumValue;
-        }
+        floorLayout.story_type = `${floorNum} Story`; // Assuming story_type can be descriptive string
         floorLayout.is_finished = true; // Floors are generally considered "finished"
         allLayouts.push(floorLayout);
 
@@ -891,7 +868,7 @@ function extractLayouts($, parcelId) {
             "Bedroom",
             spaceTypeCounters,
             b,
-            floorLevelValue,
+            floorNum,
             roomSpaceTypeIndex,
           );
           roomLayout.flooring_material_type = interiorFlooring;
@@ -905,7 +882,7 @@ function extractLayouts($, parcelId) {
             "Full Bathroom",
             spaceTypeCounters,
             b,
-            floorLevelValue,
+            floorNum,
             roomSpaceTypeIndex,
           );
           roomLayout.flooring_material_type = interiorFlooring;
@@ -919,7 +896,7 @@ function extractLayouts($, parcelId) {
             "Half Bathroom / Powder Room",
             spaceTypeCounters,
             b,
-            floorLevelValue,
+            floorNum,
             roomSpaceTypeIndex,
           );
           roomLayout.flooring_material_type = interiorFlooring;
