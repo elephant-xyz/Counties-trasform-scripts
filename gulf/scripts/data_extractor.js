@@ -228,6 +228,14 @@ const propertyTypeMapping = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "PACKING PLANTS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PackingPlant",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "INSURANCE COMPANY",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -290,6 +298,14 @@ const propertyTypeMapping = [
     "structure_form": null,
     "property_usage_type": "Unknown",
     "property_type": "Building"
+  },
+  {
+    "property_usecode": "MITIGATION",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Unknown",
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "MOBILE HOME",
@@ -516,6 +532,14 @@ const propertyTypeMapping = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "PUBLIC SCHOOLS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PublicSchool",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "PUBLIC SCHOOLS (VAC)",
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
@@ -605,6 +629,30 @@ const propertyTypeMapping = [
   },
   {
     "property_usecode": "STATE (VAC)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "FEDERAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "FEDERAL (VAC)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "MILITARY (VAC)",
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
@@ -1175,6 +1223,14 @@ function writeProperty($, parcelId) {
   writeJSON(path.join("data", "property.json"), property);
 }
 
+function writeParcel(parcelId) {
+  const parcel = {
+    parcel_identifier: parcelId || "",
+    request_identifier: parcelId || "",
+  };
+  writeJSON(path.join("data", "parcel.json"), parcel);
+}
+
 function writeSalesDeedsFilesAndRelationships($) {
   const sales = extractSales($);
   // Remove old deed/file and sales_deed relationships if present to avoid duplicates
@@ -1236,24 +1292,6 @@ function writeSalesDeedsFilesAndRelationships($) {
 let people = [];
 let companies = [];
 
-function findPersonIndexByName(first, last) {
-  const tf = titleCaseName(first);
-  const tl = titleCaseName(last);
-  for (let i = 0; i < people.length; i++) {
-    if (people[i].first_name === tf && people[i].last_name === tl)
-      return i + 1;
-  }
-  return null;
-}
-
-function findCompanyIndexByName(name) {
-  const tn = (name || "").trim().toUpperCase();
-  for (let i = 0; i < companies.length; i++) {
-    if ((companies[i].name || "").trim() === tn) return i + 1;
-  }
-  return null;
-}
-
 function titleCaseName(s) {
   if (!s) return s;
   return s
@@ -1264,87 +1302,124 @@ function titleCaseName(s) {
 }
 
 function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress) {
+  // Remove old person/company files and their relationships to avoid orphaned files
+  // This runs BEFORE checking for owners data to clean up orphaned files from previous runs
+  try {
+    fs.readdirSync("data").forEach((f) => {
+      if (
+        /^person_\d+\.json$/.test(f) ||
+        /^company_\d+\.json$/.test(f) ||
+        /^relationship_sales_person_\d+\.json$/.test(f) ||
+        /^relationship_sales_company_\d+\.json$/.test(f) ||
+        /^relationship_person_has_mailing_address_\d+\.json$/.test(f) ||
+        /^relationship_company_has_mailing_address_\d+\.json$/.test(f)
+      ) {
+        fs.unlinkSync(path.join("data", f));
+      }
+    });
+  } catch (e) {}
+
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (!owners) return;
   const key = `property_${parcelId}`;
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
-  const ownersByDate = record.owners_by_date;
-  const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "person") {
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!personMap.has(k))
-          personMap.set(k, {
-            first_name: o.first_name,
-            middle_name: o.middle_name,
-            last_name: o.last_name,
-          });
-        else {
-          const existing = personMap.get(k);
-          if (!existing.middle_name && o.middle_name)
-            existing.middle_name = o.middle_name;
-        }
-      }
-    });
+  let ownersByDate = record.owners_by_date;
+
+  // Remove records with keys starting with 'unknown_date_' to prevent orphaned person/company files
+  // These represent grantors that couldn't be matched to a grantee date and cannot be linked to sales
+  Object.keys(ownersByDate).forEach(dateKey => {
+    if (dateKey.startsWith('unknown_date_')) {
+      delete ownersByDate[dateKey];
+    }
   });
-  people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? titleCaseName(p.first_name) : null,
-    middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-    last_name: p.last_name ? titleCaseName(p.last_name) : null,
-    birth_date: null,
-    prefix_name: null,
-    suffix_name: null,
-    us_citizenship_status: null,
-    veteran_status: null,
-    request_identifier: parcelId,
-  }));
-  people.forEach((p, idx) => {
-    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
-  });
-  const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim().toUpperCase());
-    });
-  });
-  companies = Array.from(companyNames).map((n) => ({ 
-    name: n,
-    request_identifier: parcelId,
-  }));
-  companies.forEach((c, idx) => {
-    writeJSON(path.join("data", `company_${idx + 1}.json`), c);
-  });
-  // Relationships: link sale to owners present on that date (both persons and companies)
+
+  // Maps to track created entities: key -> entity data
+  const personMap = new Map(); // key: "FIRSTNAME|LASTNAME" -> person data
+  const companyMap = new Map(); // key: "COMPANYNAME" -> company data
+
+  // Arrays to store created entities in order
+  people = [];
+  companies = [];
+
+  // Helper function to get or create a person
+  function getOrCreatePerson(first, middle, last) {
+    const key = `${(first || "").trim().toUpperCase()}|${(last || "").trim().toUpperCase()}`;
+    if (personMap.has(key)) {
+      return personMap.get(key).index;
+    }
+
+    // Create new person
+    const personData = {
+      first_name: first ? titleCaseName(first) : null,
+      middle_name: middle ? titleCaseName(middle) : null,
+      last_name: last ? titleCaseName(last) : null,
+      birth_date: null,
+      prefix_name: null,
+      suffix_name: null,
+      us_citizenship_status: null,
+      veteran_status: null,
+      request_identifier: parcelId,
+    };
+
+    people.push(personData);
+    const index = people.length;
+    personMap.set(key, { index, data: personData });
+
+    // Write person file immediately
+    writeJSON(path.join("data", `person_${index}.json`), personData);
+
+    return index;
+  }
+
+  // Helper function to get or create a company
+  function getOrCreateCompany(name) {
+    const key = (name || "").trim().toUpperCase();
+    if (!key) return null;
+
+    if (companyMap.has(key)) {
+      return companyMap.get(key).index;
+    }
+
+    // Create new company
+    const companyData = {
+      name: key,
+      request_identifier: parcelId,
+    };
+
+    companies.push(companyData);
+    const index = companies.length;
+    companyMap.set(key, { index, data: companyData });
+
+    // Write company file immediately
+    writeJSON(path.join("data", `company_${index}.json`), companyData);
+
+    return index;
+  }
+
+  // Step 1: Create relationships for sales
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
   sales.forEach((rec, idx) => {
     const d = parseDateToISO(rec.saleDate);
     const ownersOnDate = ownersByDate[d] || [];
-    ownersOnDate
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        const pIdx = findPersonIndexByName(o.first_name, o.last_name);
-        if (pIdx) {
-          relPersonCounter++;
-          writeJSON(
-            path.join(
-              "data",
-              `relationship_sales_person_${relPersonCounter}.json`,
-            ),
-            {
-              to: { "/": `./person_${pIdx}.json` },
-              from: { "/": `./sales_${idx + 1}.json` },
-            },
-          );
-        }
-      });
-    ownersOnDate
-      .filter((o) => o.type === "company")
-      .forEach((o) => {
-        const cIdx = findCompanyIndexByName(o.name);
+
+    ownersOnDate.forEach((o) => {
+      if (o.type === "person" && o.first_name && o.last_name) {
+        const pIdx = getOrCreatePerson(o.first_name, o.middle_name, o.last_name);
+        relPersonCounter++;
+        writeJSON(
+          path.join(
+            "data",
+            `relationship_sales_person_${relPersonCounter}.json`,
+          ),
+          {
+            to: { "/": `./person_${pIdx}.json` },
+            from: { "/": `./sales_${idx + 1}.json` },
+          },
+        );
+      } else if (o.type === "company" && (o.name || "").trim()) {
+        const cIdx = getOrCreateCompany(o.name);
         if (cIdx) {
           relCompanyCounter++;
           writeJSON(
@@ -1358,17 +1433,19 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
             },
           );
         }
-      });
+      }
+    });
   });
+
+  // Step 2: Create relationships for mailing addresses
   if (hasOwnerMailingAddress) {
     const currentOwner = ownersByDate["current"] || [];
     relPersonCounter = 0;
     relCompanyCounter = 0;
-    currentOwner
-    .filter((o) => o.type === "person")
-    .forEach((o) => {
-      const pIdx = findPersonIndexByName(o.first_name, o.last_name);
-      if (pIdx) {
+
+    currentOwner.forEach((o) => {
+      if (o.type === "person" && o.first_name && o.last_name) {
+        const pIdx = getOrCreatePerson(o.first_name, o.middle_name, o.last_name);
         relPersonCounter++;
         writeJSON(
           path.join(
@@ -1380,26 +1457,95 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
             to: { "/": `./mailing_address.json` },
           },
         );
+      } else if (o.type === "company" && (o.name || "").trim()) {
+        const cIdx = getOrCreateCompany(o.name);
+        if (cIdx) {
+          relCompanyCounter++;
+          writeJSON(
+            path.join(
+              "data",
+              `relationship_company_has_mailing_address_${relCompanyCounter}.json`,
+            ),
+            {
+              from: { "/": `./company_${cIdx}.json` },
+              to: { "/": `./mailing_address.json` },
+            },
+          );
+        }
       }
     });
-    currentOwner
-    .filter((o) => o.type === "company")
-    .forEach((o) => {
-      const cIdx = findCompanyIndexByName(o.name);
-      if (cIdx) {
-        relCompanyCounter++;
-        writeJSON(
-          path.join(
-            "data",
-            `relationship_company_has_mailing_address_${relCompanyCounter}.json`,
-          ),
-          {
-            from: { "/": `./company_${cIdx}.json` },
-            to: { "/": `./mailing_address.json` },
-          },
-        );
+
+    // If no relationships were created to mailing_address, delete the file to avoid "unused file" error
+    if (relPersonCounter === 0 && relCompanyCounter === 0) {
+      try {
+        const mailingAddressPath = path.join("data", "mailing_address.json");
+        if (fs.existsSync(mailingAddressPath)) {
+          fs.unlinkSync(mailingAddressPath);
+        }
+      } catch (e) {
+        // Ignore deletion errors
+      }
+    }
+  }
+
+  // Step 3: Cleanup orphaned person/company files that don't have relationships
+  try {
+    const dataDir = path.join(process.cwd(), "data");
+    if (!fs.existsSync(dataDir)) {
+      return;
+    }
+    const dataFiles = fs.readdirSync(dataDir);
+
+    // Find all person and company files
+    const personFiles = dataFiles.filter(f => /^person_\d+\.json$/.test(f));
+    const companyFiles = dataFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+    // Find all relationships that reference persons and companies
+    const referencedPersons = new Set();
+    const referencedCompanies = new Set();
+
+    dataFiles.forEach(f => {
+      if (f.startsWith("relationship_")) {
+        try {
+          const relPath = path.join(dataDir, f);
+          const relData = JSON.parse(fs.readFileSync(relPath, "utf8"));
+
+          // Check 'from' and 'to' fields for references
+          if (relData.from && relData.from["/"]) {
+            const ref = relData.from["/"].replace("./", "");
+            if (/^person_\d+\.json$/.test(ref)) referencedPersons.add(ref);
+            if (/^company_\d+\.json$/.test(ref)) referencedCompanies.add(ref);
+          }
+          if (relData.to && relData.to["/"]) {
+            const ref = relData.to["/"].replace("./", "");
+            if (/^person_\d+\.json$/.test(ref)) referencedPersons.add(ref);
+            if (/^company_\d+\.json$/.test(ref)) referencedCompanies.add(ref);
+          }
+        } catch (e) {
+          // Skip malformed relationship files
+          console.error(`Error reading relationship file ${f}:`, e.message);
+        }
       }
     });
+
+    // Delete orphaned person files
+    personFiles.forEach(f => {
+      if (!referencedPersons.has(f)) {
+        console.log(`Removing orphaned person file: ${f}`);
+        fs.unlinkSync(path.join(dataDir, f));
+      }
+    });
+
+    // Delete orphaned company files
+    companyFiles.forEach(f => {
+      if (!referencedCompanies.has(f)) {
+        console.log(`Removing orphaned company file: ${f}`);
+        fs.unlinkSync(path.join(dataDir, f));
+      }
+    });
+  } catch (e) {
+    // Log cleanup errors but don't fail
+    console.error("Cleanup error:", e.message);
   }
 }
 
@@ -1762,6 +1908,30 @@ function createGeometryClass(geometryInstances) {
 
 function main() {
   ensureDir("data");
+
+  // Cleanup orphaned person/company files from any previous failed runs
+  // This ensures we start with a clean state
+  try {
+    const dataDir = "data";
+    if (fs.existsSync(dataDir)) {
+      const files = fs.readdirSync(dataDir);
+      files.forEach((f) => {
+        if (
+          /^person_\d+\.json$/.test(f) ||
+          /^company_\d+\.json$/.test(f) ||
+          /^relationship_sales_person_\d+\.json$/.test(f) ||
+          /^relationship_sales_company_\d+\.json$/.test(f) ||
+          /^relationship_person_has_mailing_address_\d+\.json$/.test(f) ||
+          /^relationship_company_has_mailing_address_\d+\.json$/.test(f)
+        ) {
+          fs.unlinkSync(path.join(dataDir, f));
+        }
+      });
+    }
+  } catch (e) {
+    // Ignore cleanup errors - data directory might not exist yet
+  }
+
   const $ = loadHTML();
 
   const propertySeed = readJSON("property_seed.json");
@@ -1798,6 +1968,7 @@ function main() {
     util = key && utilitiesData[key] ? utilitiesData[key] : null;
   }
 
+  writeParcel(parcelId);
   writeProperty($, parcelId);
   const sales = extractSales($);
   writeSalesDeedsFilesAndRelationships($);
