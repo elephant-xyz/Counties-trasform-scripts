@@ -268,7 +268,6 @@ function generateGeometryArtifacts({
   addressPath,
   parcelPath,
   buildingLayoutPaths,
-  addressExists = true,
 }) {
   const seedCsvPath = locateSeedCsv();
   if (!seedCsvPath) return;
@@ -332,15 +331,12 @@ function generateGeometryArtifacts({
       source_http_request: clone(sourceRequest),
     };
     const geometryPath = writeGeometryFile(filename, payload);
-    // Only create address-geometry relationship if address file exists
-    if (addressExists) {
-      const relFilename = `relationship_address_has_geometry_${slug}.json`;
-      const relObject = {
-        from: { "/": addressPath },
-        to: { "/": geometryPath },
-      };
-      writeJSON(path.join(geometryDir, relFilename), relObject);
-    }
+    const relFilename = `relationship_address_has_geometry_${slug}.json`;
+    const relObject = {
+      from: { "/": addressPath },
+      to: { "/": geometryPath },
+    };
+    writeJSON(path.join(geometryDir, relFilename), relObject);
   }
 
   const buildingPolygons = extractPolygons(seedRow.building_polygon);
@@ -392,15 +388,6 @@ function parseIntSafe(str) {
   return parseInt(n, 10);
 }
 
-function formatSquareFeetLabel(value) {
-  if (value == null) return null;
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return null;
-  const rounded = Math.round(numeric);
-  if (rounded < 10) return null;
-  return `${rounded.toLocaleString()} sq ft`;
-}
-
 function parseFloatSafe(str) {
   if (str == null) return null;
   const normalized = String(str).replace(/,/g, "").trim();
@@ -437,55 +424,7 @@ function cleanText(text) {
 }
 
 function titleCase(str) {
-  if (!str) return "";
-  const text = String(str).trim();
-  if (!text) return "";
-
-  // Split on word boundaries while preserving delimiters
-  // Handle space, hyphen, apostrophe, comma, period as separators
-  // After each separator, the next letter should be capitalized
-  const parts = [];
-  let current = "";
-  let shouldCapitalize = true;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if (/[ \-',.]/.test(char)) {
-      // This is a separator
-      if (current) {
-        parts.push(current);
-        current = "";
-      }
-      parts.push(char);
-      shouldCapitalize = true;
-    } else if (shouldCapitalize) {
-      current = char.toUpperCase();
-      shouldCapitalize = false;
-    } else {
-      current += char.toLowerCase();
-    }
-  }
-  if (current) {
-    parts.push(current);
-  }
-
-  return parts.join("");
-}
-
-function isValidFirstOrLastName(name) {
-  if (!name || typeof name !== "string") return false;
-  const trimmed = name.trim();
-  if (!trimmed) return false;
-  // Must match pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  return /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(trimmed);
-}
-
-function isValidMiddleName(name) {
-  if (!name || typeof name !== "string") return false;
-  const trimmed = name.trim();
-  if (!trimmed) return false;
-  // Must match pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-  return /^[A-Z][a-zA-Z\s\-',.]*$/.test(trimmed);
+  return (str || "").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 }
 
 const COMPANY_KEYWORDS =
@@ -506,44 +445,6 @@ function tokenizeNamePart(part) {
     .trim()
     .split(" ")
     .filter(Boolean);
-}
-
-function isInitials(token) {
-  // Detect if a token looks like initials (e.g., "M.A.", "J.R.", "MA", "J")
-  if (!token) return false;
-  const cleaned = token.replace(/\./g, "").trim();
-  // Initials are typically 1-3 uppercase letters
-  return /^[A-Z]{1,3}$/.test(cleaned) && cleaned.length <= 3;
-}
-
-function normalizeNameForPattern(name) {
-  // Ensure name matches pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  // If name contains initials with periods, try to format properly
-  if (!name) return null;
-
-  // Clean the name: trim and remove leading/trailing punctuation
-  let cleaned = String(name).trim();
-  // Remove leading/trailing punctuation (but not internal)
-  cleaned = cleaned.replace(/^[^A-Za-z]+/, "").replace(/[^A-Za-z]+$/, "");
-  if (!cleaned) return null;
-
-  // If it's pure initials (like "M.A."), we can't use it as first_name
-  if (isInitials(cleaned)) {
-    return null;
-  }
-
-  // Apply title case
-  const normalized = titleCase(cleaned);
-  if (!normalized) return null;
-
-  // Validate that the normalized name matches the required pattern
-  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
-  if (!namePattern.test(normalized)) {
-    return null;
-  }
-
-  // Otherwise, return title-cased version
-  return normalized;
 }
 
 function buildPersonFromTokens(tokens, fallbackLastName) {
@@ -571,45 +472,11 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
-  // If first name is initials, try to handle it
-  if (first && isInitials(first)) {
-    // If we have middle name, try shifting
-    if (middle) {
-      const middleParts = middle.split(" ").filter(Boolean);
-      if (middleParts.length > 0 && !isInitials(middleParts[0])) {
-        // Move middle to first, move first to middle
-        const newFirst = middleParts[0];
-        const newMiddle = [first, ...middleParts.slice(1)].join(" ").trim() || null;
-        first = newFirst;
-        middle = newMiddle;
-      } else {
-        // All names are initials or problematic, skip this person
-        return null;
-      }
-    } else {
-      // Only have last and first (initials), cannot create valid person
-      return null;
-    }
-  }
-
-  // Normalize names to match pattern
-  const normalizedFirst = normalizeNameForPattern(first);
-  const normalizedLast = normalizeNameForPattern(last);
-
-  if (!normalizedFirst || !normalizedLast) {
-    // Cannot create person without valid first and last name
-    return null;
-  }
-
-  // Validate middle name if present
-  const middleNormalized = middle ? titleCase(middle) : null;
-  const validatedMiddle = middleNormalized && isValidMiddleName(middleNormalized) ? middleNormalized : null;
-
   return {
     type: "person",
-    first_name: normalizedFirst,
-    last_name: normalizedLast,
-    middle_name: validatedMiddle,
+    first_name: titleCase(first || ""),
+    last_name: titleCase(last || ""),
+    middle_name: middle ? titleCase(middle) : null,
   };
 }
 
@@ -2220,43 +2087,20 @@ function main() {
 
   function createPersonRecord(personData) {
     if (!personData) return null;
-
-    // Extract and normalize names
-    const firstNameRaw =
+    const firstName =
       personData.first_name != null
         ? String(personData.first_name).trim()
         : "";
-    const lastNameRaw =
+    const lastName =
       personData.last_name != null ? String(personData.last_name).trim() : "";
-
-    // Clean names: remove leading/trailing non-alphabetic characters
-    const firstCleaned = firstNameRaw.replace(/^[^A-Za-z]+/, "").replace(/[^A-Za-z]+$/, "");
-    const lastCleaned = lastNameRaw.replace(/^[^A-Za-z]+/, "").replace(/[^A-Za-z]+$/, "");
-
-    // Normalize using titleCase to ensure proper format
-    const firstName = firstCleaned ? titleCase(firstCleaned) : "";
-    const lastName = lastCleaned ? titleCase(lastCleaned) : "";
-
-    // Validate that names match the required pattern
-    if (!firstName || !lastName || !isValidFirstOrLastName(firstName) || !isValidFirstOrLastName(lastName)) {
-      // Cannot create person without valid first and last name
-      return null;
-    }
-
     const middleRaw =
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    // Clean middle name
-    const middleCleaned = middleRaw ? middleRaw.replace(/^[^A-Za-z]+/, "").replace(/[^A-Za-z]+$/, "") : "";
-    const middleNormalized = middleCleaned ? titleCase(middleCleaned) : null;
-
-    // Validate middle name if present
-    const middleName = middleNormalized && isValidMiddleName(middleNormalized) ? middleNormalized : null;
-
+    const middleName = middleRaw ? middleRaw : null;
     const key =
       firstName || lastName
-        ? `${firstName.toLowerCase()}|${(middleName || "").toLowerCase()}|${lastName.toLowerCase()}`
+        ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {
@@ -2267,8 +2111,8 @@ function main() {
     const filename = `person_${personIndex}.json`;
     const personObj = {
       birth_date: personData.birth_date || null,
-      first_name: firstName,
-      last_name: lastName,
+      first_name: firstName || "",
+      last_name: lastName || "",
       middle_name: middleName,
       prefix_name:
         personData && personData.prefix_name != null
@@ -2313,9 +2157,6 @@ function main() {
     return relPath;
   }
 
-  const totalAreaSqFt = parseIntSafe(binfo.totalArea);
-  const heatedAreaSqFt = parseIntSafe(binfo.heatedArea);
-
   const property = {
     parcel_identifier: parcelId || "",
     ownership_estate_type: propertyUse.ownership_estate_type || null,
@@ -2327,9 +2168,9 @@ function main() {
                         binfo.type === "TRI/QUADRAPLEX" ? "TwoToFour" : "One",
   property_structure_built_year: parseIntSafe(binfo.actYear),
   property_effective_built_year: parseIntSafe(binfo.effYear),
-    livable_floor_area: formatSquareFeetLabel(heatedAreaSqFt),
-    total_area: formatSquareFeetLabel(totalAreaSqFt),
-    area_under_air: formatSquareFeetLabel(heatedAreaSqFt),
+    livable_floor_area: binfo.heatedArea ? `${parseIntSafe(binfo.heatedArea).toLocaleString()} sq ft` : null,
+    total_area: binfo.totalArea ? `${parseIntSafe(binfo.totalArea).toLocaleString()} sq ft` : null,
+    area_under_air: binfo.heatedArea ? `${parseIntSafe(binfo.heatedArea).toLocaleString()} sq ft` : null,
     property_legal_description_text: legalDesc || null,
     subdivision: subdivision && subdivision.length ? subdivision : null,
     zoning: zoning || null,
@@ -2770,6 +2611,8 @@ const structureItems = (() => {
   };
 
   const propertyIsLand = property.property_type === "LandParcel";
+  const totalAreaSqFt = parseIntSafe(binfo.totalArea);
+  const heatedAreaSqFt = parseIntSafe(binfo.heatedArea);
 
   const normalizedBuildings = Array.isArray(layoutBuildings)
     ? layoutBuildings.map((building, idx) => {
@@ -3379,31 +3222,22 @@ const structureItems = (() => {
     unaddr && unaddr.full_address ? String(unaddr.full_address).trim() : null;
   const unnormalizedAddress = htmlFullAddress || fallbackAddress || null;
 
-  // Only write address if we have a valid unnormalized_address
-  let finalUnnormalizedAddress = unnormalizedAddress;
-  if (!finalUnnormalizedAddress && addrFromHTML.addrLine1) {
-    finalUnnormalizedAddress = addrFromHTML.addrLine1;
+  const address = {
+    unnormalized_address: unnormalizedAddress,
+    source_http_request: clone(defaultSourceHttpRequest),
+    request_identifier: requestIdentifier,
+    county_name:
+      (unaddr &&
+        (unaddr.county_jurisdiction || unaddr.county_name || unaddr.county)) ||
+      "Monroe",
+    country_code: "US",
+  };
+  if (!address.unnormalized_address && addrFromHTML.addrLine1) {
+    address.unnormalized_address = addrFromHTML.addrLine1;
   }
-
   const addressFilename = "address.json";
   const addressPath = `./${addressFilename}`;
-  let addressWasWritten = false;
-
-  // Only write address if we have a valid non-empty address string
-  if (finalUnnormalizedAddress && finalUnnormalizedAddress.length > 0) {
-    const address = {
-      unnormalized_address: finalUnnormalizedAddress,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-      county_name:
-        (unaddr &&
-          (unaddr.county_jurisdiction || unaddr.county_name || unaddr.county)) ||
-        "Monroe",
-      country_code: "US",
-    };
-    writeJSON(path.join(dataDir, addressFilename), address);
-    addressWasWritten = true;
-  }
+  writeJSON(path.join(dataDir, addressFilename), address);
 
   const buildingGeometryTargets =
     buildingLayoutsInfo.length
@@ -3417,7 +3251,6 @@ const structureItems = (() => {
     addressPath,
     parcelPath: "./parcel.json",
     buildingLayoutPaths: buildingGeometryTargets,
-    addressExists: addressWasWritten,
   });
 
   const lot = {
@@ -3443,15 +3276,12 @@ const structureItems = (() => {
   writeJSON(path.join(dataDir, lotFilename), lot);
 
   // Create property relationships
-  // Only create address relationship if address was actually written
-  if (addressWasWritten) {
-    const relPropertyAddress = makeRelationshipFilename(propertyPath, addressPath);
-    if (relPropertyAddress) {
-      writeJSON(path.join(dataDir, relPropertyAddress), {
-        from: { "/": propertyPath },
-        to: { "/": addressPath },
-      });
-    }
+  const relPropertyAddress = makeRelationshipFilename(propertyPath, addressPath);
+  if (relPropertyAddress) {
+    writeJSON(path.join(dataDir, relPropertyAddress), {
+      from: { "/": propertyPath },
+      to: { "/": addressPath },
+    });
   }
 
   const relPropertyLot = makeRelationshipFilename(propertyPath, lotPath);
