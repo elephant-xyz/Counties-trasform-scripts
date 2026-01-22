@@ -1104,6 +1104,7 @@ function getAddreses($) {
 
 
 function extractAddress(addressDetails, unnorm) {
+  let hasOwnerMailingAddress = false;
   let inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty || inputCounty === "") {
     inputCounty = (unnorm.county_name || "").trim();
@@ -1111,8 +1112,13 @@ function extractAddress(addressDetails, unnorm) {
   const county_name = inputCounty || null;
   const mailingAddress = addressDetails.mailingAddress;
   const siteAddress = addressDetails.siteAddress;
-  // Return mailingAddress value instead of creating the file here
-  // The file will be created later only if there are valid persons/companies
+  if (mailingAddress) {
+    const mailingAddressObj = {
+      unnormalized_address: mailingAddress,
+    };
+    writeOut("mailing_address.json", mailingAddressObj);
+    hasOwnerMailingAddress = true;
+  }
   if (siteAddress) {
     const addressObj = {
       county_name,
@@ -1127,7 +1133,7 @@ function extractAddress(addressDetails, unnorm) {
                 from: { "/": `./property.json` },
               });
   }
-  return mailingAddress;
+  return hasOwnerMailingAddress;
 }
 
 function mapInstrumentToDeedType(instr) {
@@ -1411,7 +1417,7 @@ function main() {
   }
 
   const addressDetails = getAddreses($);
-  const ownerMailingAddressValue = extractAddress(addressDetails, unnorm);
+  const hasOwnerMailingAddress = extractAddress(addressDetails, unnorm);
 
   // PROPERTY
   const parcelId = parcel.parcel_identifier;
@@ -1543,10 +1549,13 @@ function main() {
     }
     if (deedType && book && page) {
       fileIndex += 1;
+      const fileLink = `https://apps.putnam-fl.com/pa/property/?Xaction=print&report=OfficialRecord&book=${book}&page=${page}`;
       const file = {
         document_type: "Title",
         file_format: null,
+        ipfs_url: null,
         name: `Deed ${book}/${page}`,
+        original_url: fileLink,
       };
       writeOut(`file_${fileIndex}.json`, file);
       const relDeedFile = {
@@ -1586,27 +1595,18 @@ function main() {
     const impVal = getVal(/Improvement Value/i);
     const marketVal = getVal(/Market Value/i);
 
-    // Ensure required numeric fields always have number values
-    const assessedValue = (typeof marketVal === 'number' && Number.isFinite(marketVal)) ? marketVal : 0;
-    const marketValue = (typeof marketVal === 'number' && Number.isFinite(marketVal)) ? marketVal : 0;
-    const taxableValue = (typeof marketVal === 'number' && Number.isFinite(marketVal)) ? marketVal : 0;
-
     const taxObj = {
       tax_year: year,
-      property_assessed_value_amount: assessedValue,
-      property_market_value_amount: marketValue,
-      property_building_amount: (typeof impVal === 'number' && Number.isFinite(impVal)) ? impVal : null,
-      property_land_amount: (typeof landVal === 'number' && Number.isFinite(landVal)) ? landVal : null,
-      property_taxable_value_amount: taxableValue,
+      property_assessed_value_amount: marketVal || null,
+      property_market_value_amount: marketVal || null,
+      property_building_amount: impVal || null,
+      property_land_amount: landVal || null,
+      property_taxable_value_amount: marketVal || null,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
     };
     writeOut(`tax_${year}.json`, taxObj);
-    writeOut(`relationship_property_has_tax_${year}.json`, {
-      from: { "/": `./property.json` },
-      to: { "/": `./tax_${year}.json` },
-    });
   }
 
   // LOT from Land
@@ -1757,40 +1757,16 @@ function main() {
             }
           });
         });
-        people = Array.from(personMap.values())
-          .map((p) => ({
-            first_name: p.first_name ? titleCaseName(p.first_name) : null,
-            middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-            last_name: p.last_name ? titleCaseName(p.last_name) : null,
-            birth_date: null,
-            prefix_name: null,
-            suffix_name: null,
-            us_citizenship_status: null,
-            veteran_status: null,
-          }))
-          .filter((p) => p.first_name && p.last_name); // Only keep persons with valid first and last names
-        const companyNames = new Set();
-        Object.values(ownersByDate).forEach((arr) => {
-          (arr || []).forEach((o) => {
-            if (o.type === "company" && (o.name || "").trim())
-              companyNames.add((o.name || "").trim().toUpperCase());
-          });
-        });
-        companies = Array.from(companyNames).map((n) => ({
-          name: n,
+        people = Array.from(personMap.values()).map((p) => ({
+          first_name: p.first_name ? titleCaseName(p.first_name) : null,
+          middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
+          last_name: p.last_name ? titleCaseName(p.last_name) : null,
+          birth_date: null,
+          prefix_name: null,
+          suffix_name: null,
+          us_citizenship_status: null,
+          veteran_status: null,
         }));
-
-        // Only create mailing_address.json if there are valid persons or companies AND mailingAddress exists
-        const hasValidEntities = (people.length > 0 || companies.length > 0);
-        const shouldCreateMailingAddress = ownerMailingAddressValue && hasValidEntities;
-
-        if (shouldCreateMailingAddress) {
-          const mailingAddressObj = {
-            unnormalized_address: ownerMailingAddressValue,
-          };
-          writeOut("mailing_address.json", mailingAddressObj);
-        }
-
         let loopIdx = 1;
         for (const p of people) {
           writeOut(`person_${loopIdx}.json`, p);
@@ -1803,7 +1779,7 @@ function main() {
               },
             );
           }
-          if (shouldCreateMailingAddress) {
+          if (hasOwnerMailingAddress) {
             writeOut(
                 `relationship_person_has_mailing_address_${loopIdx}.json`,
               {
@@ -1814,6 +1790,16 @@ function main() {
           }
           loopIdx++;
         }
+        const companyNames = new Set();
+        Object.values(ownersByDate).forEach((arr) => {
+          (arr || []).forEach((o) => {
+            if (o.type === "company" && (o.name || "").trim())
+              companyNames.add((o.name || "").trim().toUpperCase());
+          });
+        });
+        companies = Array.from(companyNames).map((n) => ({ 
+          name: n,
+        }));
         loopIdx = 1;
         for (const c of companies) {
           writeOut(`company_${loopIdx}.json`, c);
@@ -1826,7 +1812,7 @@ function main() {
               },
             );
           }
-          if (shouldCreateMailingAddress) {
+          if (hasOwnerMailingAddress) {
             writeOut(
                 `relationship_company_has_mailing_address_${loopIdx}.json`,
               {
