@@ -121,7 +121,7 @@ const FEATURE_PATTERNS = {
     /GAS/i,
   ],
   layout: [
-    /PAV(E)?M(EN)?T/i,
+    /PAV(E)?MENT/i,
     /PAVERS?/i,
     /PATIO/i,
     /DRIVE/i,
@@ -131,7 +131,7 @@ const FEATURE_PATTERNS = {
     /SLAB/i,
     /COURT/i,
     /TRACK/i,
-    /CONC(RETE)?/i,
+    /CONCRETE/i,
     /ASPHALT/i,
     /PARKING/i,
     /APR(o)?N/i,

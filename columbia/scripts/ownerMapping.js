@@ -55,18 +55,10 @@ function isCompanyName(name) {
   const n = (name || "").toLowerCase();
   // direct boundary checks for common suffixes/patterns
   if (
-    /\b(incorporated|inc|inc\.|corp|corporation|corp\.|co|co\.|ltd|limited|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
+    /\b(inc|inc\.|corp|corp\.|co|co\.|ltd|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
       n,
     )
   ) {
-    return true;
-  }
-  // Check for common misspellings or variations of "trust"
-  if (/\b(trsut|trst|turst|revocable|irrevocable)\b/.test(n)) {
-    return true;
-  }
-  // Check for "family" combined with trust-related words (even if misspelled)
-  if (/\bfamily\b/.test(n) && /\b(trsut|trst|trust|revocable|irrevocable|dated)\b/.test(n)) {
     return true;
   }
   return false;
@@ -96,60 +88,15 @@ function normalizeOwnerKey(owner) {
 
 function formatNameToPattern(name) {
   if (!name) return null;
-  // Replace common digit-to-letter substitutions that appear in data entry errors
-  let cleaned = name.trim()
-    .replace(/0/g, "O")  // Zero to letter O
-    .replace(/1/g, "I")  // One to letter I
-    .replace(/3/g, "E")  // Three to letter E
-    .replace(/5/g, "S")  // Five to letter S
-    .replace(/8/g, "B"); // Eight to letter B
-
-  // Normalize whitespace
-  cleaned = cleaned.replace(/\s+/g, " ");
-
-  // Remove any remaining non-letter, non-special-character symbols
-  cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, "");
-
-  // Remove leading non-letter characters
-  cleaned = cleaned.replace(/^[^A-Za-z]+/, "");
-
-  if (!cleaned) return null;
-
-  // Split by special characters while preserving them
+  const cleaned = name.trim().replace(/\s+/g, " ");
   const parts = cleaned.split(/([ \-',.])/);
-
-  // Format each part: after separator, capitalize the next letter, rest lowercase
-  // Also collapse multiple consecutive separators into one
-  let formatted = "";
-  let lastWasSeparator = false;
-
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if (!part) continue;
-
-    // If it's a separator
-    if (part.match(/^[ \-',.]$/)) {
-      // Only add separator if last wasn't a separator
-      if (!lastWasSeparator) {
-        formatted += part;
-        lastWasSeparator = true;
-      }
-    } else {
-      // It's a word part
-      formatted += part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-      lastWasSeparator = false;
-    }
-  }
-
-  // Trim the result
-  let result = formatted.trim();
-
-  // Validate against the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  if (!result || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
-    return null;
-  }
-
-  return result;
+  return parts
+    .map((part) => {
+      if (!part) return "";
+      if (part.match(/[ \-',.]/)) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join("");
 }
 
 function mapPrefixName(token) {
@@ -286,18 +233,7 @@ function buildOwnersFromRaw(raw) {
 
 function buildPersonFromSingleName(s) {
   const out = [];
-  let cleaned = norm(s.replace(/\s{2,}/g, " "));
-  if (!cleaned) return out;
-
-  // Remove trustee/role markers that appear in parentheses or as trailing words
-  cleaned = cleaned
-    .replace(/\(TRUSTEE\)/gi, "")
-    .replace(/\(TR\)/gi, "")
-    .replace(/\bTRUSTEE\b\.?,?$/i, "")
-    .replace(/\bTR\b\.?,?$/i, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-
+  const cleaned = norm(s.replace(/\s{2,}/g, " "));
   if (!cleaned) return out;
 
   const lowerClean = cleaned.toLowerCase();

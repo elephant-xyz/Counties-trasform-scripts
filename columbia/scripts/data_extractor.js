@@ -863,20 +863,6 @@ const propertyUseCodeAliases = {
   MULTIFAM10: "MULTIFAM",
 };
 
-function findUseCodeKeyBySubstring(haystack, keys, skip = new Set()) {
-  if (!haystack) return null;
-  let bestKey = null;
-  for (const key of keys) {
-    if (skip.has(key)) continue;
-    if (haystack.includes(key)) {
-      if (!bestKey || key.length > bestKey.length) {
-        bestKey = key;
-      }
-    }
-  }
-  return bestKey;
-}
-
 function getPropertyUseAttributes(rawValue) {
   const normalized = normalizeUseCodeDescription(rawValue);
   if (!normalized) return null;
@@ -884,23 +870,6 @@ function getPropertyUseAttributes(rawValue) {
   if (direct) return direct;
   const aliasKey = propertyUseCodeAliases[normalized];
   if (aliasKey) return propertyUseCodeMap[aliasKey];
-  const haystacks = new Set();
-  haystacks.add(normalized);
-  if (rawValue != null) {
-    const collapsed = String(rawValue)
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "");
-    if (collapsed) haystacks.add(collapsed);
-  }
-  const mapKeys = Object.keys(propertyUseCodeMap);
-  const aliasKeys = Object.keys(propertyUseCodeAliases);
-  const skipKeys = new Set(["ANY"]);
-  for (const hay of haystacks) {
-    const matchKey = findUseCodeKeyBySubstring(hay, mapKeys, skipKeys);
-    if (matchKey) return propertyUseCodeMap[matchKey];
-    const aliasMatch = findUseCodeKeyBySubstring(hay, aliasKeys);
-    if (aliasMatch) return propertyUseCodeMap[propertyUseCodeAliases[aliasMatch]];
-  }
   return null;
 }
 
@@ -911,79 +880,31 @@ function getPropertyUseAttributes(rawValue) {
     const raw = fs.readFileSync(codesPath, "utf8");
     const codes = JSON.parse(raw);
     const missing = codes
-      .map((code) => ({ code, mapped: getPropertyUseAttributes(code) }))
-      .filter(({ mapped }) => !mapped)
-      .map(({ code }) => normalizeUseCodeDescription(code))
-      .filter(Boolean);
+      .map((code) => normalizeUseCodeDescription(code))
+      .filter((code) => code && !propertyUseCodeMap[code]);
     if (missing.length) {
-      console.warn(`Missing property use code mappings for: ${missing.join(", ")}`);
+      throw new Error(`Missing property use code mappings for: ${missing.join(", ")}`);
     }
   } catch (err) {
     if (err.code !== "ENOENT") {
-      console.warn("Property use code verification failed:", err.message);
+      throw err;
     }
   }
 })();
 function formatNameToPattern(name) {
   if (!name) return null;
-  // Replace common digit-to-letter substitutions that appear in data entry errors
-  let cleaned = name.trim()
-    .replace(/0/g, "O")  // Zero to letter O
-    .replace(/1/g, "I")  // One to letter I
-    .replace(/3/g, "E")  // Three to letter E
-    .replace(/5/g, "S")  // Five to letter S
-    .replace(/8/g, "B"); // Eight to letter B
-
-  // Normalize whitespace
-  cleaned = cleaned.replace(/\s+/g, " ");
-
-  // Remove any remaining non-letter, non-special-character symbols
-  cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, "");
-
-  // Remove leading non-letter characters
-  cleaned = cleaned.replace(/^[^A-Za-z]+/, "");
-
-  if (!cleaned) return null;
-
-  // Split by special characters while preserving them
+  const cleaned = name.trim().replace(/\s+/g, " ");
   const parts = cleaned.split(/([ \-',.])/);
-
-  // Format each part: after separator, capitalize the next letter, rest lowercase
-  // Also collapse multiple consecutive separators into one
-  let formatted = "";
-  let lastWasSeparator = false;
-
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if (!part) continue;
-
-    // If it's a separator
-    if (part.match(/^[ \-',.]$/)) {
-      // Only add separator if last wasn't a separator
-      if (!lastWasSeparator) {
-        formatted += part;
-        lastWasSeparator = true;
-      }
-    } else {
-      // It's a word part
-      formatted += part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-      lastWasSeparator = false;
-    }
-  }
-
-  // Trim the result
-  let result = formatted.trim();
-
-  // Validate against the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  if (!result || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
-    return null;
-  }
-
-  return result;
+  return parts
+    .map((part) => {
+      if (!part) return "";
+      if (part.match(/[ \-',.]/)) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join("");
 }
 
 function mapPrefixName(name) {
-  if (!name) return null;
   const prefixes = {
     'MR': 'Mr.', 'MRS': 'Mrs.', 'MS': 'Ms.', 'MISS': 'Miss', 'MX': 'Mx.',
     'DR': 'Dr.', 'PROF': 'Prof.', 'REV': 'Rev.', 'FR': 'Fr.', 'SR': 'Sr.',
@@ -991,22 +912,17 @@ function mapPrefixName(name) {
     'SGT': 'Sgt.', 'HON': 'Hon.', 'JUDGE': 'Judge', 'RABBI': 'Rabbi',
     'IMAM': 'Imam', 'SHEIKH': 'Sheikh', 'SIR': 'Sir', 'DAME': 'Dame'
   };
-  // Remove dots before looking up to match ownerMapping.js behavior
-  const key = name.replace(/\./g, "").toUpperCase();
-  return prefixes[key] || null;
+  return prefixes[name?.toUpperCase()] || null;
 }
 
 function mapSuffixName(name) {
-  if (!name) return null;
   const suffixes = {
     'JR': 'Jr.', 'SR': 'Sr.', 'II': 'II', 'III': 'III', 'IV': 'IV',
     'PHD': 'PhD', 'MD': 'MD', 'ESQ': 'Esq.', 'JD': 'JD', 'LLM': 'LLM',
     'MBA': 'MBA', 'RN': 'RN', 'DDS': 'DDS', 'DVM': 'DVM', 'CFA': 'CFA',
     'CPA': 'CPA', 'PE': 'PE', 'PMP': 'PMP', 'EMERITUS': 'Emeritus', 'RET': 'Ret.'
   };
-  // Remove dots before looking up to match ownerMapping.js behavior
-  const key = name.replace(/\./g, "").toUpperCase();
-  return suffixes[key] || null;
+  return suffixes[name?.toUpperCase()] || null;
 }
 
 function main() {
@@ -1178,12 +1094,6 @@ const layoutData = fs.existsSync(layoutDataPath)
       };
       companyRecords.push(record);
     } else if (owner.type === "person") {
-      // Names are already formatted in ownerMapping.js, don't format again
-      // Validate that required fields are present and valid
-      if (!owner.first_name || !owner.last_name) {
-        return null; // Skip persons without required name fields
-      }
-
       personIndex += 1;
       const fileName = `person_${personIndex}.json`;
       const filePath = path.join("data", fileName);
@@ -1191,11 +1101,17 @@ const layoutData = fs.existsSync(layoutDataPath)
         source_http_request: cloneSourceHttp(),
         request_identifier: hyphenParcel,
         birth_date: null,
-        first_name: owner.first_name,
-        last_name: owner.last_name,
-        middle_name: owner.middle_name || null,
-        prefix_name: owner.prefix_name || null,
-        suffix_name: owner.suffix_name || null,
+        first_name: owner.first_name
+          ? formatNameToPattern(owner.first_name)
+          : null,
+        last_name: owner.last_name
+          ? formatNameToPattern(owner.last_name)
+          : null,
+        middle_name: owner.middle_name
+          ? formatNameToPattern(owner.middle_name)
+          : null,
+        prefix_name: mapPrefixName(owner.prefix_name),
+        suffix_name: mapSuffixName(owner.suffix_name),
         us_citizenship_status: null,
         veteran_status: null,
       };
@@ -1304,7 +1220,6 @@ const layoutData = fs.existsSync(layoutDataPath)
     "Shrf's Deed": "Sheriff's Deed",
     "TD": "Tax Deed",
     "TrD": "Trustee's Deed",
-    "TR": "Trustee's Deed",
     "Trustee Deed": "Trustee's Deed",
     "PRD": "Personal Representative Deed",
     "Pers Rep Deed": "Personal Representative Deed",
@@ -1313,7 +1228,6 @@ const layoutData = fs.existsSync(layoutDataPath)
     "DIL": "Deed in Lieu of Foreclosure",
     "DILF": "Deed in Lieu of Foreclosure",
     "LED": "Life Estate Deed",
-    "LE": "Life Estate Deed",
     "JTD": "Joint Tenancy Deed",
     "TIC": "Tenancy in Common Deed",
     "CPD": "Community Property Deed",
@@ -1331,9 +1245,32 @@ const layoutData = fs.existsSync(layoutDataPath)
     "VPD": "Vacation of Plat Deed",
     "AOC": "Assignment of Contract",
     "ROC": "Release of Contract",
-    "LC": "Contract for Deed",
-    "CONV": "Miscellaneous",
-    "OTH": "Miscellaneous"
+    "LC": "Land Contract",
+    "MTG": "Mortgage",
+    "LIS": "Lis Pendens",
+    "EASE": "Easement",
+    "AGMT": "Agreement",
+    "AFF": "Affidavit",
+    "ORD": "Order",
+    "CERT": "Certificate",
+    "RES": "Resolution",
+    "DECL": "Declaration",
+    "COV": "Covenant",
+    "SUB": "Subordination",
+    "MOD": "Modification",
+    "REL": "Release",
+    "ASSG": "Assignment",
+    "LEAS": "Lease",
+    "TR": "Trust",
+    "WILL": "Will",
+    "PROB": "Probate",
+    "JUDG": "Judgment",
+    "LIEN": "Lien",
+    "SAT": "Satisfaction",
+    "PART": "Partition",
+    "EXCH": "Exchange",
+    "CONV": "Conveyance",
+    "OTH": "Other"
   };
 
   const titleDocumentCodes = new Set(
@@ -1355,7 +1292,6 @@ const layoutData = fs.existsSync(layoutDataPath)
       "SHRF'S DEED",
       "TD",
       "TRD",
-      "TR",
       "TRUSTEE DEED",
       "PRD",
       "PERS REP DEED",
@@ -1364,7 +1300,6 @@ const layoutData = fs.existsSync(layoutDataPath)
       "DIL",
       "DILF",
       "LED",
-      "LE",
       "JTD",
       "TIC",
       "CPD",
@@ -1475,25 +1410,18 @@ const specificDocumentTypeMap = {
     const { book, page } = parseBookPage(row.bookPageTxt);
     const instrumentNumber = toSafeString(
       row.rcodeTxt || row.clerkRef || row.bookPageTxt,
-      null,
+      "",
     );
-    const safeBook = toSafeString(book, null);
-    const safePage = toSafeString(page, null);
+    const volume = toSafeString(book, "");
     const deedTypeValue = deedCodeMap[row.deedCode] || null;
     const deed = {
       source_http_request: cloneSourceHttp(),
       request_identifier: hyphenParcel,
+      book: book || null,
+      page: page || null,
+      volume,
+      instrument_number: instrumentNumber,
     };
-    if (safeBook) {
-      deed.book = safeBook;
-      deed.volume = safeBook;
-    }
-    if (safePage) {
-      deed.page = safePage;
-    }
-    if (instrumentNumber) {
-      deed.instrument_number = instrumentNumber;
-    }
     if (deedTypeValue != null) {
       deed.deed_type = deedTypeValue;
     }
@@ -1712,7 +1640,14 @@ const specificDocumentTypeMap = {
     .text()
     .trim();
 
-  const propertyUseAttributes = getPropertyUseAttributes(useCodeVal) || propertyUseCodeMap.ANY;
+  const propertyUseAttributes = getPropertyUseAttributes(useCodeVal);
+  if (!propertyUseAttributes) {
+    throw {
+      type: "error",
+      message: `Unknown property use code: ${useCodeVal}.`,
+      path: "property.property_type",
+    };
+  }
 
   function getNumberOfUnitsTypeFromStructure(structureForm) {
     switch (structureForm) {
@@ -1755,14 +1690,6 @@ const specificDocumentTypeMap = {
     number_of_units_type_from_map ??
     getNumberOfUnitsTypeFromStructure(structure_form_mapped);
 
-  // Ensure build_status is always one of the three allowed values: VacantLand, Improved, UnderConstruction
-  let derivedBuildStatus = build_status_mapped;
-
-  // If build_status_mapped is null or not one of the allowed values, derive it
-  if (!derivedBuildStatus || (derivedBuildStatus !== "VacantLand" && derivedBuildStatus !== "Improved" && derivedBuildStatus !== "UnderConstruction")) {
-    derivedBuildStatus = (livable || effYear) ? "Improved" : "VacantLand";
-  }
-
   const prop = {
     source_http_request: {
       method: "GET",
@@ -1775,7 +1702,7 @@ const specificDocumentTypeMap = {
     property_structure_built_year: effYear || null,
     property_effective_built_year: effYear || null,
     ownership_estate_type: ownership_estate_type_mapped ?? null,
-    build_status: derivedBuildStatus,
+    build_status: build_status_mapped ?? null,
     property_usage_type: property_usage_type_mapped ?? null,
     structure_form: structure_form_mapped ?? null,
     property_type: property_type_mapped ?? null,
@@ -2084,11 +2011,7 @@ const specificDocumentTypeMap = {
 
     removeFiles("data", (file) =>
       /^layout_\d+\.json$/i.test(file) ||
-      /^relationship_layout_.*\.json$/i.test(file) ||
-      /^structure_\d+\.json$/i.test(file) ||
-      /^relationship_.*structure.*\.json$/i.test(file) ||
-      /^utility_\d+\.json$/i.test(file) ||
-      /^relationship_.*utility.*\.json$/i.test(file),
+      /^relationship_layout_.*\.json$/i.test(file),
     );
 
     const preparedBuildings = (() => {
@@ -2217,7 +2140,7 @@ const specificDocumentTypeMap = {
       return layoutCounter;
     };
 
-    if (preparedBuildings.length) {
+    if (!isLandProperty && preparedBuildings.length) {
       preparedBuildings.forEach((building, buildingIdx) => {
         const buildingOrder = buildingIdx + 1;
         const buildingSpaceIndex = String(buildingOrder);
@@ -2300,15 +2223,6 @@ const specificDocumentTypeMap = {
       });
     }
 
-    // Create property-to-layout relationships for all building layouts
-    buildingLayoutRecords.forEach((buildingRecord) => {
-      const relName = `relationship_property_has_layout_${buildingRecord.index}.json`;
-      writeJson(path.join("data", relName), {
-        from: { "/": "./property.json" },
-        to: { "/": `./layout_${buildingRecord.index}.json` },
-      });
-    });
-
     if (siteFeaturesArr.length) {
       siteFeaturesArr.forEach((feature, featureIdx) => {
         const sizeSqFt =
@@ -2349,20 +2263,9 @@ const specificDocumentTypeMap = {
       });
     };
 
-    const singleBuildingLayoutIndex =
-      buildingLayoutRecords.length === 1
-        ? buildingLayoutRecords[0].index
-        : null;
-
     layoutRecords.forEach(({ index, parentIndex }) => {
-      const effectiveParent =
-        parentIndex != null
-          ? parentIndex
-          : singleBuildingLayoutIndex && index !== singleBuildingLayoutIndex
-            ? singleBuildingLayoutIndex
-            : null;
-      if (effectiveParent == null) return;
-      createLayoutToLayoutRelationship(effectiveParent, index);
+      if (parentIndex == null) return;
+      createLayoutToLayoutRelationship(parentIndex, index);
     });
 
     let utilityCounter = 0;
@@ -2417,9 +2320,7 @@ const specificDocumentTypeMap = {
       return record;
     };
 
-    // Process main building structures
     structuresArr.forEach((structure) => addStructure(structure, false));
-    // Create structure entities for extra features (carports, barns, etc.) and link them via relationships
     extraStructuresArr.forEach((structure) => addStructure(structure, true));
 
     const createLayoutToUtilityRelationship = (layoutIdx, utilityIdx) => {
@@ -2439,7 +2340,7 @@ const specificDocumentTypeMap = {
     };
 
     const createPropertyRelationship = (type, idx) => {
-      const relName = `relationship_property_has_${type}_${idx}.json`;
+      const relName = `relationship_property_${type}_${idx}.json`;
       writeJson(path.join("data", relName), {
         from: { "/": "./property.json" },
         to: { "/": `./${type}_${idx}.json` },
@@ -2447,182 +2348,52 @@ const specificDocumentTypeMap = {
     };
 
     const assignUtilities = () => {
-      if (utilityRecords.length) {
-        if (!buildingLayoutRecords.length) {
-          // Create a default building layout for utilities if none exist
-          // Utilities must be connected to layouts, not directly to property
-          const defaultLayoutIndex = addLayout(
-            {
-              space_type: "Building",
-              space_type_index: "1",
-              total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
-              livable_area_sq_ft: toNumber(livable) ?? null,
-              area_under_air_sq_ft: toNumber(livable) ?? null,
-              size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
-              building_number: 1,
-            },
-            null,
-          );
-          buildingLayoutRecords.push({
-            index: defaultLayoutIndex,
-            building_order: 1,
-            space_type_index: "1",
-          });
-          // Create property to layout relationship
-          const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
-          writeJson(path.join("data", relName), {
-            from: { "/": "./property.json" },
-            to: { "/": `./layout_${defaultLayoutIndex}.json` },
-          });
-          // Connect utilities to the default layout
-          utilityRecords.forEach((record) =>
-            createLayoutToUtilityRelationship(defaultLayoutIndex, record.index),
-          );
-        } else if (buildingLayoutRecords.length === 1) {
-          const layoutIdx = buildingLayoutRecords[0].index;
-          utilityRecords.forEach((record) =>
-            createLayoutToUtilityRelationship(layoutIdx, record.index),
-          );
+      if (!utilityRecords.length) return;
+      if (!buildingLayoutRecords.length) {
+        utilityRecords.forEach((record) =>
+          createPropertyRelationship("utility", record.index),
+        );
+        return;
+      }
+      if (buildingLayoutRecords.length === 1) {
+        const layoutIdx = buildingLayoutRecords[0].index;
+        utilityRecords.forEach((record) =>
+          createLayoutToUtilityRelationship(layoutIdx, record.index),
+        );
+      } else {
+        if (utilityRecords.length === 1) {
+          createPropertyRelationship("utility", utilityRecords[0].index);
         } else {
-          if (utilityRecords.length === 1) {
-            const layoutIdx = buildingLayoutRecords[0].index;
-            createLayoutToUtilityRelationship(layoutIdx, utilityRecords[0].index);
-          } else {
-            const assignCount = Math.min(
-              buildingLayoutRecords.length,
-              utilityRecords.length,
-            );
-            for (let i = 0; i < assignCount; i += 1) {
-              createLayoutToUtilityRelationship(
-                buildingLayoutRecords[i].index,
-                utilityRecords[i].index,
-              );
-            }
-            for (let i = assignCount; i < utilityRecords.length; i += 1) {
-              const layoutIdx = buildingLayoutRecords[buildingLayoutRecords.length - 1].index;
-              createLayoutToUtilityRelationship(layoutIdx, utilityRecords[i].index);
-            }
-          }
-        }
-      }
-      // Handle propertyUtilityRecords - ensure they have a layout to connect to
-      if (propertyUtilityRecords.length) {
-        // If no building layouts exist, create a default one for propertyUtilityRecords
-        if (!buildingLayoutRecords.length && !singleBuildingLayoutIndex) {
-          const defaultLayoutIndex = addLayout(
-            {
-              space_type: "Building",
-              space_type_index: "1",
-              total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
-              livable_area_sq_ft: toNumber(livable) ?? null,
-              area_under_air_sq_ft: toNumber(livable) ?? null,
-              size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
-              building_number: 1,
-            },
-            null,
+          const assignCount = Math.min(
+            buildingLayoutRecords.length,
+            utilityRecords.length,
           );
-          buildingLayoutRecords.push({
-            index: defaultLayoutIndex,
-            building_order: 1,
-            space_type_index: "1",
-          });
-          // Create property to layout relationship
-          const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
-          writeJson(path.join("data", relName), {
-            from: { "/": "./property.json" },
-            to: { "/": `./layout_${defaultLayoutIndex}.json` },
-          });
-        }
-
-        propertyUtilityRecords.forEach((record) => {
-          if (singleBuildingLayoutIndex) {
+          for (let i = 0; i < assignCount; i += 1) {
             createLayoutToUtilityRelationship(
-              singleBuildingLayoutIndex,
-              record.index,
+              buildingLayoutRecords[i].index,
+              utilityRecords[i].index,
             );
-          } else if (buildingLayoutRecords.length) {
-            const layoutIdx = buildingLayoutRecords[0].index;
-            createLayoutToUtilityRelationship(layoutIdx, record.index);
           }
-        });
+          for (let i = assignCount; i < utilityRecords.length; i += 1) {
+            createPropertyRelationship("utility", utilityRecords[i].index);
+          }
+        }
       }
+      propertyUtilityRecords.forEach((record) =>
+        createPropertyRelationship("utility", record.index),
+      );
     };
 
     const assignStructures = () => {
       if (!structureRecords.length) {
-        // Handle propertyStructureRecords when no structureRecords exist
-        if (propertyStructureRecords.length) {
-          // Check if we need to create a default layout
-          if (!singleBuildingLayoutIndex && !buildingLayoutRecords.length) {
-            // Create a default building layout for propertyStructureRecords
-            const defaultLayoutIndex = addLayout(
-              {
-                space_type: "Building",
-                space_type_index: "1",
-                total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
-                livable_area_sq_ft: toNumber(livable) ?? null,
-                area_under_air_sq_ft: toNumber(livable) ?? null,
-                size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
-                building_number: 1,
-              },
-              null,
-            );
-            buildingLayoutRecords.push({
-              index: defaultLayoutIndex,
-              building_order: 1,
-              space_type_index: "1",
-            });
-            // Create property to layout relationship
-            const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
-            writeJson(path.join("data", relName), {
-              from: { "/": "./property.json" },
-              to: { "/": `./layout_${defaultLayoutIndex}.json` },
-            });
-          }
-          // Now create relationships for all propertyStructureRecords
-          propertyStructureRecords.forEach((record) => {
-            if (singleBuildingLayoutIndex) {
-              createLayoutToStructureRelationship(
-                singleBuildingLayoutIndex,
-                record.index,
-              );
-            } else if (buildingLayoutRecords.length) {
-              const layoutIdx = buildingLayoutRecords[0].index;
-              createLayoutToStructureRelationship(layoutIdx, record.index);
-            }
-          });
-        }
+        propertyStructureRecords.forEach((record) =>
+          createPropertyRelationship("structure", record.index),
+        );
         return;
       }
       if (!buildingLayoutRecords.length) {
-        // Create a default building layout for structures if none exist
-        // Structures must be connected to layouts, not directly to property
-        const defaultLayoutIndex = addLayout(
-          {
-            space_type: "Building",
-            space_type_index: "1",
-            total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
-            livable_area_sq_ft: toNumber(livable) ?? null,
-            area_under_air_sq_ft: toNumber(livable) ?? null,
-            size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
-            building_number: 1,
-          },
-          null,
-        );
-        buildingLayoutRecords.push({
-          index: defaultLayoutIndex,
-          building_order: 1,
-          space_type_index: "1",
-        });
-        // Create property to layout relationship
-        const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
-        writeJson(path.join("data", relName), {
-          from: { "/": "./property.json" },
-          to: { "/": `./layout_${defaultLayoutIndex}.json` },
-        });
-        // Connect structures to the default layout
         structureRecords.forEach((record) =>
-          createLayoutToStructureRelationship(defaultLayoutIndex, record.index),
+          createPropertyRelationship("structure", record.index),
         );
       } else if (buildingLayoutRecords.length === 1) {
         const layoutIdx = buildingLayoutRecords[0].index;
@@ -2631,8 +2402,7 @@ const specificDocumentTypeMap = {
         );
       } else {
         if (structureRecords.length === 1) {
-          const layoutIdx = buildingLayoutRecords[0].index;
-          createLayoutToStructureRelationship(layoutIdx, structureRecords[0].index);
+          createPropertyRelationship("structure", structureRecords[0].index);
         } else {
           const assignCount = Math.min(
             buildingLayoutRecords.length,
@@ -2645,52 +2415,13 @@ const specificDocumentTypeMap = {
             );
           }
           for (let i = assignCount; i < structureRecords.length; i += 1) {
-            const layoutIdx = buildingLayoutRecords[buildingLayoutRecords.length - 1].index;
-            createLayoutToStructureRelationship(layoutIdx, structureRecords[i].index);
+            createPropertyRelationship("structure", structureRecords[i].index);
           }
         }
       }
-      // Handle propertyStructureRecords - ensure they have a layout to connect to
-      if (propertyStructureRecords.length) {
-        // If no building layouts exist, create a default one for propertyStructureRecords
-        if (!buildingLayoutRecords.length && !singleBuildingLayoutIndex) {
-          const defaultLayoutIndex = addLayout(
-            {
-              space_type: "Building",
-              space_type_index: "1",
-              total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
-              livable_area_sq_ft: toNumber(livable) ?? null,
-              area_under_air_sq_ft: toNumber(livable) ?? null,
-              size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
-              building_number: 1,
-            },
-            null,
-          );
-          buildingLayoutRecords.push({
-            index: defaultLayoutIndex,
-            building_order: 1,
-            space_type_index: "1",
-          });
-          // Create property to layout relationship
-          const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
-          writeJson(path.join("data", relName), {
-            from: { "/": "./property.json" },
-            to: { "/": `./layout_${defaultLayoutIndex}.json` },
-          });
-        }
-
-        propertyStructureRecords.forEach((record) => {
-          if (singleBuildingLayoutIndex) {
-            createLayoutToStructureRelationship(
-              singleBuildingLayoutIndex,
-              record.index,
-            );
-          } else if (buildingLayoutRecords.length) {
-            const layoutIdx = buildingLayoutRecords[0].index;
-            createLayoutToStructureRelationship(layoutIdx, record.index);
-          }
-        });
-      }
+      propertyStructureRecords.forEach((record) =>
+        createPropertyRelationship("structure", record.index),
+      );
     };
 
     assignUtilities();
@@ -2735,15 +2466,6 @@ const specificDocumentTypeMap = {
       lot_condition_issues: null,
       lot_size_acre: lotSizeAcre || null,
     });
-
-    // Create property_has_lot relationship
-    writeJson(
-      path.join("data", "relationship_property_has_lot.json"),
-      {
-        from: { "/": "./property.json" },
-        to: { "/": "./lot.json" },
-      },
-    );
   } catch (e) {
     console.error("Error processing lot data:", e);
   }
@@ -2752,23 +2474,23 @@ const specificDocumentTypeMap = {
   try {
     if (unnormalizedAddress && unnormalizedAddress.full_address) {
       const full = unnormalizedAddress.full_address.trim();
-      let section = null;
-      let township = null;
-      let range = null;
-
+      let section = null,
+        township = null,
+        range = null;
+      // Updated selector for S/T/R
       const strTxt = $('td:contains("S/T/R")')
         .filter((i, el) => $(el).text().trim().startsWith("S/T/R"))
         .first()
         .next()
         .text()
-        .trim();
-
-      if (strTxt && /\d{1,2}-\d{1,2}[A-Z]?-\d{1,2}/.test(strTxt)) {
+        .trim(); // "10-5S-16"
+      if (strTxt && /\d{1,2}-\d{1,2}[A-Z]?-\d{1,2}/.test(strTxt)) { // Updated regex for "10-5S-16" or "10-5-16"
         const parts2 = strTxt.split("-");
-        section = parts2[0] || null;
-        township = parts2[1] || null;
-        range = parts2[2] || null;
+        section = parts2[0];
+        township = parts2[1]; // e.g., "5S"
+        range = parts2[2]; // e.g., "16"
       }
+
       const sourceHttp =
         (propertySeed && propertySeed.source_http_request
           ? JSON.parse(JSON.stringify(propertySeed.source_http_request))
@@ -2786,24 +2508,24 @@ const specificDocumentTypeMap = {
         (unnormalizedAddress ? unnormalizedAddress.request_identifier : null) ||
         null;
 
-      const countyName =
-        (unnormalizedAddress &&
-          unnormalizedAddress.county_jurisdiction &&
-          String(unnormalizedAddress.county_jurisdiction).trim()) ||
-        (propertySeed &&
-          propertySeed.county_name &&
-          String(propertySeed.county_name).trim()) ||
-        "Columbia";
-
       writeJson(path.join("data", "address.json"), {
+        unit_identifier: null,
+        city_name: null,
+        state_code: null,
+        postal_code: null,
+        plus_four_postal_code: null,
+        county_name: "Columbia",
+        country_code: "US",
+        route_number: null,
+        township: township || null,
+        range: range || null,
+        section: section || null,
+        lot: null,
+        block: null,
+        municipality_name: null,
         unnormalized_address: full || null,
         source_http_request: sourceHttp,
         request_identifier: requestIdentifier,
-        county_name: countyName || null,
-        country_code: "US",
-        section: section || null,
-        township: township || null,
-        range: range || null,
       });
 
       const latitude =
