@@ -620,30 +620,6 @@ const propertyTypeMapping = [
     "property_type": "Building"
   },
   {
-    "property_usecode": "8600 - County",
-    "ownership_estate_type": "FeeSimple",
-    "build_status": "Improved",
-    "structure_form": null,
-    "property_usage_type": "GovernmentProperty",
-    "property_type": "Building"
-  },
-  {
-    "property_usecode": "8700 - State",
-    "ownership_estate_type": "FeeSimple",
-    "build_status": "Improved",
-    "structure_form": null,
-    "property_usage_type": "GovernmentProperty",
-    "property_type": "Building"
-  },
-  {
-    "property_usecode": "8800 - Federal",
-    "ownership_estate_type": "FeeSimple",
-    "build_status": "Improved",
-    "structure_form": null,
-    "property_usage_type": "GovernmentProperty",
-    "property_type": "Building"
-  },
-  {
     "property_usecode": "8900 - Municipal",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -1025,11 +1001,19 @@ function extractOwnerMailingAddress(leonSummary) {
 }
 
 function attemptWriteAddress(unnorm, siteAddress, mailingAddress) {
+  let hasOwnerMailingAddress = false;
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty) {
     inputCounty = (unnorm.county_name || "").trim();
   }
   const county_name = inputCounty || null;
+  if (mailingAddress) {
+    const mailingAddressObj = {
+      unnormalized_address: mailingAddress,
+    };
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
+    hasOwnerMailingAddress = true;
+  }
   if (siteAddress) {
     const addressObj = {
       county_name,
@@ -1046,7 +1030,7 @@ function attemptWriteAddress(unnorm, siteAddress, mailingAddress) {
                 from: { "/": `./property.json` },
               });
   }
-  return mailingAddress;
+  return hasOwnerMailingAddress;
 }
 
 function mapDeedCode(code) {
@@ -1216,7 +1200,7 @@ function extractTax($, outDir) {
   });
 }
 
-function extractOwners(ownerData, outDir, parcelId, salesCount, mailingAddress) {
+function extractOwners(ownerData, outDir, parcelId, salesCount, hasOwnerMailingAddress) {
   const key = `property_${parcelId}`;
   const result = { owners: [] };
   if (!ownerData[key] || !ownerData[key].owners_by_date) return result;
@@ -1245,16 +1229,6 @@ function extractOwners(ownerData, outDir, parcelId, salesCount, mailingAddress) 
     }
   });
 
-  // Only create person/company files if they will have relationships
-  // (either to sales or to mailing address)
-  const hasMailingAddress = mailingAddress && mailingAddress.trim().length > 0;
-  const willHaveRelationships = salesCount > 0 || hasMailingAddress;
-
-  if (!willHaveRelationships) {
-    // Don't create person/company files if they won't have any relationships
-    return result;
-  }
-
   let cIdx = 1,
     pIdx = 1;
   const fileMap = new Map();
@@ -1264,25 +1238,16 @@ function extractOwners(ownerData, outDir, parcelId, salesCount, mailingAddress) 
       writeJSON(path.join(outDir, fname), { name: o.name || null });
       fileMap.set(`C|${(o.name || "").trim()}`, fname);
     } else {
-      // Format names properly
-      const firstName = o.first_name
-        ? o.first_name.charAt(0).toUpperCase() +
-          o.first_name.slice(1).toLowerCase()
-        : "";
-      const lastName = o.last_name
-        ? o.last_name.charAt(0).toUpperCase() +
-          o.last_name.slice(1).toLowerCase()
-        : "";
-
-      // Skip if first_name or last_name is empty
-      if (!firstName || !lastName) {
-        return;
-      }
-
       const obj = {
         birth_date: null,
-        first_name: firstName,
-        last_name: lastName,
+        first_name: o.first_name
+          ? o.first_name.charAt(0).toUpperCase() +
+            o.first_name.slice(1).toLowerCase()
+          : "",
+        last_name: o.last_name
+          ? o.last_name.charAt(0).toUpperCase() +
+            o.last_name.slice(1).toLowerCase()
+          : "",
         middle_name: o.middle_name ? o.middle_name.toUpperCase() : null,
         prefix_name: null,
         suffix_name: null,
@@ -1368,11 +1333,7 @@ function extractOwners(ownerData, outDir, parcelId, salesCount, mailingAddress) 
   }
   relIdxCompany = 1;
   relIdxPerson = 1;
-  if (mailingAddress && currentFiles.length > 0) {
-    const mailingAddressObj = {
-      unnormalized_address: mailingAddress,
-    };
-    writeJSON(path.join(outDir, "mailing_address.json"), mailingAddressObj);
+  if (hasOwnerMailingAddress) {
     currentFiles.forEach((f) => writeMailingAddressRel(f, 1));
   }
   // invalidFiles.forEach((f) => writeRel(f, 1));
@@ -1679,17 +1640,10 @@ function main() {
   }
   writeJSON(path.join(outDir, "property.json"), propertyObj);
 
-  // Create parcel.json with only parcel fields
-  const parcelObj = {
-    parcel_identifier: propertyObj.parcel_identifier,
-    request_identifier: parcelId,
-  };
-  writeJSON(path.join(outDir, "parcel.json"), parcelObj);
-
     // Address
   const addressText = extractAddressText(leonSummary);
   const mailingAddress = extractOwnerMailingAddress(leonSummary);
-  attemptWriteAddress(unAddr, addressText, mailingAddress);
+  const hasOwnerMailingAddress = attemptWriteAddress(unAddr, addressText, mailingAddress);
   // writeJSON(path.join(outDir, "address.json"), addressObj);
 
   const salesCount = extractSalesAndDeeds($, outDir);
@@ -1697,7 +1651,7 @@ function main() {
   extractTax($, outDir);
 
   const ownerData = readJSON(ownerPath);
-  extractOwners(ownerData, outDir, parcelId, salesCount, mailingAddress);
+  extractOwners(ownerData, outDir, parcelId, salesCount, hasOwnerMailingAddress);
 
   const utilsData = readJSON(utilsPath);
   const layoutData = readJSON(layoutPath);
