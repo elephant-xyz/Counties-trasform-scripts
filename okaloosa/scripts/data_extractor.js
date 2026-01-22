@@ -1902,7 +1902,7 @@ function extractOwnerMailingAddress($) {
   return textOf($(OWNER_MAILING_ADDRESS_SELECTOR)).replace(/  +/g, ' ');;
 }
 
-function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress, parcelId) {
+function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
   let hasOwnerMailingAddress = false;
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty) {
@@ -1910,22 +1910,11 @@ function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress, par
   }
   const county_name = inputCounty || null;
   if (mailingAddress) {
-    // Only create mailing_address.json if there are current owners to link it to
-    const owners = readJSON(path.join("owners", "owner_data.json"));
-    if (owners && parcelId) {
-      const key = `property_${parcelId}`;
-      const record = owners[key];
-      if (record && record.owners_by_date && record.owners_by_date["current"]) {
-        const currentOwners = record.owners_by_date["current"] || [];
-        if (currentOwners.length > 0) {
-          const mailingAddressObj = {
-            unnormalized_address: mailingAddress,
-          };
-          writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
-          hasOwnerMailingAddress = true;
-        }
-      }
-    }
+    const mailingAddressObj = {
+      unnormalized_address: mailingAddress,
+    };
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
+    hasOwnerMailingAddress = true;
   }
   if (siteAddress) {
     const addressObj = {
@@ -2275,7 +2264,7 @@ function main() {
   const secTwpRng = extractSecTwpRng($);
   const addressText = extractAddressText($);
   const mailingAddress = extractOwnerMailingAddress($);
-  const hasOwnerMailingAddress = attemptWriteAddress(unnormalized, secTwpRng, addressText, mailingAddress, parcelId);
+  const hasOwnerMailingAddress = attemptWriteAddress(unnormalized, secTwpRng, addressText, mailingAddress);
 
   if (parcelId) {
     writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress);
