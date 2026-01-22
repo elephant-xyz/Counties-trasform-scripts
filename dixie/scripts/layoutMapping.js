@@ -56,11 +56,12 @@ function collectBuildings($) {
 }
 
 function toInt(val) {
-  const normalized = String(val || "").replace(/[,]/g, "").trim();
-  if (!normalized) return 0;
-  const n = Number(normalized);
-  if (!Number.isFinite(n)) return 0;
-  return Math.round(n);
+  const n = Number(
+    String(val || "")
+      .replace(/[,]/g, "")
+      .trim(),
+  );
+  return Number.isFinite(n) ? n : 0;
 }
 
 function mapSpaceType(spaceType) {
