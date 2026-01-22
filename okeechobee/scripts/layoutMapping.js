@@ -17,19 +17,12 @@ function readInputHtml() {
   }
 }
 
-function readJSON(p) {
-  const fullPath = path.resolve(p);
-  return JSON.parse(fs.readFileSync(fullPath, "utf8"));
-}
-
 function extractParcelId($) {
   const boldTxt = $("table.parcelIDtable b").first().text().trim();
   if (!boldTxt) return "unknown";
   const m = boldTxt.match(/^([^\s(]+)/);
   return m ? m[1] : "unknown";
 }
-
-const seed = readJSON("property_seed.json");
 
 function getNumber(text) {
   const m = String(text || "")
@@ -38,43 +31,46 @@ function getNumber(text) {
   return m ? parseInt(m[0], 10) : null;
 }
 
-function extractBuildings($) {
-  const buildings = [];
+function extractBaseAndActualSF($) {
+  let base = null,
+    actual = null;
   const rows = $(
     "#parcelDetails_BldgTable table.parcelDetails_insideTable tr[bgcolor]",
   );
-  rows.each((_, el) => {
+  rows.each((i, el) => {
     const tds = $(el).find("td");
     if (tds.length >= 6) {
-      const effYear = getNumber($(tds[2]).text());
-      const baseSF = getNumber($(tds[3]).text());
-      const actualSF = getNumber($(tds[4]).text());
-      if (effYear !== null || baseSF !== null || actualSF !== null) {
-        buildings.push({ effYear, baseSF, actualSF });
+      const desc = $(tds[1]).text().trim();
+      const b = getNumber($(tds[3]).text());
+      const a = getNumber($(tds[4]).text());
+      if (/OFFICE/i.test(desc)) {
+        base = b;
+        actual = a;
+      }
+      if (base == null && i === 0) {
+        base = b;
+        actual = a;
       }
     }
   });
-  return buildings;
+  return { base, actual };
 }
 
-function buildBuildingLayoutEntries(buildings, appendSourceInfo) {
-  if (!buildings.length) return [];
+function buildDefaultLayoutEntries(baseSF, actualSF) {
+  // With no room-level data, create a single "Living Area" layout capturing size.
+  const size = actualSF || baseSF || null;
 
-  return buildings.map((b, idx) => ({
-    ...appendSourceInfo(seed),
-    space_type: "Building",
-    space_type_index: String(idx + 1),
-    building_number: idx + 1,
-    built_year: b.effYear,
-    size_square_feet: b.baseSF,
-    total_area_sq_ft: b.actualSF,
+  const layout = {
+    space_type: "Living Area",
+    space_index: 1,
     flooring_material_type: null,
+    size_square_feet: size,
     floor_level: null,
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
     window_treatment_type: null,
-    is_finished: false,
+    is_finished: true,
     furnished: null,
     paint_condition: null,
     flooring_wear: null,
@@ -97,36 +93,26 @@ function buildBuildingLayoutEntries(buildings, appendSourceInfo) {
     pool_condition: null,
     pool_surface_type: null,
     pool_water_quality: null,
+
+    // Optional fields
     adjustable_area_sq_ft: null,
-    area_under_air_sq_ft: null,
-    heated_area_sq_ft: null,
-    livable_area_sq_ft: null,
-    story_type: null,
-  }));
+    area_under_air_sq_ft: size,
+    heated_area_sq_ft: size,
+    livable_area_sq_ft: size,
+  };
+
+  return [layout];
 }
 
 function main() {
   const html = readInputHtml();
   if (!html) return;
   const $ = cheerio.load(html);
-  const htmlparcelid = extractParcelId($);
-  const parcelId = htmlparcelid;
-  
-  const appendSourceInfo = (seed) => ({
-    source_http_request: {
-      method: "GET",
-      url: seed?.source_http_request?.url || null
-    },
-    request_identifier: htmlparcelid || seed?.request_identifier || seed?.parcel_id || "",
-  });
-  
-  const buildings = extractBuildings($);
-  const layouts = buildBuildingLayoutEntries(buildings, appendSourceInfo);
+  const parcelId = extractParcelId($);
+  const { base, actual } = extractBaseAndActualSF($);
+  const layouts = buildDefaultLayoutEntries(base, actual);
   const propertySeed = readJSON("property_seed.json");
-  if (
-    propertySeed.request_identifier.replaceAll("-", "") !==
-    parcelId.replaceAll("-", "")
-  ) {
+  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
     throw {
       type: "error",
       message: "Request identifier and parcel id don't match.",

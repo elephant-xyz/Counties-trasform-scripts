@@ -79,8 +79,7 @@ function main() {
   if (!html) return;
   const $ = cheerio.load(html);
   const parcelId = extractParcelId($);
-  // const util = buildUtilityObject();
-  const util= {}; // as there is no building level utility data present.
+  const util = buildUtilityObject();
 
   const outputDir = path.resolve("owners");
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
