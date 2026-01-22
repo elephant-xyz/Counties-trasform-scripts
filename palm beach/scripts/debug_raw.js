@@ -5099,60 +5099,8 @@ async function main() {
 
           const { owners, invalids } = classifyRawToOwners(ownerName);
 
-          for (const owner of owners) {
-            if (owner.type === "company") {
-              // Create company record
-              const company = {
-                name: toTitleCase(owner.name),
-              };
-
-              writeJSON(
-                path.join(dataDir, `company_${companyIdx}.json`),
-                company,
-              );
-
-              const companyFileRelative = `./company_${companyIdx}.json`;
-
-              writeRelationshipFile(
-                path.join(dataDir, `relationship_sales_company_${relIdx}.json`),
-                saleFileExists ? saleFileRelative : null,
-                companyFileRelative,
-              );
-              relIdx++;
-              companyIdx++;
-            } else {
-              // Create person record
-              const firstName = formatNamePart(owner.first_name);
-              const lastName = formatNamePart(owner.last_name);
-              if (!firstName || !lastName) {
-                continue;
-              }
-              const middleName = normalizeMiddleName(owner.middle_name);
-              const resolvedMiddleName = middleName ?? null;
-              const person = {
-                birth_date: null,
-                first_name: firstName,
-                last_name: lastName,
-                middle_name: resolvedMiddleName,
-                prefix_name: null,
-                suffix_name: null,
-                us_citizenship_status: null,
-                veteran_status: null,
-              };
-
-              writeJSON(path.join(dataDir, `person_${personIdx}.json`), person);
-
-              const personFileRelative = `./person_${personIdx}.json`;
-
-              writeRelationshipFile(
-                path.join(dataDir, `relationship_sales_person_${relIdx}.json`),
-                saleFileExists ? saleFileRelative : null,
-                personFileRelative,
-              );
-              relIdx++;
-              personIdx++;
-            }
-          }
+          // Person and Company classes are not part of Sales_History data group
+          // Do not create person or company files for this data group
         }
       }
     }
@@ -5166,64 +5114,8 @@ async function main() {
 
         const { owners, invalids } = classifyRawToOwners(ownerName);
 
-        for (const owner of owners) {
-          if (owner.type === "company") {
-            // Create company record
-            const company = {
-              name: toTitleCase(owner.name),
-            };
-
-            writeJSON(
-              path.join(dataDir, `company_${companyIdx}.json`),
-              company,
-            );
-
-            const companyFileRelative = `./company_${companyIdx}.json`;
-
-            writeRelationshipFile(
-              path.join(
-                dataDir,
-                `relationship_company_${companyIdx}_property.json`,
-              ),
-              companyFileRelative,
-              propertyFileExists ? propertyFileRelative : null,
-            );
-            companyIdx++;
-          } else {
-            // Create person record
-            const firstName = formatNamePart(owner.first_name);
-            const lastName = formatNamePart(owner.last_name);
-            if (!firstName || !lastName) {
-              continue;
-            }
-            const middleName = normalizeMiddleName(owner.middle_name);
-            const resolvedMiddleName = middleName ?? null;
-            const person = {
-              birth_date: null,
-              first_name: firstName,
-              last_name: lastName,
-              middle_name: resolvedMiddleName,
-              prefix_name: null,
-              suffix_name: null,
-              us_citizenship_status: null,
-              veteran_status: null,
-            };
-
-            writeJSON(path.join(dataDir, `person_${personIdx}.json`), person);
-
-            const personFileRelative = `./person_${personIdx}.json`;
-
-            writeRelationshipFile(
-              path.join(
-                dataDir,
-                `relationship_person_${personIdx}_property.json`,
-              ),
-              personFileRelative,
-              propertyFileExists ? propertyFileRelative : null,
-            );
-            personIdx++;
-          }
-        }
+        // Person and Company classes are not part of Sales_History data group
+        // Do not create person or company files for this data group
       }
     }
   }
