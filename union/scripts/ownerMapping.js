@@ -54,6 +54,7 @@ const NAME_SUFFIXES = new Set([
   "viii",
   "ix",
   "x",
+  // Note: v, vi, vii, viii, ix, x will be recognized but mapped to null - not valid in Elephant schema
   "esq",
   "esquire",
   "md",
@@ -115,6 +116,20 @@ function toIsoDate(mdy) {
 
 function formatToken(token) {
   if (!token) return "";
+
+  // Handle single-letter abbreviations like "V." - remove the period
+  // Pattern: single uppercase letter followed by period
+  if (/^[A-Z]\.$/.test(token)) {
+    return token.replace(/\.$/, "");
+  }
+
+  // Handle abbreviations like "L.A." - preserve uppercase letters followed by periods
+  // Pattern: single uppercase letter followed by period, repeated
+  if (/^([A-Z]\.)+$/.test(token)) {
+    // Remove trailing period to match schema pattern: "L.A." -> "L.A"
+    return token.replace(/\.$/, "");
+  }
+
   return token
     .split(/([-'])/)
     .map((segment) => {
@@ -127,35 +142,259 @@ function formatToken(token) {
 
 function formatNameValue(value) {
   if (!value) return null;
-  return value
+  let formatted = value
     .split(/\s+/)
     .filter(Boolean)
     .map(formatToken)
     .join(" ")
     .trim();
+
+  // Remove leading special characters to match schema pattern ^[A-Z]
+  while (formatted && /^[\-', .]/.test(formatted)) {
+    formatted = formatted.slice(1).trim();
+  }
+
+  // Remove trailing special characters
+  while (formatted && /[\-', .]$/.test(formatted)) {
+    formatted = formatted.slice(0, -1).trim();
+  }
+
+  return formatted || null;
 }
 
 function formatSuffixValue(value) {
   if (!value) return null;
-  const trimmed = value.replace(/\./g, "").trim();
+  const trimmed = value.replace(/\./g, "").replace(/,/g, "").trim();
   if (!trimmed) return null;
-  if (/^et\s+al$/i.test(trimmed) || /^etal$/i.test(trimmed)) {
-    return "et al";
+
+  // Check for "et al" variations - these are not valid suffixes
+  if (/^et\s*al$/i.test(trimmed)) {
+    return null;
   }
+
+  // Map suffixes to Elephant schema enum values
+  // Only include suffixes that are allowed by the Elephant schema
+  const suffixMap = {
+    'JR': 'Jr.',
+    'Jr': 'Jr.',
+    'jr': 'Jr.',
+    'SR': 'Sr.',
+    'Sr': 'Sr.',
+    'sr': 'Sr.',
+    'II': 'II',
+    'III': 'III',
+    'IV': 'IV',
+    // Note: V, VI, VII, VIII, IX, X are NOT in the Elephant schema, so they are omitted
+    'PHD': 'PhD',
+    'PhD': 'PhD',
+    'phd': 'PhD',
+    'MD': 'MD',
+    'Md': 'MD',
+    'md': 'MD',
+    'ESQ': 'Esq.',
+    'Esq': 'Esq.',
+    'esq': 'Esq.',
+    'ESQUIRE': 'Esq.',
+    'Esquire': 'Esq.',
+    'esquire': 'Esq.',
+    'JD': 'JD',
+    'Jd': 'JD',
+    'jd': 'JD',
+    'LLM': 'LLM',
+    'Llm': 'LLM',
+    'llm': 'LLM',
+    'MBA': 'MBA',
+    'Mba': 'MBA',
+    'mba': 'MBA',
+    'RN': 'RN',
+    'Rn': 'RN',
+    'rn': 'RN',
+    'DDS': 'DDS',
+    'Dds': 'DDS',
+    'dds': 'DDS',
+    'DVM': 'DVM',
+    'Dvm': 'DVM',
+    'dvm': 'DVM',
+    'DMD': 'DDS',
+    'Dmd': 'DDS',
+    'dmd': 'DDS',
+    'DO': 'MD',
+    'Do': 'MD',
+    'do': 'MD',
+    'CFA': 'CFA',
+    'Cfa': 'CFA',
+    'cfa': 'CFA',
+    'CPA': 'CPA',
+    'Cpa': 'CPA',
+    'cpa': 'CPA',
+    'PA': 'CPA',
+    'Pa': 'CPA',
+    'pa': 'CPA',
+    'PE': 'PE',
+    'Pe': 'PE',
+    'pe': 'PE',
+    'PMP': 'PMP',
+    'Pmp': 'PMP',
+    'pmp': 'PMP',
+    'EMERITUS': 'Emeritus',
+    'Emeritus': 'Emeritus',
+    'emeritus': 'Emeritus',
+    'RET': 'Ret.',
+    'Ret': 'Ret.',
+    'ret': 'Ret.',
+    'RETIRED': 'Ret.',
+    'Retired': 'Ret.',
+    'retired': 'Ret.',
+  };
+
   const upper = trimmed.toUpperCase();
-  if (/^[IVX]+$/.test(upper)) return upper;
-  if (upper === "JR" || upper === "SR") {
-    return upper[0] + upper.slice(1).toLowerCase();
+
+  // Check if it's in the suffix map with uppercase first
+  if (suffixMap[upper]) {
+    return suffixMap[upper];
   }
-  return trimmed
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => {
-      const upperPart = part.toUpperCase();
-      if (/^[IVX]+$/.test(upperPart)) return upperPart;
-      return formatToken(part);
-    })
-    .join(" ");
+
+  // Check with original case as fallback
+  if (suffixMap[trimmed]) {
+    return suffixMap[trimmed];
+  }
+
+  // Additional safety check: if the value is literally "Jr" without period, return "Jr."
+  // This should never happen due to the mappings above, but acts as a failsafe
+  if (trimmed === 'Jr') return 'Jr.';
+  if (trimmed === 'Sr') return 'Sr.';
+
+  // If not in map, return null (unknown suffix)
+  return null;
+}
+
+function formatPrefixValue(value) {
+  if (!value) return null;
+  const trimmed = value.replace(/\./g, "").replace(/,/g, "").trim();
+  if (!trimmed) return null;
+
+  // Map prefixes to Elephant schema enum values
+  // Only include prefixes that are allowed by the Elephant schema
+  const prefixMap = {
+    'MR': 'Mr.',
+    'Mr': 'Mr.',
+    'mr': 'Mr.',
+    'MRS': 'Mrs.',
+    'Mrs': 'Mrs.',
+    'mrs': 'Mrs.',
+    'MS': 'Ms.',
+    'Ms': 'Ms.',
+    'ms': 'Ms.',
+    'MISS': 'Miss',
+    'Miss': 'Miss',
+    'miss': 'Miss',
+    'MX': 'Mx.',
+    'Mx': 'Mx.',
+    'mx': 'Mx.',
+    'DR': 'Dr.',
+    'Dr': 'Dr.',
+    'dr': 'Dr.',
+    'DOCTOR': 'Dr.',
+    'Doctor': 'Dr.',
+    'doctor': 'Dr.',
+    'PROF': 'Prof.',
+    'Prof': 'Prof.',
+    'prof': 'Prof.',
+    'PROFESSOR': 'Prof.',
+    'Professor': 'Prof.',
+    'professor': 'Prof.',
+    'REV': 'Rev.',
+    'Rev': 'Rev.',
+    'rev': 'Rev.',
+    'REVEREND': 'Rev.',
+    'Reverend': 'Rev.',
+    'reverend': 'Rev.',
+    'FR': 'Fr.',
+    'Fr': 'Fr.',
+    'fr': 'Fr.',
+    'FATHER': 'Fr.',
+    'Father': 'Fr.',
+    'father': 'Fr.',
+    'SR': 'Sr.',
+    'SISTER': 'Sr.',
+    'Sister': 'Sr.',
+    'sister': 'Sr.',
+    'BR': 'Br.',
+    'Br': 'Br.',
+    'br': 'Br.',
+    'BROTHER': 'Br.',
+    'Brother': 'Br.',
+    'brother': 'Br.',
+    'CAPT': 'Capt.',
+    'Capt': 'Capt.',
+    'capt': 'Capt.',
+    'CAPTAIN': 'Capt.',
+    'Captain': 'Capt.',
+    'captain': 'Capt.',
+    'COL': 'Col.',
+    'Col': 'Col.',
+    'col': 'Col.',
+    'COLONEL': 'Col.',
+    'Colonel': 'Col.',
+    'colonel': 'Col.',
+    'MAJ': 'Maj.',
+    'Maj': 'Maj.',
+    'maj': 'Maj.',
+    'MAJOR': 'Maj.',
+    'Major': 'Maj.',
+    'major': 'Maj.',
+    'LT': 'Lt.',
+    'Lt': 'Lt.',
+    'lt': 'Lt.',
+    'LIEUTENANT': 'Lt.',
+    'Lieutenant': 'Lt.',
+    'lieutenant': 'Lt.',
+    'SGT': 'Sgt.',
+    'Sgt': 'Sgt.',
+    'sgt': 'Sgt.',
+    'SERGEANT': 'Sgt.',
+    'Sergeant': 'Sgt.',
+    'sergeant': 'Sgt.',
+    'HON': 'Hon.',
+    'Hon': 'Hon.',
+    'hon': 'Hon.',
+    'HONORABLE': 'Hon.',
+    'Honorable': 'Hon.',
+    'honorable': 'Hon.',
+    'JUDGE': 'Judge',
+    'Judge': 'Judge',
+    'judge': 'Judge',
+    'RABBI': 'Rabbi',
+    'Rabbi': 'Rabbi',
+    'rabbi': 'Rabbi',
+    'IMAM': 'Imam',
+    'Imam': 'Imam',
+    'imam': 'Imam',
+    'SHEIKH': 'Sheikh',
+    'Sheikh': 'Sheikh',
+    'sheikh': 'Sheikh',
+    'SIR': 'Sir',
+    'Sir': 'Sir',
+    'sir': 'Sir',
+    'DAME': 'Dame',
+    'Dame': 'Dame',
+    'dame': 'Dame',
+  };
+
+  const upper = trimmed.toUpperCase();
+
+  // Check if it's in the prefix map with uppercase first
+  if (prefixMap[upper]) {
+    return prefixMap[upper];
+  }
+
+  // Check with original case as fallback
+  if (prefixMap[trimmed]) {
+    return prefixMap[trimmed];
+  }
+
+  // If not in map, return null (unknown prefix like "Bishop")
+  return null;
 }
 
 function stripNameAffixes(name) {
@@ -269,13 +508,67 @@ function parsePersonNameBasic(name) {
   if (normalized.includes(",")) {
     const [lastSegment, restSegment] = normalized.split(",", 2).map(collapseWs);
     if (!lastSegment || !restSegment) return null;
-    const restTokens = restSegment.split(/\s+/).filter(Boolean);
+    const restTokens = restSegment.split(/\s+/).filter(Boolean).map(token => {
+      let cleaned = token;
+      while (cleaned && /^[\-', .#0-9]/.test(cleaned)) {
+        cleaned = cleaned.slice(1);
+      }
+      while (cleaned && /[\-', .]$/.test(cleaned)) {
+        cleaned = cleaned.slice(0, -1);
+      }
+      return cleaned;
+    }).filter(Boolean);
     if (restTokens.length === 0) return null;
-    firstName = restTokens[0];
-    middleName = restTokens.slice(1).join(" ") || null;
-    lastName = lastSegment;
+
+    // Check if lastSegment has multiple words - if so, only the first word is the last name
+    const lastTokens = lastSegment.split(/\s+/).filter(Boolean).map(token => {
+      let cleaned = token;
+      while (cleaned && /^[\-', .#0-9]/.test(cleaned)) {
+        cleaned = cleaned.slice(1);
+      }
+      while (cleaned && /[\-', .]$/.test(cleaned)) {
+        cleaned = cleaned.slice(0, -1);
+      }
+      return cleaned;
+    }).filter(Boolean);
+    if (lastTokens.length > 1) {
+      // Format like "TUCKER LOIS G., VINCENT" where TUCKER is last name, LOIS G. are first/middle
+      lastName = lastTokens[0];
+      firstName = lastTokens[1];
+      // Combine remaining tokens from lastSegment with restSegment if needed
+      const remainingFromLast = lastTokens.slice(2);
+      if (remainingFromLast.length > 0) {
+        middleName = remainingFromLast.join(" ");
+      } else {
+        middleName = null;
+      }
+      // Note: restSegment (VINCENT) represents another person, not part of this person
+      // So we ignore it here and let the ampersand parser handle it
+      // But if this is being called from a non-ampersand context, we need to use restSegment as firstName
+      // Check if this looks like a multi-person format by seeing if restSegment is a simple first name
+      if (restTokens.length === 1 && remainingFromLast.length === 0) {
+        // Simple format: "Last, First" - use restSegment
+        firstName = restTokens[0];
+        middleName = null;
+      }
+    } else {
+      // Standard "Last, First Middle" format
+      firstName = restTokens[0];
+      middleName = restTokens.slice(1).join(" ") || null;
+      lastName = lastSegment;
+    }
   } else {
-    const tokens = normalized.split(/\s+/).filter(Boolean);
+    const tokens = normalized.split(/\s+/).filter(Boolean).map(token => {
+      // Remove leading and trailing special characters from each token
+      let cleaned = token;
+      while (cleaned && /^[\-', .#0-9]/.test(cleaned)) {
+        cleaned = cleaned.slice(1);
+      }
+      while (cleaned && /[\-', .]$/.test(cleaned)) {
+        cleaned = cleaned.slice(0, -1);
+      }
+      return cleaned;
+    }).filter(Boolean);
     if (tokens.length < 2) return null;
     const allUpper = tokens.every((token) => token === token.toUpperCase());
     if (allUpper) {
@@ -302,7 +595,7 @@ function parsePersonNameBasic(name) {
     first_name: formattedFirst,
     last_name: formattedLast,
     middle_name: formattedMiddle || null,
-    prefix_name: prefix ? formatNameValue(prefix) : null,
+    prefix_name: prefix ? formatPrefixValue(prefix) : null,
     suffix_name: suffix ? formatSuffixValue(suffix) : null,
   };
 }
@@ -439,18 +732,22 @@ function classifyOwners(entries) {
     const s = collapseWs(raw);
     if (!s) continue;
 
-    const hasEtAl = /\bet\s*al\b/i.test(s);
+    // Check for "et al" variations including "ET. AL." with periods
+    const hasEtAl = /\bet\.?\s*al\.?\b/i.test(s);
+
+    // If contains "et al", mark as invalid and skip parsing
+    if (hasEtAl) {
+      invalidOwners.push({
+        raw: s,
+        reason: "contains_et_al",
+      });
+      continue;
+    }
 
     if (!looksLikeCompany(s) && /(?:\s&\s|\sand\s|\/)/i.test(s)) {
       const people = parseAmpersandNames(s, mailingAddress);
       if (people.length) {
         for (const p of people) validOwners.push(p);
-        if (hasEtAl) {
-          invalidOwners.push({
-            raw: s,
-            reason: "contains_et_al",
-          });
-        }
       } else {
         invalidOwners.push({
           raw: s,
@@ -466,9 +763,6 @@ function classifyOwners(entries) {
         name: collapseWs(s),
         mailing_address: mailingAddress,
       });
-      if (hasEtAl) {
-        invalidOwners.push({ raw: s, reason: "contains_et_al" });
-      }
       continue;
     }
 
@@ -476,9 +770,6 @@ function classifyOwners(entries) {
     if (person) {
       person.mailing_address = mailingAddress;
       validOwners.push(person);
-      if (hasEtAl) {
-        invalidOwners.push({ raw: s, reason: "contains_et_al" });
-      }
     } else {
       invalidOwners.push({ raw: s, reason: "unclassifiable_owner" });
     }
@@ -497,10 +788,10 @@ function classifyOwners(entries) {
         existing.mailing_address = o.mailing_address;
       }
       if (!existing.prefix_name && o.prefix_name) {
-        existing.prefix_name = o.prefix_name;
+        existing.prefix_name = formatPrefixValue(o.prefix_name);
       }
       if (!existing.suffix_name && o.suffix_name) {
-        existing.suffix_name = o.suffix_name;
+        existing.suffix_name = formatSuffixValue(o.suffix_name);
       }
       if (!existing.middle_name && o.middle_name) {
         existing.middle_name = o.middle_name;

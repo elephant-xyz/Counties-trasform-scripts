@@ -577,11 +577,6 @@ function extractProperty($) {
     build_status: build_status,
     structure_form: structure_form,
     ownership_estate_type: ownership_estate_type,
-    number_of_units_type: null,
-    livable_floor_area: livable_floor_area,
-    area_under_air: area_under_air,
-    total_area: total_area,
-    property_effective_built_year: null,
     number_of_units: null,
     subdivision: null,
     zoning: null,
@@ -850,32 +845,32 @@ const deedCodeMap = {
   VPD: "Vacation of Plat Deed",
   AOC: "Assignment of Contract",
   ROC: "Release of Contract",
-  LC: "Land Contract",
-  MTG: "Mortgage",
-  LIS: "Lis Pendens",
-  EASE: "Easement",
-  AGMT: "Agreement",
-  AFF: "Affidavit",
-  ORD: "Order",
-  CERT: "Certificate",
-  RES: "Resolution",
-  DECL: "Declaration",
-  COV: "Covenant",
-  SUB: "Subordination",
-  MOD: "Modification",
-  REL: "Release",
-  ASSG: "Assignment",
-  LEAS: "Lease",
-  TR: "Trust",
-  WILL: "Will",
-  PROB: "Probate",
-  JUDG: "Judgment",
-  LIEN: "Lien",
-  SAT: "Satisfaction",
-  PART: "Partition",
-  EXCH: "Exchange",
-  CONV: "Conveyance",
-  OTH: "Other",
+  LC: "Contract for Deed",
+  MTG: "Miscellaneous",
+  LIS: "Miscellaneous",
+  EASE: "Miscellaneous",
+  AGMT: "Miscellaneous",
+  AFF: "Miscellaneous",
+  ORD: "Miscellaneous",
+  CERT: "Miscellaneous",
+  RES: "Miscellaneous",
+  DECL: "Miscellaneous",
+  COV: "Miscellaneous",
+  SUB: "Miscellaneous",
+  MOD: "Miscellaneous",
+  REL: "Miscellaneous",
+  ASSG: "Miscellaneous",
+  LEAS: "Miscellaneous",
+  TR: "Miscellaneous",
+  WILL: "Miscellaneous",
+  PROB: "Miscellaneous",
+  JUDG: "Miscellaneous",
+  LIEN: "Miscellaneous",
+  SAT: "Miscellaneous",
+  PART: "Miscellaneous",
+  EXCH: "Miscellaneous",
+  CONV: "Miscellaneous",
+  OTH: "Miscellaneous",
 };
 
 function mapDeedCode(code) {
@@ -930,6 +925,260 @@ function extractSalesAndDeeds($) {
     }
   });
   return sales;
+}
+
+function cleanNameField(value) {
+  if (!value) return null;
+
+  let cleaned = String(value).trim();
+  if (!cleaned) return null;
+
+  // Remove leading special characters that don't match pattern ^[A-Z]
+  while (cleaned && /^[\-', .#0-9\s]/.test(cleaned)) {
+    cleaned = cleaned.slice(1).trim();
+  }
+
+  // Remove trailing special characters
+  while (cleaned && /[\-', .\s]$/.test(cleaned)) {
+    cleaned = cleaned.slice(0, -1).trim();
+  }
+
+  // If empty after cleaning, return null
+  if (!cleaned) return null;
+
+  // Ensure first character is uppercase
+  if (cleaned.length > 0 && cleaned[0] !== cleaned[0].toUpperCase()) {
+    cleaned = cleaned[0].toUpperCase() + cleaned.slice(1);
+  }
+
+  return cleaned;
+}
+
+function normalizeSuffixName(suffix) {
+  if (!suffix) return null;
+
+  // Remove dots and commas, then trim
+  const cleaned = String(suffix).replace(/\./g, "").replace(/,/g, "").trim();
+  if (!cleaned) return null;
+
+  // Check for "et al" variations - these are not valid suffixes
+  if (/^et\s*al$/i.test(cleaned)) {
+    return null;
+  }
+
+  // Map to Elephant schema enum values
+  const suffixMap = {
+    'JR': 'Jr.',
+    'Jr': 'Jr.',
+    'jr': 'Jr.',
+    'SR': 'Sr.',
+    'Sr': 'Sr.',
+    'sr': 'Sr.',
+    'II': 'II',
+    'III': 'III',
+    'IV': 'IV',
+    'PHD': 'PhD',
+    'PhD': 'PhD',
+    'phd': 'PhD',
+    'MD': 'MD',
+    'Md': 'MD',
+    'md': 'MD',
+    'ESQ': 'Esq.',
+    'Esq': 'Esq.',
+    'esq': 'Esq.',
+    'ESQUIRE': 'Esq.',
+    'Esquire': 'Esq.',
+    'esquire': 'Esq.',
+    'JD': 'JD',
+    'Jd': 'JD',
+    'jd': 'JD',
+    'LLM': 'LLM',
+    'Llm': 'LLM',
+    'llm': 'LLM',
+    'MBA': 'MBA',
+    'Mba': 'MBA',
+    'mba': 'MBA',
+    'RN': 'RN',
+    'Rn': 'RN',
+    'rn': 'RN',
+    'DDS': 'DDS',
+    'Dds': 'DDS',
+    'dds': 'DDS',
+    'DVM': 'DVM',
+    'Dvm': 'DVM',
+    'dvm': 'DVM',
+    'CFA': 'CFA',
+    'Cfa': 'CFA',
+    'cfa': 'CFA',
+    'CPA': 'CPA',
+    'Cpa': 'CPA',
+    'cpa': 'CPA',
+    'PE': 'PE',
+    'Pe': 'PE',
+    'pe': 'PE',
+    'PMP': 'PMP',
+    'Pmp': 'PMP',
+    'pmp': 'PMP',
+    'EMERITUS': 'Emeritus',
+    'Emeritus': 'Emeritus',
+    'emeritus': 'Emeritus',
+    'RET': 'Ret.',
+    'Ret': 'Ret.',
+    'ret': 'Ret.',
+    'RETIRED': 'Ret.',
+    'Retired': 'Ret.',
+    'retired': 'Ret.',
+  };
+
+  const upper = cleaned.toUpperCase();
+
+  // Check uppercase version first
+  if (suffixMap[upper]) {
+    return suffixMap[upper];
+  }
+
+  // Check original case as fallback
+  if (suffixMap[cleaned]) {
+    return suffixMap[cleaned];
+  }
+
+  // Additional safety check: if the value is literally "Jr" without period, return "Jr."
+  // This should never happen due to the mappings above, but acts as a failsafe
+  if (cleaned === 'Jr') return 'Jr.';
+  if (cleaned === 'Sr') return 'Sr.';
+
+  // If not in map, return null
+  return null;
+}
+
+function normalizePrefixName(prefix) {
+  if (!prefix) return null;
+
+  // Remove dots and commas, then trim
+  const cleaned = String(prefix).replace(/\./g, "").replace(/,/g, "").trim();
+  if (!cleaned) return null;
+
+  // Map to Elephant schema enum values
+  const prefixMap = {
+    'MR': 'Mr.',
+    'Mr': 'Mr.',
+    'mr': 'Mr.',
+    'MRS': 'Mrs.',
+    'Mrs': 'Mrs.',
+    'mrs': 'Mrs.',
+    'MS': 'Ms.',
+    'Ms': 'Ms.',
+    'ms': 'Ms.',
+    'MISS': 'Miss',
+    'Miss': 'Miss',
+    'miss': 'Miss',
+    'MX': 'Mx.',
+    'Mx': 'Mx.',
+    'mx': 'Mx.',
+    'DR': 'Dr.',
+    'Dr': 'Dr.',
+    'dr': 'Dr.',
+    'DOCTOR': 'Dr.',
+    'Doctor': 'Dr.',
+    'doctor': 'Dr.',
+    'PROF': 'Prof.',
+    'Prof': 'Prof.',
+    'prof': 'Prof.',
+    'PROFESSOR': 'Prof.',
+    'Professor': 'Prof.',
+    'professor': 'Prof.',
+    'REV': 'Rev.',
+    'Rev': 'Rev.',
+    'rev': 'Rev.',
+    'REVEREND': 'Rev.',
+    'Reverend': 'Rev.',
+    'reverend': 'Rev.',
+    'FR': 'Fr.',
+    'Fr': 'Fr.',
+    'fr': 'Fr.',
+    'FATHER': 'Fr.',
+    'Father': 'Fr.',
+    'father': 'Fr.',
+    'SR': 'Sr.',
+    'SISTER': 'Sr.',
+    'Sister': 'Sr.',
+    'sister': 'Sr.',
+    'BR': 'Br.',
+    'Br': 'Br.',
+    'br': 'Br.',
+    'BROTHER': 'Br.',
+    'Brother': 'Br.',
+    'brother': 'Br.',
+    'CAPT': 'Capt.',
+    'Capt': 'Capt.',
+    'capt': 'Capt.',
+    'CAPTAIN': 'Capt.',
+    'Captain': 'Capt.',
+    'captain': 'Capt.',
+    'COL': 'Col.',
+    'Col': 'Col.',
+    'col': 'Col.',
+    'COLONEL': 'Col.',
+    'Colonel': 'Col.',
+    'colonel': 'Col.',
+    'MAJ': 'Maj.',
+    'Maj': 'Maj.',
+    'maj': 'Maj.',
+    'MAJOR': 'Maj.',
+    'Major': 'Maj.',
+    'major': 'Maj.',
+    'LT': 'Lt.',
+    'Lt': 'Lt.',
+    'lt': 'Lt.',
+    'LIEUTENANT': 'Lt.',
+    'Lieutenant': 'Lt.',
+    'lieutenant': 'Lt.',
+    'SGT': 'Sgt.',
+    'Sgt': 'Sgt.',
+    'sgt': 'Sgt.',
+    'SERGEANT': 'Sgt.',
+    'Sergeant': 'Sgt.',
+    'sergeant': 'Sgt.',
+    'HON': 'Hon.',
+    'Hon': 'Hon.',
+    'hon': 'Hon.',
+    'HONORABLE': 'Hon.',
+    'Honorable': 'Hon.',
+    'honorable': 'Hon.',
+    'JUDGE': 'Judge',
+    'Judge': 'Judge',
+    'judge': 'Judge',
+    'RABBI': 'Rabbi',
+    'Rabbi': 'Rabbi',
+    'rabbi': 'Rabbi',
+    'IMAM': 'Imam',
+    'Imam': 'Imam',
+    'imam': 'Imam',
+    'SHEIKH': 'Sheikh',
+    'Sheikh': 'Sheikh',
+    'sheikh': 'Sheikh',
+    'SIR': 'Sir',
+    'Sir': 'Sir',
+    'sir': 'Sir',
+    'DAME': 'Dame',
+    'Dame': 'Dame',
+    'dame': 'Dame',
+  };
+
+  const upper = cleaned.toUpperCase();
+
+  // Check uppercase version first
+  if (prefixMap[upper]) {
+    return prefixMap[upper];
+  }
+
+  // Check original case as fallback
+  if (prefixMap[cleaned]) {
+    return prefixMap[cleaned];
+  }
+
+  // If not in map (e.g., "Bishop"), return null
+  return null;
 }
 
 function normalizeOwnerKeyForIndex(owner) {
@@ -1052,13 +1301,44 @@ function writeOwners(
         if (!owner.first_name || !owner.last_name) return null;
         personIdx += 1;
         const filePath = path.join(dataDir, `person_${personIdx}.json`);
+
+        // Clean all name fields to ensure they match the schema pattern ^[A-Z][a-zA-Z\s\-',.]*$
+        const cleanedFirstName = cleanNameField(owner.first_name);
+        const cleanedLastName = cleanNameField(owner.last_name);
+        const cleanedMiddleName = cleanNameField(owner.middle_name);
+
+        // If first or last name becomes null after cleaning, skip this person
+        if (!cleanedFirstName || !cleanedLastName) return null;
+
+        // Validate prefix_name - ensure it's either null or a valid enum value
+        let validatedPrefix = normalizePrefixName(owner.prefix_name);
+        const validPrefixes = new Set([
+          'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Mx.', 'Dr.', 'Prof.', 'Rev.',
+          'Fr.', 'Sr.', 'Br.', 'Capt.', 'Col.', 'Maj.', 'Lt.', 'Sgt.',
+          'Hon.', 'Judge', 'Rabbi', 'Imam', 'Sheikh', 'Sir', 'Dame'
+        ]);
+        if (validatedPrefix !== null && !validPrefixes.has(validatedPrefix)) {
+          validatedPrefix = null;
+        }
+
+        // Validate suffix_name - ensure it's either null or a valid enum value
+        let validatedSuffix = normalizeSuffixName(owner.suffix_name);
+        const validSuffixes = new Set([
+          'Jr.', 'Sr.', 'II', 'III', 'IV', 'PhD', 'MD', 'Esq.',
+          'JD', 'LLM', 'MBA', 'RN', 'DDS', 'DVM', 'CFA', 'CPA',
+          'PE', 'PMP', 'Emeritus', 'Ret.'
+        ]);
+        if (validatedSuffix !== null && !validSuffixes.has(validatedSuffix)) {
+          validatedSuffix = null;
+        }
+
         writeJson(filePath, {
           birth_date: owner.birth_date ?? null,
-          first_name: owner.first_name,
-          last_name: owner.last_name,
-          middle_name: owner.middle_name ?? null,
-          prefix_name: owner.prefix_name ?? null,
-          suffix_name: owner.suffix_name ?? null,
+          first_name: cleanedFirstName,
+          last_name: cleanedLastName,
+          middle_name: cleanedMiddleName,
+          prefix_name: validatedPrefix,
+          suffix_name: validatedSuffix,
           us_citizenship_status: owner.us_citizenship_status ?? null,
           veteran_status: owner.veteran_status ?? null,
         });
