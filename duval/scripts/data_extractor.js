@@ -71,52 +71,20 @@ function titleCaseNamePart(part) {
   if (!part) return null;
   const trimmed = String(part).trim();
   if (trimmed === "") return null;
-
-  // Remove invalid characters like "/" that don't match the schema pattern
-  // Pattern allows: letters, spaces, hyphens, apostrophes, commas, and periods
-  const cleaned = trimmed
-    .replace(/[^a-zA-Z\s\-',.]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (cleaned === "") return null;
-
-  // Roman numerals and common suffixes that should stay uppercase
-  const preserveUppercase = new Set([
-    "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
-    "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
-    "JR", "SR", "ESQ", "PHD", "MD", "DDS", "DVM", "LLC", "INC", "LTD", "LP", "LLP"
-  ]);
-
-  const result = cleaned
+  return trimmed
     .toLowerCase()
     .split(/\s+/)
-    .map((word) => {
-      // Check if the word (without trailing punctuation) should be preserved in uppercase
-      const wordUpper = word.replace(/[,.]$/g, "").toUpperCase();
-      const trailingPunct = word.match(/[,.]$/)?.[0] || "";
-
-      if (preserveUppercase.has(wordUpper)) {
-        return wordUpper + trailingPunct;
-      }
-
-      return word
-        .split(/([-',.])/)
+    .map((word) =>
+      word
+        .split(/([-'.])/)
         .map((segment) =>
-          /[-',.]/.test(segment)
+          /[-'.]/.test(segment)
             ? segment
             : segment.charAt(0).toUpperCase() + segment.slice(1),
         )
-        .join("");
-    })
+        .join(""),
+    )
     .join(" ");
-
-  // Remove any trailing or leading separators that don't belong
-  const finalResult = result
-    .replace(/^[\s\-',.]+/, "")  // Remove leading separators
-    .replace(/[\s\-',.]+$/, "");  // Remove trailing separators
-
-  return finalResult || null;
 }
 
 function cleanMoneyToNumber(str) {
@@ -263,26 +231,6 @@ function findEnumMatch(enumMap, rawValue) {
     }
   }
   return null;
-}
-
-// Maps primary exterior wall materials to secondary accent/trim types
-function mapPrimaryToSecondaryWallMaterial(primaryMaterial) {
-  if (!primaryMaterial) return null;
-
-  const mapping = {
-    "Brick": "Brick Accent",
-    "Natural Stone": "Stone Accent",
-    "Manufactured Stone": "Stone Accent",
-    "Stucco": "Stucco Accent",
-    "Vinyl Siding": "Vinyl Accent",
-    "Wood Siding": "Wood Trim",
-    "Fiber Cement Siding": "Wood Trim",
-    "Metal Siding": "Metal Trim",
-    "Concrete Block": "Decorative Block",
-    "EIFS": "Stucco Accent",
-  };
-
-  return mapping[primaryMaterial] || null;
 }
 
 const LAYOUT_SPACE_TYPE_VALUES = [
@@ -1721,7 +1669,7 @@ function extractStructure($) {
           }
           if (/vertical\s+sheet/i.test(detail)) {
             if (result.exterior_wall_material_primary)
-              result.exterior_wall_material_secondary = "Wood Trim";
+              result.exterior_wall_material_secondary = "Wood Siding";
             else result.exterior_wall_material_primary = "Wood Siding";
           }
         }
@@ -1754,9 +1702,7 @@ function extractStructure($) {
 function extractLot($, legalRows, totalAreaStr) {
   let lot_area_sqft = null;
   const ta = textOrNull(totalAreaStr);
-  const taNumber = safeParseNumber(ta);
-  if (taNumber != null && taNumber > 0)
-    lot_area_sqft = Math.round(taNumber);
+  if (ta && /^\d+$/.test(ta)) lot_area_sqft = Number(ta);
   return {
     lot_type: null,
     lot_length_feet: null,
@@ -1894,7 +1840,7 @@ function applyExtraFeaturesToStructure(features, structureRecord) {
           structureRecord.exterior_wall_material_primary !== wallMatch &&
           !structureRecord.exterior_wall_material_secondary
         )
-          structureRecord.exterior_wall_material_secondary = mapPrimaryToSecondaryWallMaterial(wallMatch);
+          structureRecord.exterior_wall_material_secondary = wallMatch;
       }
 
       const floorMatch = findEnumMatch(
@@ -2012,7 +1958,7 @@ function main() {
   const propertyKey = parcelIdentifier ? `property_${parcelIdentifier}` : null;
   const propertyUseText = textOrNull($("#ctl00_cphBody_lblPropertyUse").text());
   const subdivision = textOrNull($("#ctl00_cphBody_lblSubdivision").text());
-  const totalAreaRaw = textOrNull($("#ctl00_cphBody_lblTotalArea1").text());
+  const totalArea = textOrNull($("#ctl00_cphBody_lblTotalArea1").text());
   const mailingAddress = extractMailingAddress($);
   const extraFeatures = extractExtraFeatures($);
 
@@ -2122,14 +2068,7 @@ function main() {
   if (parcelIdentifier && propertyTypeCategory) {
     const heatedAreaNumber = safeParseNumber(heatedAreaTotal);
     const heatedAreaString =
-      heatedAreaNumber != null && heatedAreaNumber >= 10
-        ? String(Math.round(heatedAreaNumber))
-        : null;
-    const totalAreaNumber = safeParseNumber(totalAreaRaw);
-    const totalAreaString =
-      totalAreaNumber != null && totalAreaNumber >= 10
-        ? String(Math.round(totalAreaNumber))
-        : null;
+      heatedAreaNumber != null ? String(Math.round(heatedAreaNumber)) : null;
     const propertyPayload = {
       parcel_identifier: parcelIdentifier,
       property_type: propertyTypeCategory,
@@ -2145,32 +2084,54 @@ function main() {
       livable_floor_area: heatedAreaString,
       area_under_air: heatedAreaString,
       subdivision: subdivision || null,
-      total_area: totalAreaString,
+      total_area: totalArea || null,
       zoning: zoning || null,
     };
     writeJSON("property.json", propertyPayload);
   }
 
+  const addrPartsFull =
+    unnormalizedAddress && unnormalizedAddress.full_address
+      ? parseAddressPartsFromFull(unnormalizedAddress.full_address)
+      : {};
+  const cityStateZipFromHtml = parseCityStateZipFromHtml($);
   const trs = parsePLSTrsFromLegalRows(legalRows);
   const lotStr = parseLotFromLegalRows(legalRows);
-  const fullAddress = unnormalizedAddress && unnormalizedAddress.full_address
-    ? unnormalizedAddress.full_address
-    : null;
-
   writeJSON("address.json", {
-    unnormalized_address: fullAddress,
+    street_number: addrPartsFull.street_number || null,
+    street_name: addrPartsFull.street_name || null,
+    street_suffix_type: addrPartsFull.street_suffix_type || null,
+    street_pre_directional_text:
+      addrPartsFull.street_pre_directional_text || null,
+    street_post_directional_text:
+      addrPartsFull.street_post_directional_text || null,
+    unit_identifier: addrPartsFull.unit_identifier || null,
+    city_name:
+      addrPartsFull.city_name || cityStateZipFromHtml.city_name || null,
+    state_code:
+      addrPartsFull.state_code || cityStateZipFromHtml.state_code || null,
+    postal_code:
+      addrPartsFull.postal_code || cityStateZipFromHtml.postal_code || null,
+    plus_four_postal_code:
+      addrPartsFull.plus_four_postal_code ||
+      cityStateZipFromHtml.plus_four_postal_code ||
+      null,
     county_name: "Duval",
+    country_code: "US",
+    latitude: null,
+    longitude: null,
     lot: lotStr || null,
+    municipality_name: null,
     range: trs.range,
+    route_number: null,
     section: trs.section,
     township: trs.township,
+    block: null,
   });
 
-  // Create property_has_address relationship
-  writeJSON("relationship_property_has_address.json", {
-    from: { "/": "./property.json" },
-    to: { "/": "./address.json" },
-  });
+  if (mailingAddress) {
+    writeJSON("mailing_address.json", mailingAddress);
+  }
 
   const sales = [];
   $("#ctl00_cphBody_gridSalesHistory tr").each((i, el) => {
@@ -2341,18 +2302,16 @@ function main() {
       currentOwners.forEach((owner) => {
         if (owner.type === "person") {
           const fileName = `person_${personPaths.length + 1}.json`;
-          const firstName = titleCaseNamePart(owner.first_name);
-          const lastName = titleCaseNamePart(owner.last_name);
-          if (!firstName || !lastName) return;
           const payload = {
-            first_name: firstName,
-            last_name: lastName,
-            middle_name: null,
-            prefix_name: null,
-            suffix_name: null,
-            birth_date: null,
-            us_citizenship_status: null,
-            veteran_status: null,
+            first_name: titleCaseNamePart(owner.first_name),
+            middle_name: titleCaseNamePart(owner.middle_name),
+            last_name: titleCaseNamePart(owner.last_name),
+            prefix_name: owner.prefix_name || null,
+            suffix_name: owner.suffix || null,
+            birth_date: owner.birth_date || null,
+            us_citizenship_status: owner.us_citizenship_status || null,
+            veteran_status:
+              owner.veteran_status != null ? Boolean(owner.veteran_status) : null,
             request_identifier:
               (unnormalizedAddress && unnormalizedAddress.request_identifier) ||
               parcelIdentifier,
@@ -2361,19 +2320,6 @@ function main() {
                 ? unnormalizedAddress.source_http_request
                 : null,
           };
-          const middleName = titleCaseNamePart(owner.middle_name);
-          payload.middle_name = middleName;
-          const prefixName = titleCaseNamePart(owner.prefix_name);
-          payload.prefix_name = prefixName;
-          // Don't apply titleCaseNamePart to suffix - ownerMapping.js already provides it in schema-compliant format
-          payload.suffix_name = owner.suffix || null;
-          payload.birth_date = owner.birth_date || null;
-          payload.us_citizenship_status =
-            owner.us_citizenship_status != null
-              ? owner.us_citizenship_status
-              : null;
-          payload.veteran_status =
-            owner.veteran_status != null ? Boolean(owner.veteran_status) : null;
           writeJSON(fileName, payload);
           personPaths.push(`./${fileName}`);
         } else if (owner.type === "company") {
@@ -2403,9 +2349,7 @@ function main() {
         });
       }
 
-      if (mailingAddress && (personPaths.length > 0 || companyPaths.length > 0)) {
-        // Only write mailing_address.json if there are owners to create relationships with
-        writeJSON("mailing_address.json", mailingAddress);
+      if (mailingAddress) {
         const mailingPath = "./mailing_address.json";
         personPaths.forEach((personPath) => {
         const relName = relationshipFileName(personPath, mailingPath);
@@ -2511,28 +2455,17 @@ function main() {
   if (structureRecords.length === 0) {
     const fallbackRecord = extractStructure($);
     if (fallbackRecord && typeof fallbackRecord === "object") {
-      // Check if the structure has meaningful data
-      // Skip if number_of_buildings is 0 or null and no other meaningful data exists
-      const hasBuildings = fallbackRecord.number_of_buildings != null &&
-                          fallbackRecord.number_of_buildings !== 0;
-      const hasMeaningfulData = Object.entries(fallbackRecord).some(([key, value]) => {
-        if (key === 'number_of_buildings') return false; // Already checked above
-        return value != null && value !== 0;
+      const fallbackNumberText = textOrNull(
+        $("#ctl00_cphBody_repeaterBuilding_ctl00_lblBuildingNumber").text(),
+      );
+      const buildingNumber = normalizeBuildingNumber(
+        fallbackRecord.building_number ?? fallbackNumberText,
+        1,
+      );
+      structureRecords.push({
+        record: fallbackRecord,
+        buildingNumber,
       });
-
-      if (hasBuildings || hasMeaningfulData) {
-        const fallbackNumberText = textOrNull(
-          $("#ctl00_cphBody_repeaterBuilding_ctl00_lblBuildingNumber").text(),
-        );
-        const buildingNumber = normalizeBuildingNumber(
-          fallbackRecord.building_number ?? fallbackNumberText,
-          1,
-        );
-        structureRecords.push({
-          record: fallbackRecord,
-          buildingNumber,
-        });
-      }
     }
   }
 
@@ -2667,7 +2600,7 @@ function main() {
     });
   });
 
-  const lotObj = extractLot($, legalRows, totalAreaRaw);
+  const lotObj = extractLot($, legalRows, totalArea);
   writeJSON("lot.json", lotObj);
 }
 
