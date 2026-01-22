@@ -162,20 +162,6 @@ function mapRoofCover(token) {
   return null;
 }
 
-function validateRoofDesignType(value) {
-  // Valid enum values according to Elephant schema for roof_design_type
-  const validValues = [
-    "Gable", "Hip", "Flat", "Mansard", "Gambrel", "Shed", "Saltbox",
-    "Butterfly", "Bonnet", "Clerestory", "Dome", "Barrel", "Combination"
-  ];
-
-  // If value is null, undefined, empty string, or not in valid values, return null
-  if (!value || typeof value !== 'string' || !validValues.includes(value)) {
-    return null;
-  }
-  return value;
-}
-
 function mapRoofStructureAndDesign(token) {
   if (!token) {
     return [null, null];
@@ -191,17 +177,9 @@ function mapRoofStructureAndDesign(token) {
     "Steel Frame": ["Steel Truss", null],
     "Saw Tooth": [null, null],
     "Gambrel": [null, "Gambrel"],
-    "Reinforced Concrete": ["Concrete Beam", null],
-    "Prestressed Concrete": ["Concrete Beam", null],
-    "Bow Trust": [null, null],
-    "Gable": [null, "Gable"],
-    "Hip": [null, "Hip"],
-    "Saltbox": [null, "Saltbox"],
-    "Butterfly": [null, "Butterfly"],
-    "Bonnet": [null, "Bonnet"],
-    "Clerestory": [null, "Clerestory"],
-    "Dome": [null, "Dome"],
-    "Barrel": [null, "Barrel"]
+    "Reinforced Concrete": [null, "Concrete Beam"],
+    "Prestressed Concrete": [null, "Concrete Beam"],
+    "Bow Trust": [null, null]
   }
   if (token in roofMapping) {
     return roofMapping[token];
@@ -262,66 +240,51 @@ function buildStructureRecord($, buildings) {
     if (b["Exterior Wall"]) {
       const exteriorWallTokens = b["Exterior Wall"].split(/[,;]/);
       for(let extToken of exteriorWallTokens) {
-        const trimmedToken = extToken.trim();
-        if (trimmedToken) {
-          exterior_wall_material_primary = mapExteriorWallPrimary(trimmedToken);
-          if (exterior_wall_material_primary) {
-            break;
-          }
+        exterior_wall_material_primary = mapExteriorWallPrimary(extToken);
+        if (exterior_wall_material_primary) {
+          break;
         }
       }
     }
     if (b["Interior Wall"]) {
       const interiorWallTokens = b["Interior Wall"].split(/[,;]/);
       for(let intToken of interiorWallTokens) {
-        const trimmedToken = intToken.trim();
-        if (trimmedToken) {
-          interior_wall_surface_material_primary = mapInteriorWallPrimary(trimmedToken);
-          if (interior_wall_surface_material_primary) {
-            break;
-          }
+        interior_wall_surface_material_primary = mapInteriorWallPrimary(intToken);
+        if (interior_wall_surface_material_primary) {
+          break;
         }
       }
     }
     if (b["Roof Cover"]) {
       const roofCoverTokens = b["Roof Cover"].split(/[,;]/);
       for(let roofCoverToken of roofCoverTokens) {
-        const trimmedToken = roofCoverToken.trim();
-        if (trimmedToken) {
-          roof_covering_material = mapRoofCover(trimmedToken);
-          if (roof_covering_material) {
-            break;
-          }
+        roof_covering_material = mapRoofCover(roofCoverToken);
+        if (roof_covering_material) {
+          break;
         }
       }
     }
     if (b["Roof Structure"]) {
       const roofTokens = b["Roof Structure"].split(/[,;]/);
       for(let roofToken of roofTokens) {
-        const trimmedToken = roofToken.trim();
-        if (trimmedToken) {
-          let roof_structure_design_value = mapRoofStructureAndDesign(trimmedToken);
-          if (!roof_structure_design[0]) {
-            roof_structure_design[0] = roof_structure_design_value[0];
-          }
-          if (!roof_structure_design[1]) {
-            roof_structure_design[1] = roof_structure_design_value[1];
-          }
-          if (roof_structure_design[0] && roof_structure_design[1]) {
-            break;
-          }
+        let roof_structure_design_value = mapRoofStructureAndDesign(roofToken);
+        if (!roof_structure_design[0]) {
+          roof_structure_design[0] = roof_structure_design_value[0];
+        }
+        if (!roof_structure_design[1]) {
+          roof_structure_design[1] = roof_structure_design_value[1];
+        }
+        if (roof_structure_design[0] && roof_structure_design[1]) {
+          break;
         }
       }
     }
     if (b["Interior Flooring"]) {
       const floorTokens = b["Interior Flooring"].split(/[,;]/);
       for(let floorToken of floorTokens) {
-        const trimmedToken = floorToken.trim();
-        if (trimmedToken) {
-          flooring_material_primary = mapFloor(trimmedToken);
-          if (flooring_material_primary) {
-            break;
-          }
+        flooring_material_primary = mapFloor(floorToken);
+        if (flooring_material_primary) {
+          break;
         }
       }
     }
@@ -371,7 +334,7 @@ function buildStructureRecord($, buildings) {
       roof_condition: null,
       roof_covering_material: roof_covering_material,
       roof_date: null,
-      roof_design_type: validateRoofDesignType(roof_structure_design[1]),
+      roof_design_type: roof_structure_design[1],
       roof_material_type: null,
       roof_structure_material: roof_structure_design[0],
       roof_underlayment_type: null,
