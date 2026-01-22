@@ -292,16 +292,19 @@ const structureData = fs.existsSync(structureDataPath)
   const ownerCompanyFiles = [];
   const personRegistry = new Map();
   const companyRegistry = new Map();
+  const personByPath = new Map();
+  const companyByPath = new Map();
   let utilityFilePath = null;
   let structureFilePath = null;
   const propertyRelationshipQueue = [];
 
   function ensurePersonFile(personPayload) {
     const key = normalizePersonKey(personPayload);
-    if (personRegistry.has(key)) return personRegistry.get(key);
+    if (personRegistry.has(key)) return personRegistry.get(key).relPath;
 
     personIndex += 1;
     const relPath = `./person_${personIndex}.json`;
+    const filePath = path.join(dataDir, `person_${personIndex}.json`);
     const record = {
       source_http_request: {
         method: "GET",
@@ -326,22 +329,131 @@ const structureData = fs.existsSync(structureDataPath)
       us_citizenship_status: null,
       veteran_status: null,
     };
-    writeJson(path.join("data", `person_${personIndex}.json`), record);
-    personRegistry.set(key, relPath);
+    writeJson(filePath, record);
+    const entry = {
+      key,
+      relPath,
+      filePath,
+      hasSalesRelationship: false,
+    };
+    personRegistry.set(key, entry);
+    personByPath.set(relPath, entry);
     return relPath;
   }
 
   function ensureCompanyFile(companyPayload) {
     const key = normalizeCompanyKey(companyPayload.name);
-    if (companyRegistry.has(key)) return companyRegistry.get(key);
+    if (companyRegistry.has(key)) return companyRegistry.get(key).relPath;
 
     companyIndex += 1;
     const relPath = `./company_${companyIndex}.json`;
-    writeJson(path.join("data", `company_${companyIndex}.json`), {
+    const filePath = path.join(dataDir, `company_${companyIndex}.json`);
+    writeJson(filePath, {
       name: companyPayload.name ? formatNameToPattern(companyPayload.name) : null,
     });
-    companyRegistry.set(key, relPath);
+    const entry = {
+      key,
+      relPath,
+      filePath,
+      hasSalesRelationship: false,
+    };
+    companyRegistry.set(key, entry);
+    companyByPath.set(relPath, entry);
     return relPath;
+  }
+
+  function markPersonSalesRelationship(relPath) {
+    if (!relPath) return;
+    const entry = personByPath.get(relPath);
+    if (entry) entry.hasSalesRelationship = true;
+  }
+
+  function markCompanySalesRelationship(relPath) {
+    if (!relPath) return;
+    const entry = companyByPath.get(relPath);
+    if (entry) entry.hasSalesRelationship = true;
+  }
+
+  function removeRelationshipsForTarget(relPath) {
+    if (!relPath || !fs.existsSync(dataDir)) return;
+    const entries = fs.readdirSync(dataDir).filter(
+      (fileName) =>
+        fileName.startsWith("relationship_") && fileName.endsWith(".json"),
+    );
+    entries.forEach((fileName) => {
+      const fullPath = path.join(dataDir, fileName);
+      let relData = null;
+      try {
+        relData = readJson(fullPath);
+      } catch (err) {
+        return;
+      }
+      const fromRef = relData?.from?.["/"];
+      const toRef = relData?.to?.["/"];
+      if (fromRef === relPath || toRef === relPath) {
+        try {
+          fs.unlinkSync(fullPath);
+        } catch (unlinkErr) {
+          console.error(`Failed to remove relationship file ${fullPath}:`, unlinkErr);
+        }
+      }
+    });
+  }
+
+  function pruneEntitiesWithoutSalesLinks() {
+    const orphanPersonEntries = [];
+    personByPath.forEach((entry) => {
+      if (!entry.hasSalesRelationship) orphanPersonEntries.push(entry);
+    });
+
+    orphanPersonEntries.forEach((entry) => {
+      if (fs.existsSync(entry.filePath)) {
+        try {
+          fs.unlinkSync(entry.filePath);
+        } catch (err) {
+          console.error(`Failed to remove person file ${entry.filePath}:`, err);
+        }
+      }
+      removeRelationshipsForTarget(entry.relPath);
+      personRegistry.delete(entry.key);
+      personByPath.delete(entry.relPath);
+    });
+
+    const orphanCompanyEntries = [];
+    companyByPath.forEach((entry) => {
+      if (!entry.hasSalesRelationship) orphanCompanyEntries.push(entry);
+    });
+
+    orphanCompanyEntries.forEach((entry) => {
+      if (fs.existsSync(entry.filePath)) {
+        try {
+          fs.unlinkSync(entry.filePath);
+        } catch (err) {
+          console.error(`Failed to remove company file ${entry.filePath}:`, err);
+        }
+      }
+      removeRelationshipsForTarget(entry.relPath);
+      companyRegistry.delete(entry.key);
+      companyByPath.delete(entry.relPath);
+    });
+
+    if (orphanPersonEntries.length > 0) {
+      const remaining = new Set(Array.from(personByPath.keys()));
+      ownerPersonFiles.splice(
+        0,
+        ownerPersonFiles.length,
+        ...ownerPersonFiles.filter((relPath) => remaining.has(relPath)),
+      );
+    }
+
+    if (orphanCompanyEntries.length > 0) {
+      const remaining = new Set(Array.from(companyByPath.keys()));
+      ownerCompanyFiles.splice(
+        0,
+        ownerCompanyFiles.length,
+        ...ownerCompanyFiles.filter((relPath) => remaining.has(relPath)),
+      );
+    }
   }
 
   function relationshipFileName(fromPath, toPath) {
@@ -791,28 +903,6 @@ const structureData = fs.existsSync(structureDataPath)
     });
 
     grantorCompanyPaths.forEach((companyPath) => {
-      const relName = relationshipFileName(saleRelPath, companyPath);
-      writeJson(
-        path.join("data", relName),
-        {
-          from: { "/": saleRelPath },
-          to: { "/": companyPath },
-        },
-      );
-    });
-
-    grantorPersonPaths.forEach((personPath) => {
-      const relName = relationshipFileName(saleRelPath, personPath);
-      writeJson(
-        path.join("data", relName),
-        {
-          from: { "/": saleRelPath },
-          to: { "/": personPath },
-        },
-      );
-    });
-
-    grantorCompanyPaths.forEach((companyPath) => {
       markCompanySalesRelationship(companyPath);
       const relName = relationshipFileName(saleRelPath, companyPath);
       writeJson(
@@ -872,6 +962,7 @@ const structureData = fs.existsSync(structureDataPath)
   if (saleHistoryFiles.length > 0) {
     const mostRecentSale = saleHistoryFiles[0];
     ownerCompanyFiles.forEach((companyPath) => {
+      markCompanySalesRelationship(companyPath);
       const relName = relationshipFileName(mostRecentSale, companyPath);
       writeJson(
         path.join("data", relName),
@@ -883,6 +974,7 @@ const structureData = fs.existsSync(structureDataPath)
     });
 
     ownerPersonFiles.forEach((personPath) => {
+      markPersonSalesRelationship(personPath);
       const relName = relationshipFileName(mostRecentSale, personPath);
       writeJson(
         path.join("data", relName),
