@@ -1281,7 +1281,7 @@ function main() {
     if (firstLayoutIndex !== null) {
       const relationshipObj = {
         from: { "/": `./layout_${firstLayoutIndex}.json` },
-        to: { "/": "./utility.json" },
+        to: { "/": "./utility_1.json" },
       };
       fs.writeFileSync(
         path.join(dataDir, "relationship_layout_has_utility.json"),
@@ -1290,7 +1290,7 @@ function main() {
     } else if (fs.existsSync(path.join(dataDir, "property.json"))) {
       const relationshipObj = {
         from: { "/": "./property.json" },
-        to: { "/": "./utility.json" },
+        to: { "/": "./utility_1.json" },
       };
       fs.writeFileSync(
         path.join(dataDir, "relationship_property_has_utility.json"),
@@ -1416,7 +1416,7 @@ function main() {
       JSON.stringify(
         {
           from: { "/": `./layout_${firstLayoutIndex}.json` },
-          to: { "/": "./structure.json" },
+          to: { "/": "./structure_1.json" },
         },
         null,
         2,
@@ -1428,28 +1428,12 @@ function main() {
       JSON.stringify(
         {
           from: { "/": "./property.json" },
-          to: { "/": "./structure.json" },
+          to: { "/": "./structure_1.json" },
         },
         null,
         2,
       ),
     );
-
-    // Also connect utility directly to property if it exists
-    const utility1Path = path.join(dataDir, "utility_1.json");
-    if (fs.existsSync(utility1Path)) {
-      fs.writeFileSync(
-        path.join(dataDir, "relationship_property_has_utility_1.json"),
-        JSON.stringify(
-          {
-            from: { "/": "./property.json" },
-            to: { "/": "./utility_1.json" },
-          },
-          null,
-          2,
-        ),
-      );
-    }
   }
 
   // Tax from Summary and History
