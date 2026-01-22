@@ -44,7 +44,15 @@ function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
 function readJSON(p) {
-  return JSON.parse(fs.readFileSync(p, "utf8"));
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      console.warn(`Warning: File not found: ${p}, returning empty object`);
+      return {};
+    }
+    throw err;
+  }
 }
 function readText(p) {
   return fs.readFileSync(p, "utf8");
@@ -1293,7 +1301,7 @@ function createStructureFiles(seed,parcelIdentifier) {
   } catch (e) {}
   
   if (structuresData && parcelIdentifier) {
-    // console.log("INSIDE")
+    console.log("INSIDE")
     const key = `property_${parcelIdentifier}`;
     const structures = structuresData[key]?.structures || [];
     structures.forEach((struct, idx) => {
@@ -2079,10 +2087,12 @@ async function main() {
     let suffix = null;
 
     // Pre-directional (first token)
-    const firstTok = tokens[0].toUpperCase();
-    if (DIRS.has(firstTok)) {
-      preDir = firstTok;
-      tokens.shift();
+    if (tokens.length > 0) {
+      const firstTok = tokens[0].toUpperCase();
+      if (DIRS.has(firstTok)) {
+        preDir = firstTok;
+        tokens.shift();
+      }
     }
 
     // Suffix (last token that matches a suffix)
@@ -2216,6 +2226,10 @@ async function main() {
     }
   }
 
+  // Lat/Long
+  const lat = unAddr.latitude || null; // latitude
+  const lon = unAddr.longitude || null; // longitude
+
   // Township/Range/Section & Block/Lot
   function parseTRS() {
     let trs =
@@ -2339,58 +2353,14 @@ async function main() {
   const address = {
     ...appendSourceInfo(seed),
     county_name: "Volusia",
-    // latitude: Number.isFinite(lat) ? lat : null,
-    // longitude: Number.isFinite(lon) ? lon : null,
+    latitude: Number.isFinite(lat) ? lat : null,
+    longitude: Number.isFinite(lon) ? lon : null,
     range: trs.range || null,
     section: trs.section || null,
     township:  trs.township || null,
     unnormalized_address: extractTopValue("Physical Address:") || null,
   };
   writeJSON(path.join(dataDir, "address.json"), address);
-
-  // Lat/Long - try unAddr first, then fallback to HTML input fields
-  let lat = unAddr.latitude || null;
-  let lon = unAddr.longitude || null;
-  
-  // If no coordinates in unAddr, extract from HTML input fields
-  if (!lat || !lon) {
-    const xcoordMatch = html.match(/<input[^>]*id="xcoord"[^>]*value="([^"]+)"/i);
-    const ycoordMatch = html.match(/<input[^>]*id="ycoord"[^>]*value="([^"]+)"/i);
-    
-    if (xcoordMatch && ycoordMatch) {
-      lat = parseFloat(xcoordMatch[1]) || lat;
-      lon = parseFloat(ycoordMatch[1]) || lon;
-    }
-  }
-
-  // geometry_address.json
-  const geometryAddress = {
-    latitude: Number.isFinite(lat) ? lat : null,
-    longitude: Number.isFinite(lon) ? lon : null,
-    ...appendSourceInfo(seed)
-  };
-  writeJSON(path.join(dataDir, "geometry_address.json"), geometryAddress);
-
-  // Relationship between address and geometry_address
-  const addressGeometryRel = {
-    from: { "/": "./address.json" },
-    to: { "/": "./geometry_address.json" }
-  };
-  writeJSON(path.join(dataDir, "relationship_address_has_geometry.json"), addressGeometryRel);
-
-  // Create parcel and geometry files
-  await createParcelAndGeometry(seed, parcelId, dataDir, altKey);
-  
-
-  // Mailing Address
-  const mailingAddressRaw = extractTopValue("Mailing Address On File:");
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    latitude: null,
-    longitude: null,
-    unnormalized_address: mailingAddressRaw,
-  };
-  writeJSON(path.join(dataDir, "mailing_address.json"), mailingAddressOutput);
 
   //Create Person/company files
   let personFilesByKey = {};
@@ -2431,8 +2401,8 @@ async function main() {
       first_name: o.first_name || "",
       last_name: o.last_name || "",
       middle_name: o.middle_name || null,
-      prefix_name: null,
-      suffix_name: null,
+      prefix_name: o.prefix_name || null,
+      suffix_name: o.suffix_name || null,
       us_citizenship_status: null,
       veteran_status: null,
     };
@@ -2453,40 +2423,52 @@ async function main() {
     companyFilesByKey[entry.key] = cFile;
   });
 
-  //OWNERS TO MAILING ADDRESS RELATIONSHIP FILE.
-  let relIdx=0
-  currentOwners.forEach((o) => {
-    // console.log("relIdx",relIdx);
-    if (o && o.type === "person") {
-      const key = normalizeOwnerKey(o);
-      const pf = personFilesByKey[key];
-      if (pf) {
-        relIdx += 1;
-        const rel = {
-          from: { "/": `./${pf}` },
-          to: { "/": "./mailing_address.json" },
-        };
-        writeJSON(
-          path.join(dataDir, `relationship_person_has_mailing_address_${relIdx}.json`),
-          rel,
-        );
+  // Mailing Address - only create if there are owners to connect it to
+  const mailingAddressRaw = extractTopValue("Mailing Address On File:");
+  if (currentOwners.length > 0 && mailingAddressRaw) {
+    const mailingAddressOutput = {
+      ...appendSourceInfo(seed),
+      latitude: null,
+      longitude: null,
+      unnormalized_address: mailingAddressRaw,
+    };
+    writeJSON(path.join(dataDir, "mailing_address.json"), mailingAddressOutput);
+
+    //OWNERS TO MAILING ADDRESS RELATIONSHIP FILE.
+    let relIdx=0
+    currentOwners.forEach((o) => {
+      // console.log("relIdx",relIdx);
+      if (o && o.type === "person") {
+        const key = normalizeOwnerKey(o);
+        const pf = personFilesByKey[key];
+        if (pf) {
+          relIdx += 1;
+          const rel = {
+            from: { "/": `./${pf}` },
+            to: { "/": "./mailing_address.json" },
+          };
+          writeJSON(
+            path.join(dataDir, `relationship_person_has_mailing_address_${relIdx}.json`),
+            rel,
+          );
+        }
+      } else if (o && o.type === "company") {
+        const key = normalizeCompanyKey(o);
+        const cf = companyFilesByKey[key];
+        if (cf) {
+          relIdx += 1;
+          const rel = {
+            from: { "/": `./${cf}` },
+            to: { "/": "./mailing_address.json" },
+          };
+          writeJSON(
+            path.join(dataDir, `relationship_company_has_mailing_address${relIdx}.json`),
+            rel,
+          );
+        }
       }
-    } else if (o && o.type === "company") {
-      const key = normalizeCompanyKey(o);
-      const cf = companyFilesByKey[key];
-      if (cf) {
-        relIdx += 1;
-        const rel = {
-          from: { "/": `./${cf}` },
-          to: { "/": "./mailing_address.json" },
-        };
-        writeJSON(
-          path.join(dataDir, `relationship_company_has_mailing_address${relIdx}.json`),
-          rel,
-        );
-      }
-    }
-  });  
+    });
+  }  
 
 
 
