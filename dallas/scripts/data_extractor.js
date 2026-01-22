@@ -840,6 +840,7 @@ async function main() {
     path.join(dataDir, "property.json"),
     JSON.stringify(propertyOut, null, 2),
   );
+  const propertyCreated = true;
 
   const streetFromHtml = $own
     ? normalizeAddressLine($own("#PropAddr1_lblPropAddr").text())
@@ -1001,6 +1002,18 @@ async function main() {
       JSON.stringify(mailingAddrOut, null, 2),
     );
     mailingAddressCreated = true;
+
+    // Create property → mailing_address relationship immediately to ensure it's always referenced
+    if (propertyCreated) {
+      const propMailingRel = {
+        from: { "/": `./property.json` },
+        to: { "/": `./mailing_address.json` },
+      };
+      await fsp.writeFile(
+        path.join(dataDir, `relationship_property_mailing_address.json`),
+        JSON.stringify(propMailingRel, null, 2),
+      );
+    }
   }
 
   // LOT
@@ -1888,7 +1901,7 @@ async function main() {
   }
 
   // Check if property and address files exist
-  const propertyExists = fs.existsSync(path.join(dataDir, "property.json"));
+  const propertyExists = propertyCreated || fs.existsSync(path.join(dataDir, "property.json"));
   const addressExists = fs.existsSync(path.join(dataDir, "address.json"));
 
   // If no Building layouts exist, relate structure/utility directly to property
