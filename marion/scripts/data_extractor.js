@@ -563,7 +563,7 @@ const DEFAULT_PROPERTY_CLASS = {
   property_usage_type: "Unknown",
   structure_form: null,
   number_of_units_type: null,
-  build_status: null,
+  build_status: "Improved",
 };
 
 function mapPropertyClass(pc) {
@@ -1070,8 +1070,8 @@ function main() {
       : null);
   const key_part = requestIdentifier ?? parcelIdentifier ?? parcelIdFromPage ?? null;
   const key = `property_${key_part}`;
-  const util = utilsData[key];
-  const struct = structuresData[key];
+  const util = utilsData ? utilsData[key] : null;
+  const struct = structuresData ? structuresData[key] : null;
   
   try {
     const seedCsvPath = path.join(".", "input.csv");
@@ -1108,6 +1108,13 @@ function main() {
       zoning: zoning,
     };
     writeJSON(path.join(dataDir, "property.json"), property);
+    writeJSON(path.join(dataDir, "parcel.json"), {parcel_identifier: parcelIdentifier || ""});
+
+    // Create property -> parcel relationship
+    writeJSON(path.join(dataDir, "relationship_property_has_parcel.json"), {
+      from: { "/": "./property.json" },
+      to: { "/": "./parcel.json" },
+    });
   
 
   // address.json
@@ -1174,9 +1181,14 @@ function main() {
       tax.yearly_tax_amount = taxesAssess;
     }
     writeJSON(path.join(dataDir, `tax_${h.year}.json`), tax);
+    // Create property -> tax relationship
+    writeJSON(path.join(dataDir, `relationship_property_has_tax_${h.year}.json`), {
+      from: { "/": "./property.json" },
+      to: { "/": `./tax_${h.year}.json` },
+    });
   });
 
-  // sales_*.json and deeds + files + relationships
+  // sales_history_*.json and deeds + files + relationships
   let deedIdx = 0;
   let fileIdx = 0;
   const saleToDeed = [];
@@ -1185,8 +1197,14 @@ function main() {
       ownership_transfer_date: null,
       purchase_price_amount: s.price != null ? s.price : null,
     };
-    const salePath = path.join(dataDir, `sales_${idx + 1}.json`);
+    const salePath = path.join(dataDir, `sales_history_${idx + 1}.json`);
     writeJSON(salePath, salesObj);
+
+    // Create property -> sales_history relationship
+    writeJSON(path.join(dataDir, `relationship_property_has_sales_history_${idx + 1}.json`), {
+      from: { "/": "./property.json" },
+      to: { "/": `./sales_history_${idx + 1}.json` },
+    });
 
     // Deed mapping
     let deed_type = null;
@@ -1231,16 +1249,16 @@ function main() {
     // }
   });
 
-  // relationship_sales_deed (numbered only to avoid duplicates)
+  // relationship_sales_history_has_deed (numbered only to avoid duplicates)
   saleToDeed.forEach((m, i) => {
     const rel = {
-      from: { "/": `./sales_${m.saleIndex}.json` },
+      from: { "/": `./sales_history_${m.saleIndex}.json` },
       to: { "/": `./deed_${m.deedIndex}.json` },
     };
-    writeJSON(path.join(dataDir, `relationship_sales_deed_${i + 1}.json`), rel);
+    writeJSON(path.join(dataDir, `relationship_sales_history_${m.saleIndex}_has_deed.json`), rel);
   });
 
-  if (ownersData && parcelIdentifier) {
+  if (ownersData && parcelIdentifier && sales.length > 0) {
     const ownerKey = `property_${parcelIdentifier}`;
     const rec = ownersData[ownerKey];
     if (
@@ -1249,14 +1267,23 @@ function main() {
       Array.isArray(rec.owners_by_date.current)
     ) {
       const owners = rec.owners_by_date.current;
+      const mostRecentSaleIdx = sales.length;
       let companyIdx = 0;
-      let personIdx = 0
+      let personIdx = 0;
+
       owners.forEach((o) => {
         if (o.type === "company") {
           companyIdx += 1;
           writeJSON(path.join(dataDir, `company_${companyIdx}.json`), {
             name: o.name || null,
           });
+          writeJSON(
+            path.join(dataDir, `relationship_sales_history_${mostRecentSaleIdx}_buyer_company_${companyIdx}.json`),
+            {
+              from: { "/": `./sales_history_${mostRecentSaleIdx}.json` },
+              to: { "/": `./company_${companyIdx}.json` },
+            }
+          );
         }
         if (o.type === "person") {
           personIdx += 1;
@@ -1270,6 +1297,13 @@ function main() {
             us_citizenship_status: null,
             veteran_status: null,
           });
+          writeJSON(
+            path.join(dataDir, `relationship_sales_history_${mostRecentSaleIdx}_buyer_person_${personIdx}.json`),
+            {
+              from: { "/": `./sales_history_${mostRecentSaleIdx}.json` },
+              to: { "/": `./person_${personIdx}.json` },
+            }
+          );
         }
       });
     }
@@ -1303,6 +1337,12 @@ function main() {
     view: null,
   };
   writeJSON(path.join(dataDir, "lot.json"), lot);
+
+  // property_has_lot relationship
+  writeJSON(path.join(dataDir, "relationship_property_has_lot.json"), {
+    from: { "/": "./property.json" },
+    to: { "/": "./lot.json" },
+  });
 
   // // structure.json (minimal)
   // const struct = {
