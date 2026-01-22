@@ -62,35 +62,452 @@ function extractParcelId($) {
   return id || "unknown";
 }
 
-function mapPropertyTypeFromUse(useText) {
-  if (!useText) return null;
-  const u = useText.toUpperCase();
-  // Known patterns
-  if (u.includes("MULTI")) {
-    if (u.includes("10+") || u.includes("MORE")) {
-      return "MultiFamilyMoreThan10";
+function parseSectionTownshipRange(value) {
+  if (!value) return { section: null, township: null, range: null };
+  const trimmed = value.trim();
+  if (!trimmed) return { section: null, township: null, range: null };
+
+  let match = trimmed.match(
+    /^(\d+)[-\s/]*([0-9]{2}[NS]?)[-\s/]*([0-9]{2}[EW]?)$/i,
+  );
+  if (!match) {
+    const parts = trimmed.split(/[\/-]/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length === 3) {
+      match = [null, parts[0], parts[1], parts[2]];
     }
-    if (u.includes("LESS")) {
-      return "MultiFamilyLessThan10";
-    }
-    return "MultipleFamily";
   }
-  if (u.includes("SINGLE") || u.includes("SFR")) return "SingleFamily";
-  if (u.includes("CONDO")) return "Condominium";
-  if (u.includes("VACANT")) return "VacantLand";
-  if (u.includes("DUPLEX")) return "Duplex";
-  if (u.includes("TOWNHOUSE")) return "Townhouse";
-  if (u.includes("APARTMENT")) return "Apartment";
-  if (u.includes("MOBILE")) return "MobileHome";
-  if (u.includes("PUD")) return "Pud";
-  if (u.includes("RETIREMENT")) return "Retirement";
-  if (u.includes("COOPERATIVE")) return "Cooperative";
-  // Otherwise unknown -> error per requirement
-  throw {
-    type: "error",
-    message: `Unknown enum value ${useText}.`,
-    path: "property.property_type",
+  if (match) {
+    const [, sec, twp, rng] = match;
+    return {
+      section: sec || null,
+      township: twp ? twp.toUpperCase() : null,
+      range: rng ? rng.toUpperCase() : null,
+    };
+  }
+  return { section: null, township: null, range: null };
+}
+
+const PROPERTY_USE_CODE_MAP = {
+  "0000": {
+    property_usage_type: "Residential",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "VacantLand",
+  },
+  "0100": {
+    property_usage_type: "Residential",
+    property_type: "Building",
+    structure_form: "SingleFamilyDetached",
+    build_status: "Improved",
+  },
+  "0110": {
+    property_usage_type: "Residential",
+    property_type: "Building",
+    structure_form: "SingleFamilyDetached",
+    build_status: "Improved",
+  },
+  "0150": {
+    property_usage_type: "Residential",
+    property_type: "ManufacturedHome",
+    structure_form: "Modular",
+    build_status: "Improved",
+  },
+  "0200": {
+    property_usage_type: "Residential",
+    property_type: "ManufacturedHome",
+    structure_form: "MobileHome",
+    build_status: "Improved",
+  },
+  "0300": {
+    property_usage_type: "Residential",
+    property_type: "Building",
+    structure_form: "MultiFamilyLessThan10",
+    build_status: "Improved",
+  },
+  "0400": {
+    property_usage_type: "Residential",
+    property_type: "Building",
+    structure_form: "TownhouseRowhouse",
+    build_status: "Improved",
+  },
+  "0700": {
+    property_usage_type: "Residential",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "0800": {
+    property_usage_type: "Residential",
+    property_type: "Building",
+    structure_form: "MultiFamilyMoreThan10",
+    build_status: "Improved",
+  },
+  "1000": {
+    property_usage_type: "Commercial",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "VacantLand",
+  },
+  "1100": {
+    property_usage_type: "RetailStore",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "1200": {
+    property_usage_type: "Commercial",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "1300": {
+    property_usage_type: "DepartmentStore",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "1400": {
+    property_usage_type: "Supermarket",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "1600": {
+    property_usage_type: "ShoppingCenterCommunity",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "1700": {
+    property_usage_type: "OfficeBuilding",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "1900": {
+    property_usage_type: "MedicalOffice",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "2000": {
+    property_usage_type: "TransportationTerminal",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "2100": {
+    property_usage_type: "Restaurant",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "2300": {
+    property_usage_type: "FinancialInstitution",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "2500": {
+    property_usage_type: "Commercial",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "2600": {
+    property_usage_type: "ServiceStation",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "2700": {
+    property_usage_type: "AutoSalesRepair",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "2800": {
+    property_usage_type: "MobileHomePark",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "3000": {
+    property_usage_type: "NurseryGreenhouse",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "3300": {
+    property_usage_type: "Entertainment",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "3710": {
+    property_usage_type: "RetailStore",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "4000": {
+    property_usage_type: "Industrial",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "VacantLand",
+  },
+  "4100": {
+    property_usage_type: "LightManufacturing",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "4300": {
+    property_usage_type: "LumberYard",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "4600": {
+    property_usage_type: "PackingPlant",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "4700": {
+    property_usage_type: "MineralProcessing",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "4800": {
+    property_usage_type: "Warehouse",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "5100": {
+    property_usage_type: "Agricultural",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "5380": {
+    property_usage_type: "Agricultural",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "5400": {
+    property_usage_type: "TimberLand",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "5910": {
+    property_usage_type: "Conservation",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "VacantLand",
+  },
+  "6000": {
+    property_usage_type: "GrazingLand",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "6005": {
+    property_usage_type: "HayMeadow",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "6600": {
+    property_usage_type: "OrchardGroves",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "6700": {
+    property_usage_type: "Poultry",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "6900": {
+    property_usage_type: "Ornamentals",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "7100": {
+    property_usage_type: "Church",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "7200": {
+    property_usage_type: "PrivateSchool",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "7300": {
+    property_usage_type: "PrivateHospital",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "7500": {
+    property_usage_type: "NonProfitCharity",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "7600": {
+    property_usage_type: "MortuaryCemetery",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "7700": {
+    property_usage_type: "ClubsLodges",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "8000": {
+    property_usage_type: "GovernmentProperty",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "VacantLand",
+  },
+  "8200": {
+    property_usage_type: "ForestParkRecreation",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "8300": {
+    property_usage_type: "PublicSchool",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "8600": {
+    property_usage_type: "GovernmentProperty",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "VacantLand",
+  },
+  "8700": {
+    property_usage_type: "GovernmentProperty",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "VacantLand",
+  },
+  "8800": {
+    property_usage_type: "GovernmentProperty",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "VacantLand",
+  },
+  "8900": {
+    property_usage_type: "GovernmentProperty",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "VacantLand",
+  },
+  "9100": {
+    property_usage_type: "Utility",
+    property_type: "Building",
+    structure_form: null,
+    build_status: "Improved",
+  },
+  "9600": {
+    property_usage_type: "SewageDisposal",
+    property_type: "LandParcel",
+    structure_form: null,
+    build_status: "VacantLand",
+  },
+};
+
+function normalizeUseCode(code) {
+  if (!code) return null;
+  const digits = String(code).replace(/[^0-9]/g, "");
+  return digits ? digits.padStart(4, "0") : null;
+}
+
+function mapPropertyAttributesFromText(useText) {
+  if (!useText) {
+    return {
+      property_usage_type: null,
+      property_type: null,
+      structure_form: null,
+      build_status: null,
+    };
+  }
+  const upper = useText.toUpperCase();
+  const isVacant = upper.includes("VACANT");
+  const isMobile = upper.includes("MOBILE");
+  const isMulti = upper.includes("MULTI");
+  const isAgricultural =
+    upper.includes("AGRIC") ||
+    upper.includes("PASTURE") ||
+    upper.includes("CROP") ||
+    upper.includes("TIMBER") ||
+    upper.includes("ORCHARD") ||
+    upper.includes("FARM");
+  const result = {
+    property_usage_type: null,
+    property_type: null,
+    structure_form: null,
+    build_status: null,
+    ownership_estate_type: "FeeSimple",
   };
+  if (isVacant) {
+    result.property_type = "LandParcel";
+    result.build_status = "VacantLand";
+  } else if (isMobile) {
+    result.property_type = "ManufacturedHome";
+    result.structure_form = "MobileHome";
+    result.build_status = "Improved";
+    result.property_usage_type = "Residential";
+  } else if (isAgricultural) {
+    result.property_type = "LandParcel";
+    result.build_status = "Improved";
+    result.property_usage_type = "Agricultural";
+  } else {
+    result.property_type = "Building";
+    result.build_status = "Improved";
+    if (upper.includes("COMMERCIAL")) result.property_usage_type = "Commercial";
+    if (upper.includes("RESIDENT")) result.property_usage_type = "Residential";
+    if (upper.includes("INDUST")) result.property_usage_type = "Industrial";
+  }
+  if (isMulti) {
+    result.structure_form = upper.includes("10") || upper.includes("MORE")
+      ? "MultiFamilyMoreThan10"
+      : "MultiFamilyLessThan10";
+    if (!result.property_usage_type)
+      result.property_usage_type = "Residential";
+  }
+  return result;
+}
+
+function mapPropertyAttributes(useCodeRaw, useText) {
+  const code = normalizeUseCode(useCodeRaw);
+  if (code && PROPERTY_USE_CODE_MAP[code]) {
+    const mapped = PROPERTY_USE_CODE_MAP[code];
+    return {
+      property_usage_type: mapped.property_usage_type ?? null,
+      property_type: mapped.property_type ?? null,
+      structure_form: mapped.structure_form ?? null,
+      build_status: mapped.build_status ?? null,
+      ownership_estate_type: mapped.ownership_estate_type ?? "FeeSimple",
+    };
+  }
+  const fallback = mapPropertyAttributesFromText(useText);
+  return fallback;
 }
 
 function extractProperty($) {
@@ -117,10 +534,14 @@ function extractProperty($) {
       }
     }
   });
-  let property_type = null;
-  if (useText) {
-    property_type = mapPropertyTypeFromUse(useText);
-  }
+  const useCodeRaw = $('input[name="Land_Use"]').attr("value");
+  const useAttributes = mapPropertyAttributes(useCodeRaw, useText);
+  const property_type = useAttributes.property_type ?? null;
+  const property_usage_type = useAttributes.property_usage_type ?? null;
+  const build_status = useAttributes.build_status ?? null;
+  const structure_form = useAttributes.structure_form ?? null;
+  const ownership_estate_type =
+    useAttributes.ownership_estate_type ?? "FeeSimple";
 
   // Building Characteristics to compute years and areas
   let builtYears = [];
@@ -152,6 +573,10 @@ function extractProperty($) {
     property_legal_description_text: legal || null,
     property_structure_built_year: property_structure_built_year || null,
     property_type: property_type || null,
+    property_usage_type: property_usage_type,
+    build_status: build_status,
+    structure_form: structure_form,
+    ownership_estate_type: ownership_estate_type,
     number_of_units_type: null,
     livable_floor_area: livable_floor_area,
     area_under_air: area_under_air,
@@ -264,68 +689,14 @@ function isNumeric(value) {
     return /^-?\d+$/.test(value);
 }
 
-function extractAddress($, unnorm) {
-  const full =
+function extractAddress($, unnorm, propSeed) {
+  const unnormalizedAddress =
     unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
-  if (!full) return;
-  let city = null;
-  let zip = null;
-  const fullAddressParts = (full || "").split(",");
-  if (fullAddressParts.length >= 3 && fullAddressParts[2]) {
-    state_and_pin = fullAddressParts[2].split(/\s+/);
-    if (state_and_pin.length >= 1 && state_and_pin[state_and_pin.length - 1] && state_and_pin[state_and_pin.length - 1].trim().match(/^\d{5}$/)) {
-      zip = state_and_pin[state_and_pin.length - 1].trim();
-      city = fullAddressParts[1].trim();
-    }
-  }
-  const parts = (fullAddressParts[0] || "").split(/\s+/);
-  let street_number = null;
-  if (parts && parts.length > 1) {
-    street_number_candidate = parts[0];
-    if ((street_number_candidate || "") && isNumeric(street_number_candidate)) {
-      street_number = parts.shift() || null;
-    }
-  }
-  let suffix = null;
-  if (parts && parts.length > 1) {
-    suffix_candidate = parts[parts.length - 1];
-    if (normalizeSuffix(suffix_candidate)) {
-      suffix = parts.pop() || null;
-    }
-  }
-  let street_name = parts.join(" ") || null;
-  if (street_name) {
-    street_name = street_name.replace(/\b(E|N|NE|NW|S|SE|SW|W)\b/g, "");
-  }
-  // const m = full.match(
-  //   /^(\d+)\s+([^,]+),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/i,
-  // );
-  // if (!m) return;
-  // const [, streetNumber, streetRest, city, state, zip, plus4] = m;
-
-  // let street_name = streetRest.trim();
-  // let route_number = null;
-  // let street_suffix_type = null;
-  // const m2 = streetRest.trim().match(/^([A-Za-z]+)\s+(\d+)$/);
-  // if (m2) {
-  //   street_name = m2[1].toUpperCase();
-  //   route_number = m2[2];
-  //   if (street_name === "HWY" || street_name === "HIGHWAY")
-  //     street_suffix_type = "Hwy";
-  // }
-  const city_name = city ? city.toUpperCase() : null;
-  // const state_code = state.toUpperCase();
-  const postal_code = zip;
-  // const plus_four_postal_code = plus4 || null;
-
-  // Per evaluator expectation, set county_name from input jurisdiction
-  const inputCounty = (unnorm.county_jurisdiction || "").trim();
-  const county_name = inputCounty || null;
 
   // S/T/R row for township, range, section
-  let section = null,
-    township = null,
-    range = null;
+  let section = null;
+  let township = null;
+  let range = null;
   $("table.parcelDetails_insideTable tbody tr").each((i, tr) => {
     const tds = $(tr).find("td");
     if (tds.length >= 4) {
@@ -334,48 +705,42 @@ function extractAddress($, unnorm) {
       const label0 = getText($(tds[0]));
       const val1 = getText($(tds[1]));
       if (/^S\/T\/R$/i.test(label0)) {
-        const v = val1;
-        const m = v.match(/^(\d+)-([0-9]{2}[NS])-(\d{2}[EW])$/i);
-        if (m) {
-          section = m[1];
-          township = m[2].toUpperCase();
-          range = m[3].toUpperCase();
-        }
+        const parsed = parseSectionTownshipRange(val1);
+        section = section || parsed.section;
+        township = township || parsed.township;
+        range = range || parsed.range;
       } else if (/^S\/T\/R$/i.test(label)) {
-        const v = val;
-        const m = v.match(/^(\d+)-([0-9]{2}[NS])-(\d{2}[EW])$/i);
-        if (m) {
-          section = m[1];
-          township = m[2].toUpperCase();
-          range = m[3].toUpperCase();
-        }
+        const parsed = parseSectionTownshipRange(val);
+        section = section || parsed.section;
+        township = township || parsed.township;
+        range = range || parsed.range;
       }
     }
   });
-  const address = {
-    city_name,
-    country_code: "US",
-    county_name,
-    latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
-    longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
-    plus_four_postal_code: null,
-    postal_code,
-    state_code: "FL",
-    street_name: street_name,
-    street_post_directional_text: null,
-    street_pre_directional_text: null,
-    street_number: street_number,
-    street_suffix_type: normalizeSuffix(suffix),
-    unit_identifier: null,
-    route_number: null,
+
+  const countyName =
+    unnorm && unnorm.county_jurisdiction
+      ? unnorm.county_jurisdiction.trim() || null
+      : null;
+  const sourceRequest =
+    (unnorm && unnorm.source_http_request) ||
+    (propSeed && propSeed.source_http_request) ||
+    null;
+  const requestIdentifier =
+    (unnorm && unnorm.request_identifier) ||
+    (propSeed && propSeed.request_identifier) ||
+    null;
+
+  return {
+    unnormalized_address: unnormalizedAddress,
+    section: section || null,
     township: township || null,
     range: range || null,
-    section: section || null,
-    block: null,
-    lot: null,
-    municipality_name: null,
+    source_http_request: sourceRequest,
+    request_identifier: requestIdentifier,
+    county_name: countyName,
+    country_code: "US",
   };
-  return address;
 }
 
 function extractTaxes($) {
@@ -441,18 +806,84 @@ function extractTaxes($) {
   return taxes;
 }
 
+const deedCodeMap = {
+  WD: "Warranty Deed",
+  WTY: "Warranty Deed",
+  SWD: "Special Warranty Deed",
+  SW: "Special Warranty Deed",
+  "SPEC WD": "Special Warranty Deed",
+  QCD: "Quitclaim Deed",
+  QC: "Quitclaim Deed",
+  QUITCLAIM: "Quitclaim Deed",
+  "QUITCLAIM DEED": "Quitclaim Deed",
+  GD: "Grant Deed",
+  BSD: "Bargain and Sale Deed",
+  LBD: "Lady Bird Deed",
+  TOD: "Transfer on Death Deed",
+  TODD: "Transfer on Death Deed",
+  SD: "Sheriff's Deed",
+  "SHRF'S DEED": "Sheriff's Deed",
+  TD: "Tax Deed",
+  TRD: "Trustee's Deed",
+  "TRUSTEE DEED": "Trustee's Deed",
+  PRD: "Personal Representative Deed",
+  "PERS REP DEED": "Personal Representative Deed",
+  CD: "Correction Deed",
+  "CORR DEED": "Correction Deed",
+  DIL: "Deed in Lieu of Foreclosure",
+  DILF: "Deed in Lieu of Foreclosure",
+  LED: "Life Estate Deed",
+  JTD: "Joint Tenancy Deed",
+  TIC: "Tenancy in Common Deed",
+  CPD: "Community Property Deed",
+  "GIFT DEED": "Gift Deed",
+  ITD: "Interspousal Transfer Deed",
+  "WILD D": "Wild Deed",
+  SMD: "Special Master's Deed",
+  COD: "Court Order Deed",
+  CFD: "Contract for Deed",
+  QTD: "Quiet Title Deed",
+  AD: "Administrator's Deed",
+  "GD (GUARDIAN)": "Guardian's Deed",
+  RD: "Receiver's Deed",
+  ROW: "Right of Way Deed",
+  VPD: "Vacation of Plat Deed",
+  AOC: "Assignment of Contract",
+  ROC: "Release of Contract",
+  LC: "Land Contract",
+  MTG: "Mortgage",
+  LIS: "Lis Pendens",
+  EASE: "Easement",
+  AGMT: "Agreement",
+  AFF: "Affidavit",
+  ORD: "Order",
+  CERT: "Certificate",
+  RES: "Resolution",
+  DECL: "Declaration",
+  COV: "Covenant",
+  SUB: "Subordination",
+  MOD: "Modification",
+  REL: "Release",
+  ASSG: "Assignment",
+  LEAS: "Lease",
+  TR: "Trust",
+  WILL: "Will",
+  PROB: "Probate",
+  JUDG: "Judgment",
+  LIEN: "Lien",
+  SAT: "Satisfaction",
+  PART: "Partition",
+  EXCH: "Exchange",
+  CONV: "Conveyance",
+  OTH: "Other",
+};
+
 function mapDeedCode(code) {
-  if (!code) return {};
-  const u = code.trim().toUpperCase();
-  if (u === "CT") return "Contract for Deed";
-  if (u === "WD") return "Warranty Deed";
-  if (u === "WARRANTY DEED") return "Warranty Deed";
-  if (u == "TD") return "Tax Deed";
-  if (u == "TAX DEED") return "Tax Deed";
-  if (u == "QC") return "Quitclaim Deed";
-  if (u == "QUITCLAIM DEED") return "Quitclaim Deed";
-  if (u == "SW") return "Special Warranty Deed";
-  if (u == "SPECIAL WARRANTY DEED") return "Special Warranty Deed";
+  if (!code) return null;
+  const normalized = code.trim();
+  const upper = normalized.toUpperCase();
+  if (deedCodeMap[upper]) return deedCodeMap[upper];
+  if (deedCodeMap[normalized]) return deedCodeMap[normalized];
   return null;
 }
 
@@ -468,27 +899,32 @@ function extractSalesAndDeeds($) {
     if (tds.length >= 7) {
       const date = getText($(tds[0]));
       const price = getText($(tds[1]));
-      const bookPage = getText($(tds[2]));
+      const bookPageRaw = getText($(tds[2]));
       const deedCode = getText($(tds[3]));
       const iso = toIsoDate(date);
       const amt = parseMoney(price);
+      let book = null;
+      let page = null;
       let link = null;
-      if (bookPage) {
-        const bookPageParts = bookPage.split('/');
-        if (bookPageParts.length == 2) {
-          const book = bookPageParts[0].trim();
-          const page = bookPageParts[1].trim();
-          if (book && isNumeric(book) && page && isNumeric(page)) {
-            link = `https://www.suwanneepa.com/gis/linkClerk/?ClerkBook=${book}&ClerkPage=${page}&autoSubmit=1`;
-          }
+      if (bookPageRaw) {
+        const match = bookPageRaw.match(/^(\d+)\s*\/\s*(\d+)/);
+        if (match) {
+          book = match[1].trim();
+          page = match[2].trim();
         }
+      }
+      if (book && page) {
+        link = `https://www.suwanneepa.com/gis/linkClerk/?ClerkBook=${book}&ClerkPage=${page}&autoSubmit=1`;
       }
       const saleObj = {
         ownership_transfer_date: iso,
         purchase_price_amount: amt,
-        bookPage,
-        link,
-        deed: mapDeedCode(deedCode)
+        deed_type: mapDeedCode(deedCode),
+        book: book ?? null,
+        page: page ?? null,
+        volume: null,
+        instrument_number: null,
+        deed_link: link,
       };
       sales.push(saleObj);
     }
@@ -496,7 +932,35 @@ function extractSalesAndDeeds($) {
   return sales;
 }
 
-function writeOwners(ownerData, dataDir, parcelDashed, parcelFlat) {
+function normalizeOwnerKeyForIndex(owner) {
+  if (!owner || !owner.type) return "";
+  if (owner.type === "company") {
+    return (owner.name || "").toLowerCase().replace(/\s+/g, " ").trim();
+  }
+  if (owner.type === "person") {
+    const segments = [
+      owner.prefix_name || "",
+      owner.first_name || "",
+      owner.middle_name || "",
+      owner.last_name || "",
+      owner.suffix_name || "",
+    ];
+    return segments
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+  return "";
+}
+
+function writeOwners(
+  ownerData,
+  dataDir,
+  parcelDashed,
+  parcelFlat,
+  requestInfo,
+) {
   // owners keyed by dashed id in provided data
   const keyVariants = [`property_${parcelDashed}`, `property_${parcelFlat}`];
   let ownersEntry = null;
@@ -506,36 +970,125 @@ function writeOwners(ownerData, dataDir, parcelDashed, parcelFlat) {
       break;
     }
   }
-  const outputs = { companyFiles: [], personFiles: [] };
-  if (
-    ownersEntry &&
-    ownersEntry.owners_by_date &&
-    Array.isArray(ownersEntry.owners_by_date.current)
-  ) {
-    let companyIdx = 0,
-      personIdx = 0;
-    for (const ow of ownersEntry.owners_by_date.current) {
-      if (ow.type === "company") {
+  const outputs = {
+    companyFiles: [],
+    personFiles: [],
+    mailingFiles: [],
+    byDate: {},
+  };
+  const requestSource =
+    (requestInfo && requestInfo.source_http_request) || null;
+  const requestIdentifier =
+    (requestInfo && requestInfo.request_identifier) || null;
+  if (ownersEntry && ownersEntry.owners_by_date) {
+    let companyIdx = 0;
+    let personIdx = 0;
+    const ownerFileIndex = new Map();
+    const normalizeMailing = (val) =>
+      val == null ? null : String(val).replace(/\s+/g, " ").trim();
+
+    const ensureMailingRecord = (record, mailingAddress) => {
+      const ownerIndex = record.ownerIndex;
+      if (!ownerIndex) return record;
+      const mailingFilename = `mailing_address_${ownerIndex}.json`;
+      const mailingPath = path.join(dataDir, mailingFilename);
+      const normalizedAddress =
+        mailingAddress != null
+          ? normalizeMailing(mailingAddress)
+          : record.mailingAddressValue || null;
+      record.mailingAddressValue = normalizedAddress || null;
+      writeJson(mailingPath, {
+        unnormalized_address: normalizedAddress || null,
+        latitude: null,
+        longitude: null,
+        source_http_request: requestSource,
+        request_identifier: requestIdentifier,
+      });
+      record.mailingFilename = mailingFilename;
+      const relationshipName = `relationship_${record.type}_${ownerIndex}_has_mailing_address_${ownerIndex}.json`;
+      writeJson(path.join(dataDir, relationshipName), {
+        from: { "/": `./${record.filename}` },
+        to: { "/": `./${mailingFilename}` },
+      });
+      if (!outputs.mailingFiles.includes(mailingFilename)) {
+        outputs.mailingFiles.push(mailingFilename);
+      }
+      return record;
+    };
+
+    const ensureOwnerFile = (owner) => {
+      if (!owner || !owner.type) return null;
+      const key = normalizeOwnerKeyForIndex(owner);
+      if (!key) return null;
+      if (ownerFileIndex.has(key)) {
+        const record = ownerFileIndex.get(key);
+        const currentAddress = record.mailingAddressValue || null;
+        const newAddress =
+          owner.mailing_address != null
+            ? normalizeMailing(owner.mailing_address)
+            : null;
+        if (newAddress && newAddress !== currentAddress) {
+          ensureMailingRecord(record, newAddress);
+        }
+        return record;
+      }
+      if (owner.type === "company") {
         companyIdx += 1;
-        const file = path.join(dataDir, `company_${companyIdx}.json`);
-        writeJson(file, { name: ow.name ?? null });
-        outputs.companyFiles.push(path.basename(file));
-      } else if (ow.type === "person") {
-        // person schema requires many fields; we cannot synthesize; skip if insufficient
-        if (ow.first_name && ow.last_name) {
-          personIdx += 1;
-          const file = path.join(dataDir, `person_${personIdx}.json`);
-          writeJson(file, {
-            birth_date: ow.birth_date ?? null,
-            first_name: ow.first_name,
-            last_name: ow.last_name,
-            middle_name: ow.middle_name ?? null,
-            prefix_name: ow.prefix_name ?? null,
-            suffix_name: ow.suffix_name ?? null,
-            us_citizenship_status: ow.us_citizenship_status ?? null,
-            veteran_status: ow.veteran_status ?? null,
-          });
-          outputs.personFiles.push(path.basename(file));
+        const filePath = path.join(dataDir, `company_${companyIdx}.json`);
+        writeJson(filePath, { name: owner.name ?? null });
+        const record = {
+          filename: path.basename(filePath),
+          type: "company",
+          ownerIndex: companyIdx,
+          mailingFilename: null,
+          mailingAddressValue: null,
+        };
+        ownerFileIndex.set(key, record);
+        outputs.companyFiles.push(record.filename);
+        ensureMailingRecord(record, owner.mailing_address ?? null);
+        return record;
+      }
+      if (owner.type === "person") {
+        if (!owner.first_name || !owner.last_name) return null;
+        personIdx += 1;
+        const filePath = path.join(dataDir, `person_${personIdx}.json`);
+        writeJson(filePath, {
+          birth_date: owner.birth_date ?? null,
+          first_name: owner.first_name,
+          last_name: owner.last_name,
+          middle_name: owner.middle_name ?? null,
+          prefix_name: owner.prefix_name ?? null,
+          suffix_name: owner.suffix_name ?? null,
+          us_citizenship_status: owner.us_citizenship_status ?? null,
+          veteran_status: owner.veteran_status ?? null,
+        });
+        const record = {
+          filename: path.basename(filePath),
+          type: "person",
+          ownerIndex: personIdx,
+          mailingFilename: null,
+          mailingAddressValue: null,
+        };
+        ownerFileIndex.set(key, record);
+        outputs.personFiles.push(record.filename);
+        ensureMailingRecord(record, owner.mailing_address ?? null);
+        return record;
+      }
+      return null;
+    };
+
+    for (const [dateKey, owners] of Object.entries(
+      ownersEntry.owners_by_date,
+    )) {
+      if (!Array.isArray(owners)) continue;
+      for (const owner of owners) {
+        const fileRecord = ensureOwnerFile(owner);
+        if (!fileRecord) continue;
+        if (!outputs.byDate[dateKey]) {
+          outputs.byDate[dateKey] = [];
+        }
+        if (!outputs.byDate[dateKey].includes(fileRecord.filename)) {
+          outputs.byDate[dateKey].push(fileRecord.filename);
         }
       }
     }
@@ -572,8 +1125,29 @@ function main() {
     writeJson(path.join(dataDir, "property.json"), property);
 
     // Address
-    const address = extractAddress($, unAddr);
+    const address = extractAddress($, unAddr, propSeed);
     writeJson(path.join(dataDir, "address.json"), address);
+
+    const geometry = {
+      latitude: unAddr && typeof unAddr.latitude === "number" ? unAddr.latitude : null,
+      longitude: unAddr && typeof unAddr.longitude === "number" ? unAddr.longitude : null,
+      source_http_request:
+        (unAddr && unAddr.source_http_request) ||
+        (propSeed && propSeed.source_http_request) ||
+        null,
+      request_identifier:
+        (unAddr && unAddr.request_identifier) ||
+        (propSeed && propSeed.request_identifier) ||
+        null,
+    };
+    writeJson(path.join(dataDir, "geometry.json"), geometry);
+    writeJson(
+      path.join(dataDir, "relationship_address_has_geometry.json"),
+      {
+        from: { "/": "./address.json" },
+        to: { "/": "./geometry.json" },
+      },
+    );
 
     // Taxes
     const taxes = extractTaxes($);
@@ -583,66 +1157,128 @@ function main() {
       writeJson(path.join(dataDir, `tax_${t.tax_year || taxIdx}.json`), t);
     });
 
-    // Sales & Deeds
-    const sales = extractSalesAndDeeds($);
-    sales.forEach((s, i) => {
-      const saleObj = {
-        ownership_transfer_date: s.ownership_transfer_date,
-        purchase_price_amount: s.purchase_price_amount,
+    // Sales history & deeds
+    const salesHistory = extractSalesAndDeeds($);
+    salesHistory.forEach((sale, i) => {
+      const saleIndex = i + 1;
+      const saleFileName = `sales_history_${saleIndex}.json`;
+      const salePayload = {
+        ownership_transfer_date: sale.ownership_transfer_date,
+        purchase_price_amount: sale.purchase_price_amount,
+      };
+      writeJson(path.join(dataDir, saleFileName), salePayload);
+
+      const hasDeedData =
+        sale.deed_type != null ||
+        sale.book != null ||
+        sale.page != null ||
+        sale.volume != null ||
+        sale.instrument_number != null ||
+        sale.deed_link != null;
+      if (hasDeedData) {
+        const deedFileName = `deed_${saleIndex}.json`;
+        const deedPayload = {};
+        if (sale.deed_type) deedPayload.deed_type = sale.deed_type;
+        if (sale.book) deedPayload.book = String(sale.book);
+        if (sale.page) deedPayload.page = String(sale.page);
+        if (sale.volume) deedPayload.volume = String(sale.volume);
+        if (sale.instrument_number)
+          deedPayload.instrument_number = String(sale.instrument_number);
+        writeJson(path.join(dataDir, deedFileName), deedPayload);
+        writeJson(
+          path.join(
+            dataDir,
+            `relationship_sales_history_${saleIndex}_has_deed_${saleIndex}.json`,
+          ),
+          {
+            from: { "/": `./${saleFileName}` },
+            to: { "/": `./${deedFileName}` },
+          },
+        );
+
+        if (sale.deed_link) {
+          const fileName = `file_${saleIndex}.json`;
+          writeJson(path.join(dataDir, fileName), {
+            document_type: "Title",
+            file_format: null,
+            ipfs_url: null,
+            name:
+              sale.book && sale.page
+                ? `Deed ${sale.book}/${sale.page}`
+                : "Deed Document",
+            original_url: sale.deed_link,
+          });
+          writeJson(
+            path.join(
+              dataDir,
+              `relationship_deed_${saleIndex}_has_file_1.json`,
+            ),
+            {
+              from: { "/": `./deed_${saleIndex}.json` },
+              to: { "/": `./${fileName}` },
+            },
+          );
+        }
       }
-      writeJson(path.join(dataDir, `sales_${i + 1}.json`), saleObj);
-      if (s.deed) {
-        writeJson(path.join(dataDir, `deed_${i + 1}.json`), {"deed_type": s.deed});
-      } else {
-        writeJson(path.join(dataDir, `deed_${i + 1}.json`), {});
-      }
-      const file = {
-        document_type: null,
-        file_format: null,
-        ipfs_url: null,
-        name: s.bookPage ? `Deed ${s.bookPage}` : "Deed Document",
-        original_url: s.link || null,
-      };
-      writeJson(path.join("data", `file_${i + 1}.json`), file);
-      const suffix = i === 0 ? "" : `_${i + 1}`;
-      const saleDeedRelName = `relationship_sales_deed${suffix}.json`;
-      const deedFileRelName = `relationship_deed_file${suffix}.json`;
-      const saleDeedRel = {
-        to: { "/": `./sales_${i + 1}.json` },
-        from: { "/": `./deed_${i + 1}.json` },
-      };
-      writeJson(path.join(dataDir, saleDeedRelName), saleDeedRel);
-      const deedFileRel = {
-        to: { "/": `./deed_${i + 1}.json` },
-        from: { "/": `./file_${i + 1}.json` },
-      };
-      writeJson(path.join(dataDir, deedFileRelName), deedFileRel);
     });
 
     // Owners
     const parcelDashed =
       extractParcelId($) || (propSeed && propSeed.parcel_id) || "";
     const parcelFlat = parcelDashed.replace(/[-]/g, "");
+    const ownerRequestInfo = {
+      source_http_request:
+        (unAddr && unAddr.source_http_request) ||
+        (propSeed && propSeed.source_http_request) ||
+        null,
+      request_identifier:
+        (unAddr && unAddr.request_identifier) ||
+        (propSeed && propSeed.request_identifier) ||
+        null,
+    };
     const ownerFiles = writeOwners(
       ownerData,
       dataDir,
       parcelDashed,
       parcelFlat,
+      ownerRequestInfo,
     );
 
-    // Relationship sales -> owner (company or person) using first sale
-    if (sales.length > 0) {
-      if (ownerFiles.companyFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_company.json"), {
-          to: { "/": `./${ownerFiles.companyFiles[0]}` },
-          from: { "/": "./sales_1.json" },
+    const ownersByDate = ownerFiles.byDate || {};
+    if (salesHistory.length > 0) {
+      let latestSaleIdx = 0;
+      let latestSaleDate = salesHistory[0].ownership_transfer_date || null;
+      let latestSaleTimestamp = latestSaleDate
+        ? new Date(latestSaleDate).getTime()
+        : -Infinity;
+      salesHistory.forEach((sale, idx) => {
+        if (sale.ownership_transfer_date) {
+          const ts = new Date(sale.ownership_transfer_date).getTime();
+          if (Number.isFinite(ts) && ts > latestSaleTimestamp) {
+            latestSaleIdx = idx;
+            latestSaleTimestamp = ts;
+            latestSaleDate = sale.ownership_transfer_date;
+          }
+        }
+      });
+      const ownerList =
+        (latestSaleDate && ownersByDate[latestSaleDate]) ||
+        ownersByDate.current ||
+        [];
+      ownerList.forEach((ownerFilename, idx) => {
+        const base = path.basename(ownerFilename, ".json");
+        const typeMatch = base.match(/^(company|person)_([0-9]+)/i);
+        let relName;
+        if (typeMatch) {
+          relName = `relationship_sales_history_${latestSaleIdx + 1}_has_${typeMatch[1].toLowerCase()}_${typeMatch[2]}.json`;
+        } else {
+          relName = `relationship_sales_history_${latestSaleIdx + 1}_has_buyer_${idx + 1}.json`;
+        }
+        writeJson(path.join(dataDir, relName), {
+          from: { "/": `./sales_history_${latestSaleIdx + 1}.json` },
+          to: { "/": `./${ownerFilename}` },
         });
-      } else if (ownerFiles.personFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_person.json"), {
-          to: { "/": `./${ownerFiles.personFiles[0]}` },
-          from: { "/": "./sales_1.json" },
-        });
-      }
+      });
     }
 
     // Utilities
@@ -658,9 +1294,7 @@ function main() {
         break;
       }
     }
-    if (utilEntry) {
-      writeJson(path.join(dataDir, "utility.json"), utilEntry);
-    }
+    // Utilities intentionally omitted per requirements
 
     // Layouts
     let layoutEntry = null;
@@ -672,7 +1306,18 @@ function main() {
     }
     if (layoutEntry && Array.isArray(layoutEntry.layouts)) {
       layoutEntry.layouts.forEach((lay, i) => {
-        writeJson(path.join(dataDir, `layout_${i + 1}.json`), lay);
+        const layoutFile = `layout_${i + 1}.json`;
+        writeJson(path.join(dataDir, layoutFile), lay);
+        writeJson(
+          path.join(
+            dataDir,
+            `relationship_property_has_layout_${i + 1}.json`,
+          ),
+          {
+            from: { "/": "./property.json" },
+            to: { "/": `./${layoutFile}` },
+          },
+        );
       });
     }
 
