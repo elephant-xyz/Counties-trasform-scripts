@@ -98,92 +98,11 @@ function extractLegalDescription($) {
 function extractUseCode($) {
   let code = null;
   $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
-    if (code) return false;
-    const $tr = $(tr);
-    let rawLabelText = textTrim(
-      $tr.find("th strong, th, td strong").first().text(),
-    );
-    if (!rawLabelText) {
-      const altLabelSelectors = [
-        "td span",
-        "td:first-child",
-        "[data-label]",
-        "[aria-label]",
-      ];
-      for (const selector of altLabelSelectors) {
-        const candidate = textTrim($tr.find(selector).first().text());
-        if (candidate) {
-          rawLabelText = candidate;
-          break;
-        }
-      }
+    const th = textOf($(tr).find("th strong"));
+    if ((th || "").toLowerCase().includes("property use code")) {
+      code = textOf($(tr).find("td span"));
     }
-    if (!rawLabelText) {
-      const dataLabelAttr =
-        $tr.attr("data-label") || $tr.attr("aria-label") || $tr.data("label");
-      if (dataLabelAttr) {
-        rawLabelText = textTrim(String(dataLabelAttr));
-      }
-    }
-    const labelText = (rawLabelText || "").toLowerCase();
-    if (
-      labelText.includes("property use code") ||
-      labelText === "use code" ||
-      labelText.includes("land use code")
-    ) {
-      const collectValueText = () => {
-        const valueSelectors = [
-          () => $tr.find("td").last(),
-          () => $tr.find("th").last(),
-          () => $tr.children("td, th").eq(1),
-        ];
-        for (const getCandidate of valueSelectors) {
-          const $candidate = getCandidate();
-          if (!$candidate || !$candidate.length) continue;
-          const clone = $candidate.clone();
-          clone.find("strong").remove();
-          const candidateText = textTrim(
-            clone.text() || clone.find("span").first().text(),
-          );
-          if (candidateText) return candidateText;
-        }
-        const inlineText = textTrim($tr.text());
-        if (inlineText) {
-          const match = inlineText.match(
-            /(property\s+use\s+code|land\s+use\s+code|use\s+code)\s*[:\-]?\s*(.+)$/i,
-          );
-          if (match && match[2]) {
-            return textTrim(match[2]);
-          }
-        }
-        return null;
-      };
-      const valueText = collectValueText();
-      if (valueText) {
-        code = valueText;
-        return false;
-      }
-    }
-    return true;
   });
-  if (!code) {
-    const $fallbackStrong = $("strong")
-      .filter((_, el) =>
-        textTrim($(el).text()).toLowerCase().includes("use code"),
-      )
-      .first();
-    if ($fallbackStrong.length) {
-      const $row = $fallbackStrong.closest("tr");
-      if ($row.length) {
-        const $valueCell = $row.find("td").last().clone();
-        $valueCell.find("strong").remove();
-        const fallbackValue = textTrim($valueCell.text());
-        if (fallbackValue) {
-          code = fallbackValue;
-        }
-      }
-    }
-  }
   return code || null;
 }
 
@@ -883,14 +802,6 @@ const PROPERTY_USE_CODE_MAPPINGS = {
   },
 };
 
-const DEFAULT_PROPERTY_MAPPING = {
-  property_type: "LandParcel",
-  property_usage_type: "Unknown",
-  structure_form: null,
-  ownership_estate_type: "FeeSimple",
-  build_status: "VacantLand",
-};
-
 function normalizeUseCode(code) {
   if (!code) return null;
   const match = /(\d{4})/.exec(code);
@@ -900,10 +811,14 @@ function normalizeUseCode(code) {
 
 function mapPropertyAttributesFromUseCode(rawCode) {
   const code = normalizeUseCode(rawCode);
-  if (!code) return { ...DEFAULT_PROPERTY_MAPPING };
+  if (!code) return null;
   const mapping = PROPERTY_USE_CODE_MAPPINGS[code];
   if (!mapping) {
-    return { ...DEFAULT_PROPERTY_MAPPING };
+    throw {
+      type: "error",
+      message: `Unhandled property use code ${rawCode}.`,
+      path: "property.property_type",
+    };
   }
   return { ...mapping };
 }
@@ -1263,8 +1178,6 @@ function clearExistingSalesHistoryFiles() {
       if (
         /^sales_history_\d+\.json$/.test(f) ||
         /^sales_\d+\.json$/.test(f) ||
-        /^deed_\d+\.json$/.test(f) ||
-        /^file_\d+\.json$/.test(f) ||
         /^relationship_deed_file_\d+\.json$/.test(f) ||
         /^relationship_sales_deed_\d+\.json$/.test(f) ||
         /^relationship_sales_person_\d+\.json$/.test(f) ||
@@ -1913,10 +1826,212 @@ function validateNamePattern(name) {
 }
 
 function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
-  // DISABLED: Person, Company, and Mailing Address entities are not part of the Sales_History data group
-  // The Sales_History data group only includes: file, property, and sales_history classes
-  // Therefore, we do not generate person, company, or mailing_address entities or their relationships
-  return;
+  const owners = readJSON(path.join("owners", "owner_data.json"));
+  if (!owners) return;
+  const key = `property_${parcelId}`;
+  const record = owners[key];
+  if (!record || !record.owners_by_date) return;
+  const ownersByDate = record.owners_by_date;
+
+  // Helper function to check if a key is a valid ISO date
+  const isISODateKey = (k) => /^\d{4}-\d{2}-\d{2}$/.test(k);
+
+  // Filter ownersByDate to only include valid ISO date entries (exclude unknown_prior_sale_* entries)
+  const validDateEntries = Object.entries(ownersByDate).filter(([k]) => isISODateKey(k));
+
+  // Step 1: Determine which persons will be referenced
+  // Collect all sale dates that have sales_history records
+  const saleDates = new Set();
+  sales.forEach((s) => {
+    const saleDateISO = parseDateToISO(s.saleDate);
+    if (saleDateISO) saleDates.add(saleDateISO);
+  });
+
+  // Collect persons that will be referenced (on sale dates or current owners with mailing addresses)
+  const referencedPersonKeys = new Set();
+  const mailingAddresses = record.owner_mailing_addresses || [];
+  const hasMailingAddresses = mailingAddresses && mailingAddresses.length > 0;
+
+  // Add persons from sale dates
+  validDateEntries.forEach(([dateKey, arr]) => {
+    if (saleDates.has(dateKey)) {
+      (arr || []).forEach((o) => {
+        if (o.type === "person") {
+          const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+          referencedPersonKeys.add(k);
+        }
+      });
+    }
+  });
+
+  // Add current owners if there are mailing addresses
+  if (hasMailingAddresses && mailingAddresses.some(info => info.type === "person")) {
+    mailingAddresses.forEach((info) => {
+      if (info.type === "person") {
+        const k = `${(info.first_name || "").trim().toUpperCase()}|${(info.last_name || "").trim().toUpperCase()}`;
+        referencedPersonKeys.add(k);
+      }
+    });
+  }
+
+  // Step 2: Build unique person map (only for referenced persons)
+  const personMap = new Map();
+  validDateEntries.forEach(([, arr]) => {
+    (arr || []).forEach((o) => {
+      if (o.type === "person") {
+        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+        if (referencedPersonKeys.has(k)) {
+          if (!personMap.has(k)) {
+            personMap.set(k, {
+              first_name: o.first_name,
+              middle_name: o.middle_name,
+              last_name: o.last_name,
+              prefix_name: validatePrefixName(o.prefix_name),
+              suffix_name: validateSuffixName(o.suffix_name),
+            });
+          } else {
+            const existing = personMap.get(k);
+            if (!existing.middle_name && o.middle_name)
+              existing.middle_name = o.middle_name;
+            if (!existing.prefix_name && o.prefix_name)
+              existing.prefix_name = validatePrefixName(o.prefix_name);
+            if (!existing.suffix_name && o.suffix_name)
+              existing.suffix_name = validateSuffixName(o.suffix_name);
+          }
+        }
+      }
+    });
+  });
+
+  // Also add mailing address persons if they're not already in the map
+  if (hasMailingAddresses) {
+    mailingAddresses.forEach((info) => {
+      if (info.type === "person") {
+        const k = `${(info.first_name || "").trim().toUpperCase()}|${(info.last_name || "").trim().toUpperCase()}`;
+        if (referencedPersonKeys.has(k) && !personMap.has(k)) {
+          personMap.set(k, {
+            first_name: info.first_name,
+            middle_name: info.middle_name,
+            last_name: info.last_name,
+            prefix_name: validatePrefixName(info.prefix_name),
+            suffix_name: validateSuffixName(info.suffix_name),
+          });
+        }
+      }
+    });
+  }
+
+  // Create person entities with validation
+  people = Array.from(personMap.values()).map((p) => {
+    // Clean and validate names, ensuring semicolons and invalid chars are removed
+    const cleanedFirstName = p.first_name ? cleanNameForValidation(p.first_name) : null;
+    const cleanedMiddleName = p.middle_name ? cleanNameForValidation(p.middle_name) : null;
+    const cleanedLastName = p.last_name ? cleanNameForValidation(p.last_name) : null;
+
+    return {
+      first_name: cleanedFirstName ? validateNamePattern(titleCaseName(cleanedFirstName)) : null,
+      middle_name: cleanedMiddleName ? validateNamePattern(titleCaseName(cleanedMiddleName)) : null,
+      last_name: cleanedLastName ? validateNamePattern(titleCaseName(cleanedLastName)) : null,
+      birth_date: null,
+      prefix_name: validatePrefixName(p.prefix_name), // Validate prefix
+      suffix_name: validateSuffixName(p.suffix_name), // Validate suffix
+      us_citizenship_status: null,
+      veteran_status: null,
+      request_identifier: parcelId,
+    };
+  });
+
+  people.forEach((p, idx) => {
+    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
+  });
+
+  // Create company entities (only from valid ISO date entries that will be referenced)
+  const referencedCompanyNames = new Set();
+
+  // Add companies from sale dates ONLY (companies that will have sales_history relationships)
+  // Only add companies that are actually in the ownersOnDate for sales to ensure they get relationships
+  sales.forEach((s) => {
+    const saleDateISO = parseDateToISO(s.saleDate);
+    const ownersOnDate = (saleDateISO && ownersByDate[saleDateISO]) || [];
+    ownersOnDate.forEach((o) => {
+      if (o.type === "company" && (o.name || "").trim()) {
+        referencedCompanyNames.add((o.name || "").trim());
+      }
+    });
+  });
+
+  // Add companies from mailing addresses ONLY if they have valid addresses
+  if (hasMailingAddresses) {
+    mailingAddresses.forEach((info) => {
+      if (info.type === "company" && (info.name || "").trim()) {
+        // Check if this company has valid addresses before adding
+        const addresses = (info.addresses || [])
+          .map((a) => (a || "").split(/\r?\n/).map((part) => part.trim()).filter(Boolean).join(", ").trim())
+          .filter((addr) => addr && addr.length);
+        if (addresses.length > 0) {
+          referencedCompanyNames.add((info.name || "").trim());
+        }
+      }
+    });
+  }
+
+  companies = Array.from(referencedCompanyNames).map((n) => ({
+    name: n,
+    request_identifier: parcelId,
+  }));
+
+  companies.forEach((c, idx) => {
+    writeJSON(path.join("data", `company_${idx + 1}.json`), c);
+  });
+
+  // Create relationships between sales_history and persons/companies
+  sales.forEach((s, idx) => {
+    const saleIdx = idx + 1;
+    const saleDateISO = parseDateToISO(s.saleDate);
+    const ownersOnDate = (saleDateISO && ownersByDate[saleDateISO]) || [];
+
+    const linked = new Set();
+
+    // Link persons to sales_history
+    ownersOnDate
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
+        // Clean names before lookup to match how they were cleaned during person creation
+        const cleanedFirstName = o.first_name ? cleanNameForValidation(o.first_name) : null;
+        const cleanedLastName = o.last_name ? cleanNameForValidation(o.last_name) : null;
+        const pIdx = findPersonIndexByName(cleanedFirstName, cleanedLastName, o.suffix_name);
+        if (pIdx && !linked.has(`person:${pIdx}`)) {
+          linked.add(`person:${pIdx}`);
+          writeJSON(
+            path.join("data", `relationship_sales_history_${saleIdx}_person_${pIdx}.json`),
+            {
+              from: { "/": `./sales_history_${saleIdx}.json` },
+              to: { "/": `./person_${pIdx}.json` },
+            }
+          );
+        }
+      });
+
+    // Link companies to sales_history
+    ownersOnDate
+      .filter((o) => o.type === "company")
+      .forEach((o) => {
+        const cIdx = findCompanyIndexByName(o.name);
+        if (cIdx && !linked.has(`company:${cIdx}`)) {
+          linked.add(`company:${cIdx}`);
+          writeJSON(
+            path.join("data", `relationship_sales_history_${saleIdx}_company_${cIdx}.json`),
+            {
+              from: { "/": `./sales_history_${saleIdx}.json` },
+              to: { "/": `./company_${cIdx}.json` },
+            }
+          );
+        }
+      });
+  });
+
+  // Write mailing addresses for current owners
+  writeMailingAddresses(parcelId, mailingAddresses, propertySeed?.source_http_request);
 }
 
 function writeTaxes($) {
@@ -1945,21 +2060,12 @@ function writeLayout(
 ) {
   clearExistingLayoutFiles();
   if (!parcelId) return;
+  if (propertyType === "LandParcel") return;
   const layoutsData = readJSON(path.join("owners", "layout_data.json"));
   if (!layoutsData) return;
   const key = `property_${parcelId}`;
   const entry = layoutsData[key];
   if (!entry || !Array.isArray(entry.layouts) || !entry.layouts.length) return;
-  if (propertyType === "LandParcel") {
-    const hasBuildingLayout = entry.layouts.some(
-      (lay) =>
-        typeof lay === "object" &&
-        lay &&
-        typeof lay.space_type === "string" &&
-        lay.space_type.toLowerCase() === "building",
-    );
-    if (!hasBuildingLayout) return;
-  }
 
   const layoutOutputs = entry.layouts.map((lay, idx) => {
     const index = idx + 1;
