@@ -202,14 +202,18 @@ function mapFence(text) {
 function mapExemptionType(text) {
   if (!text) return null;
   const t = text.toUpperCase().trim();
+  // Valid enum values: Portability, Homestead, Add. Homestead, Wid/Vet/Dis, Senior, Affordable Housing
+  if (t.includes("PORTABILITY") || t.includes("PORT")) return "Portability";
+  if (t.includes("ADD") && t.includes("HOMESTEAD")) return "Add. Homestead";
   if (t.includes("HOMESTEAD")) return "Homestead";
-  // Check for REG DISABILITY before general DISABILITY
-  if (t.includes("REG DISABILITY") || t.includes("REG. DISABILITY")) return "Wid/Vet/Dis";
-  if (t.includes("DISABILITY") || t.includes("DISABLED")) return "Disability";
-  if (t.includes("VETERAN") || t.includes("VET ")) return "Veteran";
   if (t.includes("SENIOR") || t.includes("OVER 65") || t.includes("AGE 65")) return "Senior";
+  if (t.includes("AFFORDABLE") && t.includes("HOUSING")) return "Affordable Housing";
+  // Disability, Veteran, Widow, and other exemptions map to Wid/Vet/Dis
+  if (t.includes("DISABILITY") || t.includes("DISABLED")) return "Wid/Vet/Dis";
+  if (t.includes("VETERAN") || t.includes("VET ")) return "Wid/Vet/Dis";
+  if (t.includes("WIDOW") || t.includes("WID")) return "Wid/Vet/Dis";
   if (t.includes("OTHER")) return "Wid/Vet/Dis";
-  if (t.includes("AGRICULTURAL") || t.includes("AG USE")) return "Agricultural";
+  if (t.includes("AGRICULTURAL") || t.includes("AG USE")) return "Wid/Vet/Dis";
   return "Wid/Vet/Dis";
 }
 
