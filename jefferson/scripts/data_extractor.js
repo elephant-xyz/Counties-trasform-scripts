@@ -1290,19 +1290,6 @@ function cleanNameField(s) {
   return s.replace(/[,.\-'\s]+$/, '').trim();
 }
 
-function validateNameField(s) {
-  // Validates that name field matches pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-  // Returns the string if valid, null otherwise
-  if (!s || typeof s !== 'string') return null;
-  const trimmed = s.trim();
-  if (trimmed.length === 0) return null;
-  // Check if matches the required pattern from Elephant schema
-  // Pattern: Start with uppercase letter, followed by any letters (upper/lower), spaces, hyphens, apostrophes, commas, periods
-  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  if (!namePattern.test(trimmed)) return null;
-  return trimmed;
-}
-
 function writePersonCompaniesSalesRelationships(
   parcelId,
   sales,
@@ -1373,16 +1360,16 @@ function writePersonCompaniesSalesRelationships(
     });
   });
   people = Array.from(personMap.values()).map((p) => ({
-    first_name: validateNameField(p.first_name ? cleanNameField(titleCaseName(p.first_name)) : null),
-    middle_name: validateNameField(p.middle_name ? cleanNameField(titleCaseName(p.middle_name)) : null),
-    last_name: validateNameField(p.last_name ? cleanNameField(titleCaseName(p.last_name)) : null),
-    prefix_name: validateNameField(p.prefix_name ? cleanNameField(titleCaseName(p.prefix_name)) : null),
+    first_name: p.first_name ? cleanNameField(titleCaseName(p.first_name)) : null,
+    middle_name: p.middle_name ? cleanNameField(titleCaseName(p.middle_name)) : null,
+    last_name: p.last_name ? cleanNameField(titleCaseName(p.last_name)) : null,
+    prefix_name: p.prefix_name ? cleanNameField(titleCaseName(p.prefix_name)) : null,
     suffix_name: p.suffix_name || null,
     birth_date: null,
     us_citizenship_status: null,
     veteran_status: null,
     request_identifier: parcelId,
-  })).filter((p) => p.first_name !== null && p.last_name !== null);
+  }));
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
