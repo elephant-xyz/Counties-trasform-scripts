@@ -166,9 +166,10 @@ function mapRoofCover(token) {
     return "Metal Corrugated";
   }
 
-  // Check for tile roofing
+  // Check for tile roofing - specific types first
   if (upper.includes("CLAY") && upper.includes("TILE")) return "Clay Tile";
   if (upper.includes("CONCRETE") && upper.includes("TILE")) return "Concrete Tile";
+  // Only use TILE as catch-all if it doesn't contain invalid markers
   if (upper.includes("TILE")) {
     // Default tile type
     return "Concrete Tile";
