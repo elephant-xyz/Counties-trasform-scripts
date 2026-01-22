@@ -15,17 +15,63 @@ const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl05_ctl01_grdSales tbody tr";
 const txt = (s) => (s || "").replace(/\s+/g, " ").trim();
 const normalizeName = (s) => txt(s).toLowerCase();
 
+// Allowed prefix/suffix enums from Elephant person schema
+const PREFIX_ENUM = [
+  "Mr.",
+  "Mrs.",
+  "Ms.",
+  "Miss",
+  "Mx.",
+  "Dr.",
+  "Prof.",
+  "Rev.",
+  "Fr.",
+  "Sr.",
+  "Br.",
+  "Capt.",
+  "Col.",
+  "Maj.",
+  "Lt.",
+  "Sgt.",
+  "Hon.",
+  "Judge",
+  "Rabbi",
+  "Imam",
+  "Sheikh",
+  "Sir",
+  "Dame",
+];
+
+const SUFFIX_ENUM = [
+  "Jr.",
+  "Sr.",
+  "II",
+  "III",
+  "IV",
+  "PhD",
+  "MD",
+  "Esq.",
+  "JD",
+  "LLM",
+  "MBA",
+  "RN",
+  "DDS",
+  "DVM",
+  "CFA",
+  "CPA",
+  "PE",
+  "PMP",
+  "Emeritus",
+  "Ret.",
+];
+
 function cleanRawName(raw) {
   let s = (raw || "").replace(/\s+/g, " ").trim();
   if (!s) return "";
   const noisePatterns = [
-    /\bET\s*AL\b/gi,
-    /\bETAL\b/gi,
     /\bET\s*UX\b/gi,
     /\bET\s*VIR\b/gi,
     /\bET\s+UXOR\b/gi,
-    /\bTRUSTEE[S]?\b/gi,
-    /\bTTEE[S]?\b/gi,
     /\bU\/A\b/gi,
     /\bU\/D\/T\b/gi,
     /\bAKA\b/gi,
@@ -82,17 +128,24 @@ function cleanInvalidCharsFromName(raw) {
 }
 
 const COMPANY_KEYWORDS = [
+  // Short and long forms
   "inc",
+  "inc.",
+  "incorporated",
   "llc",
   "l.l.c",
   "ltd",
-  "foundation",
-  "alliance",
-  "solutions",
+  "ltd.",
+  "limited",
+  "corporation",
   "corp",
+  "corp.",
   "co",
+  "co.",
   "company",
   "services",
+  "solutions",
+  "foundation",
   "trust",
   "tr",
   "associates",
@@ -111,6 +164,113 @@ const COMPANY_KEYWORDS = [
   "authority",
 ];
 
+function mapPrefix(token) {
+  const t = token ? token.replace(/\\.$/, "") : "";
+  const norm = (t + ".").replace(/\\.\\./g, ".").replace(/\\s+/g, "").toLowerCase();
+  const lookup = {
+    "mr.": "Mr.",
+    "mrs.": "Mrs.",
+    "ms.": "Ms.",
+    "miss.": "Miss",
+    "miss": "Miss",
+    "mx.": "Mx.",
+    "dr.": "Dr.",
+    "prof.": "Prof.",
+    "rev.": "Rev.",
+    "fr.": "Fr.",
+    "sr.": "Sr.",
+    "br.": "Br.",
+    "capt.": "Capt.",
+    "col.": "Col.",
+    "maj.": "Maj.",
+    "lt.": "Lt.",
+    "sgt.": "Sgt.",
+    "hon.": "Hon.",
+    "judge.": "Judge",
+    "judge": "Judge",
+    "rabbi.": "Rabbi",
+    "imam.": "Imam",
+    "sheikh.": "Sheikh",
+    "sir.": "Sir",
+    "dame.": "Dame",
+  };
+  return lookup[norm] || null;
+}
+
+function mapSuffix(token) {
+  const t = (token || "").replace(/,/g, "").trim();
+  const norm = t.toUpperCase();
+  const lookup = {
+    "JR": "Jr.",
+    "JR.": "Jr.",
+    "SR": "Sr.",
+    "SR.": "Sr.",
+    "II": "II",
+    "III": "III",
+    "IV": "IV",
+    "PHD": "PhD",
+    "PH.D": "PhD",
+    "MD": "MD",
+    "ESQ": "Esq.",
+    "ESQ.": "Esq.",
+    "JD": "JD",
+    "J.D": "JD",
+    "LLM": "LLM",
+    "MBA": "MBA",
+    "RN": "RN",
+    "DDS": "DDS",
+    "DVM": "DVM",
+    "CFA": "CFA",
+    "CPA": "CPA",
+    "PE": "PE",
+    "PMP": "PMP",
+    "EMERITUS": "Emeritus",
+    "RET": "Ret.",
+    "RET.": "Ret.",
+  };
+  return lookup[norm] || null;
+}
+
+function parsePersonName(cleaned) {
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return null;
+
+  let prefix = null;
+  let suffix = null;
+
+  // Handle prefix as first token if matches
+  const firstTokenPrefix = mapPrefix(tokens[0]);
+  if (firstTokenPrefix) {
+    prefix = firstTokenPrefix;
+    tokens.shift();
+  }
+
+  // Handle suffix as last token if matches
+  const lastTokenSuffix = mapSuffix(tokens[tokens.length - 1]);
+  if (lastTokenSuffix) {
+    suffix = lastTokenSuffix;
+    tokens.pop();
+  }
+
+  if (tokens.length < 2) return null;
+
+  const first = cleanInvalidCharsFromName(tokens[0]);
+  const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
+  const middleTokens = tokens.slice(1, -1);
+  const middle = cleanInvalidCharsFromName(middleTokens.join(" ").trim());
+
+  if (first && last) {
+    return {
+      type: "person",
+      prefix_name: prefix,
+      first_name: first,
+      last_name: last,
+      middle_name: middle ? middle : null,
+      suffix_name: suffix,
+    };
+  }
+  return null;
+}
 
 function isCompanyName(name) {
   const n = name.toLowerCase();
@@ -137,25 +297,9 @@ function classifyOwner(raw) {
   if (isCompanyName(cleaned)) {
     return { valid: true, owner: { type: "company", name: cleaned } };
   }
-  const tokens = cleaned.split(/\s+/).filter(Boolean);
-  if (tokens.length < 2) {
-    return { valid: false, reason: "person_missing_last_name", raw: cleaned };
-  }
-  const first = cleanInvalidCharsFromName(tokens[0]);
-  const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
-  const middleTokens = tokens.slice(1, -1);
-  // if (/^[A-Za-z]$/.test(last)) {
-  //   return { valid: false, reason: "person_missing_last_name", raw: cleaned };
-  // }
-  const middle = cleanInvalidCharsFromName(middleTokens.join(" ").trim());
-  if (first && last) {
-  const person = {
-    type: "person",
-    first_name: first,
-    last_name: last,
-    middle_name: middle ? middle : null,
-  };
-  return { valid: true, owner: person };
+  const parsed = parsePersonName(cleaned);
+  if (parsed) {
+    return { valid: true, owner: parsed };
   }
   return { valid: false, reason: "person_missing_first_or_last", raw: cleaned };
 }
