@@ -71,6 +71,7 @@ function run() {
       .trim();
   }
   const propertyId = digitsOnly(pcnText);
+  const propKey = `property_${propertyId || "unknown"}`;
 
   // Structural Elements table
   const structHeader = $("h3:contains('Structural Element')").first();
@@ -110,25 +111,25 @@ function run() {
     hvac_unit_issues: null,
   };
 
+  const outObj = {};
+  outObj[propKey] = data;
+
   const ownersDir = path.resolve("owners");
   const dataDir = path.resolve("data");
   fs.mkdirSync(ownersDir, { recursive: true });
   fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(
     path.join(ownersDir, "utilities_data.json"),
-    JSON.stringify(data, null, 2),
+    JSON.stringify(outObj, null, 2),
     "utf8",
   );
   fs.writeFileSync(
     path.join(dataDir, "utilities_data.json"),
-    JSON.stringify(data, null, 2),
+    JSON.stringify(outObj, null, 2),
     "utf8",
   );
 
-  console.log(
-    "utilities_data.json written for property",
-    propertyId || "unknown",
-  );
+  console.log("utilities_data.json written for", propKey);
 }
 
 if (require.main === module) {

@@ -360,11 +360,11 @@ currentOwnerRaws.forEach((raw) => {
 const currentDeduped = dedupOwners(currentOwners);
 ownersByDate["current"] = currentDeduped;
 
-// Compose final JSON structure without generating synthetic UR keys.
-const result = {
-  owners_by_date: ownersByDate,
-  invalid_owners: invalidOwners,
-};
+// Compose final JSON structure
+const topKey = `property_${propertyId || "unknown_id"}`;
+const result = {};
+result[topKey] = { owners_by_date: ownersByDate };
+result.invalid_owners = invalidOwners;
 
 // Ensure output directory and write file
 const outDir = path.join(process.cwd(), "owners");
@@ -372,11 +372,5 @@ fs.mkdirSync(outDir, { recursive: true });
 const outPath = path.join(outDir, "owner_data.json");
 fs.writeFileSync(outPath, JSON.stringify(result, null, 2), "utf-8");
 
-// Print to console for debugging
-console.log(
-  JSON.stringify({
-    property_id: propertyId || null,
-    owners_by_date: ownersByDate,
-    invalid_owners: invalidOwners,
-  }),
-);
+// Print to console
+console.log(JSON.stringify(result));
