@@ -58,6 +58,8 @@ function titleCaseName(s) {
 function mapPropertyType(text) {
   if (!text) return null;
   const t = text.toUpperCase().trim();
+  // Handle unassigned values - return null to let fallback logic determine type
+  if (t === "UNASSIGNED") return null;
   // Check for vacant lots/tracts first (even if designated SFR)
   if (t.includes("VACANT LOTS") || t.includes("VACANT LAND") || t.includes("TRACTS")) return "VacantLand";
   if (t.includes("SINGLE FAMILY") || t.includes("SFR")) return "SingleFamily";

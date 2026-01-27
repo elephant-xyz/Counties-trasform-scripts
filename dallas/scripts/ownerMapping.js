@@ -57,9 +57,22 @@ const sanitizeOutputName = (value) => {
 
 const isLikelyAddressLine = (line) => {
   const s = line.toUpperCase();
-  if (/\d/.test(s)) return true; // numbers imply address or zip
-  if (s.includes(",")) return true; // city,state
-  if (/(TEXAS|TX)/.test(s)) return true;
+  // Check for company indicators first - if it's a company name, it's not an address
+  if (companyIndicators.some((ind) => {
+    const pattern = new RegExp(`(^|[^A-Z])${ind}([^A-Z]|$)`);
+    return pattern.test(s);
+  })) {
+    return false;
+  }
+  // Street address patterns (number followed by street name)
+  if (/^\d+\s+[A-Z]/.test(s)) return true;
+  // PO Box
+  if (/P\.?O\.?\s*BOX/i.test(s)) return true;
+  // City, State ZIP pattern
+  if (/,\s*(TX|TEXAS)\s*\d{5}/i.test(s)) return true;
+  if (s.includes(",") && /(TEXAS|TX)/.test(s)) return true;
+  // Just a ZIP code
+  if (/^\d{5}(-\d{4})?$/.test(s.trim())) return true;
   return false;
 };
 
@@ -92,6 +105,34 @@ const companyIndicators = [
   "HOLDINGS",
   "HOLDING",
   "GROUP",
+  // Organizations and institutions
+  "UNIVERSITY",
+  "COLLEGE",
+  "SCHOOL",
+  "DISTRICT",
+  "BOARD",
+  "CHURCH",
+  "HOSPITAL",
+  "COUNTY",
+  "CITY OF",
+  "STATE OF",
+  "BANK",
+  "CREDIT UNION",
+  "GOVERNMENT",
+  "AUTHORITY",
+  "COMMISSION",
+  "DEPARTMENT",
+  "MINISTRY",
+  "INSTITUTE",
+  "INSTITUTION",
+  "COUNCIL",
+  "COMMITTEE",
+  "AGENCY",
+  "BUREAU",
+  "ADMINISTRATION",
+  "FUND",
+  "ESTATE OF",
+  "TRUSTEES",
 ];
 
 const isCompany = (raw) => {
