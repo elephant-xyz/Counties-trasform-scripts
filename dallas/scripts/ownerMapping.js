@@ -49,21 +49,10 @@ const cleanPersonToken = (token) => {
     .replace(/[^0-9A-Za-z'\\-]+$/, "");
 };
 
-const titleCaseName = (s) => {
-  if (!s) return "";
-  // Trim and normalize whitespace before converting to title case
-  const cleaned = s.toLowerCase().trim().replace(/\s+/g, ' ');
-  // Return empty string if the string doesn't contain at least one letter
-  if (!/[a-z]/.test(cleaned)) return "";
-  return cleaned.replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
-};
-
 const sanitizeOutputName = (value) => {
   if (!value) return "";
   const cleaned = value.replace(/[^0-9A-Za-z]+/g, " ");
-  const normalized = normalize(cleaned);
-  // Apply title case to ensure proper formatting
-  return titleCaseName(normalized);
+  return normalize(cleaned);
 };
 
 const isLikelyAddressLine = (line) => {
@@ -77,6 +66,8 @@ const isLikelyAddressLine = (line) => {
   }
   // Street address patterns (number followed by street name)
   if (/^\d+\s+[A-Z]/.test(s)) return true;
+  // Unit/suite/apt designators (e.g. "STE 217", "APT 1112", "SUITE 4B", "UNIT 100")
+  if (/^(STE|SUITE|APT|APARTMENT|UNIT|BLDG|BUILDING|FL|FLOOR|RM|ROOM|SP|SPACE|#)\s*:?\s*\d/i.test(s)) return true;
   // PO Box
   if (/P\.?O\.?\s*BOX/i.test(s)) return true;
   // City, State ZIP pattern
@@ -160,13 +151,8 @@ const buildPerson = (last, first, middle) => {
     first_name: sanitizeOutputName(first),
     last_name: sanitizeOutputName(last),
   };
-  // For middle names/initials, keep them uppercase if they're single letters or all initials
   const mid = sanitizeOutputName(middle || "");
-  if (mid) {
-    // Keep single letters or space-separated initials uppercase (e.g., "P" or "J K")
-    const isInitials = /^[A-Z](\s+[A-Z])*$/.test(mid.toUpperCase().trim());
-    obj.middle_name = isInitials ? mid.toUpperCase() : mid;
-  }
+  if (mid) obj.middle_name = mid;
   return obj;
 };
 

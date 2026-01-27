@@ -51,10 +51,7 @@ function toISODate(mdy) {
 
 function titleCaseName(s) {
   if (!s) return null;
-  // Trim and normalize whitespace before converting to title case
-  s = s.toLowerCase().trim().replace(/\s+/g, ' ');
-  // Return null if the string doesn't contain at least one letter
-  if (!/[a-z]/.test(s)) return null;
+  s = s.toLowerCase();
   return s.replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
 }
 
@@ -1865,9 +1862,7 @@ async function main() {
       if (o.type === "person") {
         const first = titleCaseName(o.first_name);
         const last = titleCaseName(o.last_name);
-        // Skip invalid person entries (names without letters)
-        if (!first || !last) continue;
-        const middle = o.middle_name && o.middle_name.trim() ? titleCaseName(o.middle_name) : null;
+        const middle = o.middle_name ? o.middle_name.toUpperCase() : null;
         const key = `${first}|${middle || ""}|${last}`;
         if (!people.has(key)) {
           people.set(key, {
