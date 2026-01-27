@@ -55,8 +55,15 @@ const sanitizeOutputName = (value) => {
   return normalize(cleaned);
 };
 
+// Detect whether a line is an address rather than a person/company name.
+// Uses a two-pronged approach:
+//   1. Positive address patterns (things that ARE addresses)
+//   2. Negative name validation (things that are NOT valid names)
+// Company indicators override — if a line matches a company pattern, it's not an address.
 const isLikelyAddressLine = (line) => {
-  const s = line.toUpperCase();
+  const s = line.toUpperCase().trim();
+  if (!s) return false;
+
   // Check for company indicators first - if it's a company name, it's not an address
   if (companyIndicators.some((ind) => {
     const pattern = new RegExp(`(^|[^A-Z])${ind}([^A-Z]|$)`);
@@ -64,17 +71,38 @@ const isLikelyAddressLine = (line) => {
   })) {
     return false;
   }
-  // Street address patterns (number followed by street name)
+
+  // --- Positive address patterns ---
+
+  // Street address: number followed by text (e.g. "450 E JOHN W CARPENTER FWY")
   if (/^\d+\s+[A-Z]/.test(s)) return true;
-  // Unit/suite/apt designators (e.g. "STE 217", "APT 1112", "SUITE 4B", "UNIT 100")
-  if (/^(STE|SUITE|APT|APARTMENT|UNIT|BLDG|BUILDING|FL|FLOOR|RM|ROOM|SP|SPACE|#)\s*:?\s*\d/i.test(s)) return true;
+  // Unit/suite/apt designators at start (e.g. "STE 217", "APT 1112", "SUITE: 4B")
+  if (/^(STE|SUITE|APT|APARTMENT|UNIT|BLDG|BUILDING|FL|FLOOR|RM|ROOM|SP|SPACE|#)\s*:?\s*\w/i.test(s)) return true;
   // PO Box
   if (/P\.?O\.?\s*BOX/i.test(s)) return true;
-  // City, State ZIP pattern
-  if (/,\s*(TX|TEXAS)\s*\d{5}/i.test(s)) return true;
-  if (s.includes(",") && /(TEXAS|TX)/.test(s)) return true;
-  // Just a ZIP code
-  if (/^\d{5}(-\d{4})?$/.test(s.trim())) return true;
+  // City, State ZIP (any US state)
+  if (/,\s*[A-Z]{2}\s+\d{5}/.test(s)) return true;
+  if (/,\s*(TEXAS|TX|CALIFORNIA|CA|FLORIDA|FL|NEW YORK|NY|ILLINOIS|IL|OHIO|OH|GEORGIA|GA|PENNSYLVANIA|PA|VIRGINIA|VA|NORTH CAROLINA|NC|MICHIGAN|MI|NEW JERSEY|NJ|ARIZONA|AZ|TENNESSEE|TN|INDIANA|IN|MARYLAND|MD|MISSOURI|MO|COLORADO|CO|WISCONSIN|WI|MINNESOTA|MN|SOUTH CAROLINA|SC|ALABAMA|AL|LOUISIANA|LA|KENTUCKY|KY|OREGON|OR|OKLAHOMA|OK|CONNECTICUT|CT|IOWA|IA|UTAH|UT|ARKANSAS|AR|NEVADA|NV|MISSISSIPPI|MS|KANSAS|KS|NEW MEXICO|NM|NEBRASKA|NE|IDAHO|ID|WEST VIRGINIA|WV|HAWAII|HI|MAINE|ME|MONTANA|MT|DELAWARE|DE|SOUTH DAKOTA|SD|NORTH DAKOTA|ND|ALASKA|AK|VERMONT|VT|WYOMING|WY|RHODE ISLAND|RI|NEW HAMPSHIRE|NH|WASHINGTON|WA|MASSACHUSETTS|MA|DISTRICT OF COLUMBIA|DC)(\s|\d|$)/i.test(s)) return true;
+  // Just a ZIP code line
+  if (/^\d{5}(-\d{4})?$/.test(s)) return true;
+  // Contains common street suffix words with a preceding number pattern
+  if (/\d+\s+\w+\s+(ST|AVE|BLVD|DR|LN|RD|CT|CIR|WAY|PL|HWY|FWY|PKWY|TRL|TER|EXPY)\b/.test(s)) return true;
+
+  // --- Negative name validation ---
+  // A valid person name should start with a letter and be mostly alphabetic.
+  // Lines that don't look like names are likely address continuations.
+
+  // Starts with a digit — not a name (addresses and ZIP lines start with digits)
+  if (/^\d/.test(s)) return true;
+  // Entirely numeric or numeric with dashes (ZIP codes, route numbers)
+  if (/^[\d\s-]+$/.test(s)) return true;
+  // Contains a 5-digit ZIP code anywhere
+  if (/\b\d{5}\b/.test(s)) return true;
+  // Line has more digits than letters — likely an address
+  const digitCount = (s.match(/\d/g) || []).length;
+  const letterCount = (s.match(/[A-Z]/g) || []).length;
+  if (digitCount > 0 && digitCount >= letterCount) return true;
+
   return false;
 };
 
@@ -145,19 +173,38 @@ const isCompany = (raw) => {
   });
 };
 
+// Validate that a name token looks like a real person name part (alphabetic, no digits).
+// Schema requires: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+// At minimum, a valid name part must start with a letter and contain no digits.
+const isValidNameToken = (token) => {
+  if (!token || !token.trim()) return false;
+  // Must start with a letter
+  if (!/^[A-Za-z]/.test(token)) return false;
+  // Must not contain digits
+  if (/\d/.test(token)) return false;
+  return true;
+};
+
 const buildPerson = (last, first, middle) => {
+  const firstName = sanitizeOutputName(first);
+  const lastName = sanitizeOutputName(last);
+  // Reject if first or last name is not a valid name token
+  if (!isValidNameToken(firstName) || !isValidNameToken(lastName)) return null;
   const obj = {
     type: "person",
-    first_name: sanitizeOutputName(first),
-    last_name: sanitizeOutputName(last),
+    first_name: firstName,
+    last_name: lastName,
   };
   const mid = sanitizeOutputName(middle || "");
-  if (mid) obj.middle_name = mid;
+  if (mid && isValidNameToken(mid)) obj.middle_name = mid;
   return obj;
 };
 
 // Parse a single person-like owner name in LAST FIRST [MIDDLE] ordering
 const parsePersonName = (raw, inferredLast) => {
+  // Early rejection: if the raw line looks like an address, don't parse as a person
+  if (isLikelyAddressLine(raw)) return null;
+
   const cleaned = normalize(
     raw.replace(/\s*&\s*$/, "").replace(/\s*&\s*/g, " "),
   );
