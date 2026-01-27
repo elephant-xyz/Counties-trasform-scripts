@@ -908,18 +908,31 @@ async function main() {
   const ensureCityFormat = (val) =>
     val ? val.replace(/\s+/g, " ").trim().toUpperCase() : null;
   const cityFormatted = ensureCityFormat(resolvedCity);
-  const unnormalizedAddr =
+  // Build unnormalized address: prefer existing data, then street line,
+  // then construct from available components (city, state, zip) as fallback
+  const unnormalizedAddrDirect =
     address.unnormalized_address ||
     streetLine ||
     null;
+  const unnormalizedAddr = (() => {
+    if (unnormalizedAddrDirect && unnormalizedAddrDirect.trim().length > 0) return unnormalizedAddrDirect;
+    // Fallback: build from whatever components we have
+    const parts = [
+      streetNumber && streetNameBase ? `${streetNumber} ${streetNameBase}` : null,
+      cityFormatted,
+      stateCode,
+      postalCode,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(", ") : null;
+  })();
 
   // Validate we have data for at least one valid format
   const hasValidNormalized = streetNumber && streetNameBase;
   const hasValidUnnormalized = unnormalizedAddr && unnormalizedAddr.trim().length > 0;
 
   // Choose format: prefer normalized if available, otherwise use unnormalized
-  // If neither is valid, default to normalized with available data
-  const useNormalized = hasValidNormalized || !hasValidUnnormalized;
+  // If neither is valid, use unnormalized with fallback data to avoid empty address errors
+  const useNormalized = hasValidNormalized;
 
   const addrOut = useNormalized ? {
     source_http_request: address.source_http_request || null,
