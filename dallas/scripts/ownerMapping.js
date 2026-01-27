@@ -49,10 +49,21 @@ const cleanPersonToken = (token) => {
     .replace(/[^0-9A-Za-z'\\-]+$/, "");
 };
 
+const titleCaseName = (s) => {
+  if (!s) return "";
+  // Trim and normalize whitespace before converting to title case
+  const cleaned = s.toLowerCase().trim().replace(/\s+/g, ' ');
+  // Return empty string if the string doesn't contain at least one letter
+  if (!/[a-z]/.test(cleaned)) return "";
+  return cleaned.replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
+};
+
 const sanitizeOutputName = (value) => {
   if (!value) return "";
   const cleaned = value.replace(/[^0-9A-Za-z]+/g, " ");
-  return normalize(cleaned);
+  const normalized = normalize(cleaned);
+  // Apply title case to ensure proper formatting
+  return titleCaseName(normalized);
 };
 
 const isLikelyAddressLine = (line) => {
@@ -149,8 +160,13 @@ const buildPerson = (last, first, middle) => {
     first_name: sanitizeOutputName(first),
     last_name: sanitizeOutputName(last),
   };
+  // For middle names/initials, keep them uppercase if they're single letters or all initials
   const mid = sanitizeOutputName(middle || "");
-  if (mid) obj.middle_name = mid;
+  if (mid) {
+    // Keep single letters or space-separated initials uppercase (e.g., "P" or "J K")
+    const isInitials = /^[A-Z](\s+[A-Z])*$/.test(mid.toUpperCase().trim());
+    obj.middle_name = isInitials ? mid.toUpperCase() : mid;
+  }
   return obj;
 };
 
