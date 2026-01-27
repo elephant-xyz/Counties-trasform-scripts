@@ -1867,7 +1867,7 @@ async function main() {
         const last = titleCaseName(o.last_name);
         // Skip invalid person entries (names without letters)
         if (!first || !last) continue;
-        const middle = o.middle_name ? o.middle_name.toUpperCase() : null;
+        const middle = o.middle_name && o.middle_name.trim() ? titleCaseName(o.middle_name) : null;
         const key = `${first}|${middle || ""}|${last}`;
         if (!people.has(key)) {
           people.set(key, {
