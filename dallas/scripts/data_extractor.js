@@ -363,8 +363,46 @@ const STREET_SUFFIX_MAP = Object.fromEntries([
   ["TERRACE", "Ter"],
   ["EXPY", "Expy"],
   ["EXPRESSWAY", "Expy"],
+  ["FWY", "Fwy"],
+  ["FREEWAY", "Fwy"],
   ["ALY", "Aly"],
   ["ALLY", "Aly"],
+  ["ALLEY", "Aly"],
+  ["BND", "Bnd"],
+  ["BEND", "Bnd"],
+  ["CRK", "Crk"],
+  ["CREEK", "Crk"],
+  ["CRES", "Cres"],
+  ["CRESCENT", "Cres"],
+  ["CV", "Cv"],
+  ["COVE", "Cv"],
+  ["XING", "Xing"],
+  ["CROSSING", "Xing"],
+  ["GLN", "Gln"],
+  ["GLEN", "Gln"],
+  ["GRV", "Grv"],
+  ["GROVE", "Grv"],
+  ["HOLW", "Holw"],
+  ["HOLLOW", "Holw"],
+  ["KNLS", "Knls"],
+  ["KNOLLS", "Knls"],
+  ["LOOP", "Loop"],
+  ["PASS", "Pass"],
+  ["PATH", "Path"],
+  ["PT", "Pt"],
+  ["POINT", "Pt"],
+  ["RDG", "Rdg"],
+  ["RIDGE", "Rdg"],
+  ["RUN", "Run"],
+  ["SQ", "Sq"],
+  ["SQUARE", "Sq"],
+  ["TRCE", "Trce"],
+  ["TRACE", "Trce"],
+  ["VW", "Vw"],
+  ["VIEW", "Vw"],
+  ["WALK", "Walk"],
+  ["LNDG", "Lndg"],
+  ["LANDING", "Lndg"],
 ]);
 
 function normalizeStateCode(val) {
@@ -394,9 +432,48 @@ function parseStreetNameDetails(name) {
       suffix: null,
       preDirectional: null,
       postDirectional: null,
+      unit: null,
     };
   }
-  const tokens = name.replace(/\s+/g, " ").trim().toUpperCase().split(" ");
+  let cleaned = name.replace(/\s+/g, " ").trim().toUpperCase();
+
+  // Extract unit/suite designators that may be appended to the street line.
+  // Handles formats like:
+  //   "JOHN W CARPENTER FWY Suite: 2"
+  //   "MAIN ST APT 4B"
+  //   "OAK AVE UNIT 100"
+  //   "ELM BLVD #5"
+  //   "PINE RD STE100" (no space between designator and value)
+  let unit = null;
+  const unitMatch = cleaned.match(
+    /\s*(?:,\s*)?(?:SUITE|STE|UNIT|APT|APARTMENT|BLDG|BUILDING|FL|FLOOR|RM|ROOM|SP|SPACE|#)\s*:?\s*(.+)$/i,
+  );
+  if (unitMatch) {
+    unit = unitMatch[1].trim() || null;
+    cleaned = cleaned.slice(0, unitMatch.index).trim();
+  }
+
+  // Also handle suffix+unit concatenation with no space, e.g. "FWYSUITE: 2"
+  // by checking if any known suffix is glued to a unit designator.
+  const suffixKeys = Object.keys(STREET_SUFFIX_MAP);
+  if (!unit) {
+    for (const sfx of suffixKeys) {
+      const gluedRe = new RegExp(
+        `(${sfx})(SUITE|STE|UNIT|APT|APARTMENT|BLDG|BUILDING|FL|FLOOR|RM|ROOM|SP|SPACE)\\s*:?\\s*(.+)$`,
+        "i",
+      );
+      const gm = cleaned.match(gluedRe);
+      if (gm) {
+        unit = gm[3].trim() || null;
+        // Replace the glued portion with just the suffix
+        cleaned = cleaned.slice(0, gm.index) + gm[1] + cleaned.slice(gm.index + gm[0].length);
+        cleaned = cleaned.trim();
+        break;
+      }
+    }
+  }
+
+  const tokens = cleaned.split(" ");
   let preDirectional = null;
   let postDirectional = null;
   let suffix = null;
@@ -414,7 +491,7 @@ function parseStreetNameDetails(name) {
     }
   }
   const base = tokens.join(" ").trim() || null;
-  return { base, suffix, preDirectional, postDirectional };
+  return { base, suffix, preDirectional, postDirectional, unit };
 }
 
 function parseFullAddress(line) {
@@ -845,19 +922,26 @@ async function main() {
   const propertyCreated = true;
 
   const streetFromHtml = $own
-    ? normalizeAddressLine($own("#PropAddr1_lblPropAddr").text())
+    ? normalizeAddressLine((() => {
+        const el = $own("#PropAddr1_lblPropAddr");
+        el.find("br").replaceWith(" ");
+        return el.text();
+      })())
     : null;
-  const mailingParsed = parseFullAddress(
-    mailingAddressRaw ||
-      address.unnormalized_address ||
-      address.full_address ||
-      null,
+  // Parse the property's full_address separately from the owner's mailing address
+  // so city/zip come from the property location, not the owner's mailing address.
+  const propertyAddrParsed = parseFullAddress(
+    address.unnormalized_address || address.full_address || null,
   );
-  const streetLine = streetFromHtml || mailingParsed.street || null;
+  const mailingParsed = parseFullAddress(mailingAddressRaw || null);
+  const streetLine = streetFromHtml || propertyAddrParsed.street || mailingParsed.street || null;
   const streetParts = splitStreetComponents(streetLine);
   const nameDetails = parseStreetNameDetails(streetParts.name);
   const resolvedCityRaw =
     address.city_name ||
+    (propertyAddrParsed.city && propertyAddrParsed.city.length
+      ? propertyAddrParsed.city
+      : null) ||
     (mailingParsed.city && mailingParsed.city.length
       ? mailingParsed.city
       : null);
@@ -866,10 +950,11 @@ async function main() {
       ? resolvedCityRaw
       : "DALLAS";
   const stateCode =
-    normalizeStateCode(address.state_code || mailingParsed.stateCode || "TX") ||
+    normalizeStateCode(address.state_code || propertyAddrParsed.stateCode || mailingParsed.stateCode || "TX") ||
     "TX";
   const postalDigits =
     (address.postal_code && address.postal_code.replace(/\D/g, "")) ||
+    (propertyAddrParsed.postal && propertyAddrParsed.postal.replace(/\D/g, "")) ||
     (mailingParsed.postal && mailingParsed.postal.replace(/\D/g, "")) ||
     null;
   const postalCode =
@@ -902,37 +987,30 @@ async function main() {
   const townshipVal = address.township || null;
   const rangeVal = address.range || null;
   const sectionVal = address.section || null;
-  const unitIdentifier = address.unit_identifier || null;
+  const unitIdentifier = address.unit_identifier || nameDetails.unit || null;
   const blockVal = address.block || parsedBlockLot.block || null;
   const lotVal = address.lot || parsedBlockLot.lot || null;
   const ensureCityFormat = (val) =>
     val ? val.replace(/\s+/g, " ").trim().toUpperCase() : null;
   const cityFormatted = ensureCityFormat(resolvedCity);
-  // Build unnormalized address: prefer existing data, then street line,
-  // then construct from available components (city, state, zip) as fallback
-  const unnormalizedAddrDirect =
+  const unnormalizedAddr =
     address.unnormalized_address ||
     streetLine ||
     null;
-  const unnormalizedAddr = (() => {
-    if (unnormalizedAddrDirect && unnormalizedAddrDirect.trim().length > 0) return unnormalizedAddrDirect;
-    // Fallback: build from whatever components we have
-    const parts = [
-      streetNumber && streetNameBase ? `${streetNumber} ${streetNameBase}` : null,
-      cityFormatted,
-      stateCode,
-      postalCode,
-    ].filter(Boolean);
-    return parts.length > 0 ? parts.join(", ") : null;
-  })();
 
-  // Validate we have data for at least one valid format
-  const hasValidNormalized = streetNumber && streetNameBase;
+  // Validate we have data for at least one valid format.
+  // The structured address schema requires street_name to NOT contain directional
+  // abbreviations (N, S, E, W, NE, NW, SE, SW) as whole words. If the street name
+  // contains such tokens (e.g. "JOHN W CARPENTER" where W is a middle initial),
+  // the structured format will fail validation, so we must use unnormalized.
+  const STREET_NAME_PATTERN = /^(?!.*(\b(E|N|NE|NW|S|SE|SW|W)\b)).*$/;
+  const streetNamePassesSchema = streetNameBase && STREET_NAME_PATTERN.test(streetNameBase);
+  const hasValidNormalized = streetNumber && streetNameBase && streetNamePassesSchema;
   const hasValidUnnormalized = unnormalizedAddr && unnormalizedAddr.trim().length > 0;
 
-  // Choose format: prefer normalized if available, otherwise use unnormalized
-  // If neither is valid, use unnormalized with fallback data to avoid empty address errors
-  const useNormalized = hasValidNormalized;
+  // Choose format: prefer normalized if it passes schema validation, otherwise use unnormalized
+  // If neither is valid, default to normalized with available data
+  const useNormalized = hasValidNormalized || !hasValidUnnormalized;
 
   const addrOut = useNormalized ? {
     source_http_request: address.source_http_request || null,
