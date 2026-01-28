@@ -77,7 +77,9 @@ const isLikelyAddressLine = (line) => {
   // Street address: number followed by text (e.g. "450 E JOHN W CARPENTER FWY")
   if (/^\d+\s+[A-Z]/.test(s)) return true;
   // Unit/suite/apt designators at start (e.g. "STE 217", "APT 1112", "SUITE: 4B")
-  if (/^(STE|SUITE|APT|APARTMENT|UNIT|BLDG|BUILDING|FL|FLOOR|RM|ROOM|SP|SPACE|#)\s*:?\s*\w/i.test(s)) return true;
+  // Must be followed by a word boundary to avoid matching names like STEWART, APRIL, UNITY, etc.
+  if (/^(SUITE|APARTMENT|BUILDING|FLOOR|ROOM|SPACE)\b\s*:?\s*\w/i.test(s)) return true;
+  if (/^(STE|APT|UNIT|BLDG|FL|RM|SP|#)\s+:?\s*\w/i.test(s)) return true;
   // PO Box
   if (/P\.?O\.?\s*BOX/i.test(s)) return true;
   // City, State ZIP (any US state)

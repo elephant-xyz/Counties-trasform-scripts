@@ -1862,7 +1862,7 @@ async function main() {
       if (o.type === "person") {
         const first = titleCaseName(o.first_name);
         const last = titleCaseName(o.last_name);
-        const middle = o.middle_name ? titleCaseName(o.middle_name) : null;
+        const middle = o.middle_name ? o.middle_name.toUpperCase() : null;
         const key = `${first}|${middle || ""}|${last}`;
         if (!people.has(key)) {
           people.set(key, {
