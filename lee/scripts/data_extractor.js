@@ -2337,10 +2337,150 @@ function extractAddress($, unAddr) {
   return address;
 }
 
+/**
+ * Extract a selected tax year from the Lee page header.
+ *
+ * @param {import('cheerio').CheerioAPI} $ - Loaded Lee parcel HTML document.
+ * @returns {number|null} Selected tax year, or null when the page does not expose one.
+ */
+function extractSelectedTaxYear($) {
+  const selectedOption = $('#selectTaxYear option[selected]').first();
+  const selectedText = selectedOption.length ? cleanText(selectedOption.text()) : cleanText($('#selectTaxYear option').first().text());
+  const selectedYear = selectedText.match(/\b(19|20)\d{2}\b/);
+  if (selectedYear) return parseInt(selectedYear[0], 10);
+
+  const selectedHref = selectedOption.attr('value') || $('#selectTaxYear option').first().attr('value') || '';
+  const hrefYear = selectedHref.match(/[?&]TaxYear=((?:19|20)\d{2})\b/i);
+  return hrefYear ? parseInt(hrefYear[1], 10) : null;
+}
+
+/**
+ * Extract fixed-width NAL field labels from Lee's "Certified Roll Data" block.
+ *
+ * Lee currently renders assessed values in `#TaxRollDiv` as a continuous text
+ * sequence (`F01: ... F02: ...`). Older code only handled the retired
+ * `#valueGrid` table, so all tax rows were skipped even though the source HTML
+ * had the complete certified roll values.
+ *
+ * @param {string} text - Normalized text from `#TaxRollDiv` or another certified-roll container.
+ * @returns {Map<string, string>} Field map keyed as `F04`, `F08`, etc.
+ */
+function extractNalFields(text) {
+  const fields = new Map();
+  const normalized = cleanText(text);
+  const fieldPattern = /F(\d{2}):\s*([\s\S]*?)(?=F\d{2}:|$)/g;
+  for (const match of normalized.matchAll(fieldPattern)) {
+    const fieldNumber = match[1];
+    const rawValue = match[2];
+    if (!fieldNumber || rawValue == null) continue;
+    fields.set(`F${fieldNumber}`, cleanText(rawValue));
+  }
+  return fields;
+}
+
+/**
+ * Read a numeric value from an extracted Lee NAL field.
+ *
+ * @param {Map<string, string>} fields - NAL field map.
+ * @param {string} fieldName - Field name such as `F08`.
+ * @returns {number|null} Parsed number, or null when the field is blank/non-numeric.
+ */
+function readNalNumber(fields, fieldName) {
+  return parseNumber(fields.get(fieldName));
+}
+
+/**
+ * Extract the explicit "1st Year Building on Tax Roll" value when present.
+ *
+ * @param {import('cheerio').CheerioAPI} $ - Loaded Lee parcel HTML document.
+ * @returns {number|null} Parsed year, or null when the label is absent.
+ */
+function extractFirstYearBuildingOnTaxRoll($) {
+  let year = null;
+  $('th').each((_, th) => {
+    if (year !== null) return false;
+    if (/1st\s+Year\s+Building\s+on\s+Tax\s+Roll/i.test(cleanText($(th).text())) === false) return;
+    const value = cleanText($(th).closest('tr').find('td').first().text());
+    const parsed = parseNumber(value);
+    if (parsed !== null) year = parsed;
+  });
+  return year;
+}
+
+/**
+ * Build tax rows from Lee's certified-roll NAL fields.
+ *
+ * The field mapping follows the Florida NAL roll layout exposed by Lee:
+ * F04 assessment year, F08 total just value, F11/F12 school/non-school assessed
+ * values, F13/F14 school/non-school taxable values, and F38 land value. The full
+ * extracted field map is preserved on the output payload so fields not promoted
+ * to typed columns are still available downstream in `source_payload`.
+ *
+ * @param {import('cheerio').CheerioAPI} $ - Loaded Lee parcel HTML document.
+ * @returns {Array<object>} Tax rows for the selected certified roll year.
+ */
+function extractTaxesFromCertifiedRoll($) {
+  const rollText = cleanText($('#TaxRollDiv').text() || $('.certifiedRollData').text());
+  if (!rollText) return [];
+
+  const fields = extractNalFields(rollText);
+  if (fields.size === 0) return [];
+
+  const taxYear = readNalNumber(fields, 'F04') || extractSelectedTaxYear($);
+  const justValue = readNalNumber(fields, 'F08');
+  const schoolAssessedValue = readNalNumber(fields, 'F11');
+  const nonSchoolAssessedValue = readNalNumber(fields, 'F12');
+  const schoolTaxableValue = readNalNumber(fields, 'F13');
+  const nonSchoolTaxableValue = readNalNumber(fields, 'F14');
+  const homesteadJustValue = readNalNumber(fields, 'F15');
+  const agriculturalJustValue = readNalNumber(fields, 'F21');
+  const landValue = readNalNumber(fields, 'F38');
+  const firstYearBuildingOnTaxRoll = extractFirstYearBuildingOnTaxRoll($);
+  const buildingValue = justValue !== null && landValue !== null ? justValue - landValue : null;
+
+  if (taxYear === null && justValue === null && nonSchoolAssessedValue === null && schoolAssessedValue === null) {
+    return [];
+  }
+
+  return [
+    {
+      tax_year: taxYear,
+      property_assessed_value_amount: nonSchoolAssessedValue ?? schoolAssessedValue ?? null,
+      property_market_value_amount: justValue,
+      property_homestead_value_amount: homesteadJustValue,
+      property_building_amount:
+        buildingValue !== null && buildingValue > 0
+          ? Number(buildingValue.toFixed(2))
+          : null,
+      property_land_amount: landValue,
+      property_taxable_value_amount: nonSchoolTaxableValue ?? schoolTaxableValue ?? null,
+      county_taxable_value_amount: nonSchoolTaxableValue,
+      school_taxable_value_amount: schoolTaxableValue,
+      agricultural_valuation_amount: agriculturalJustValue,
+      building_depreciated_value_amount:
+        buildingValue !== null && buildingValue > 0
+          ? Number(buildingValue.toFixed(2))
+          : null,
+      first_year_building_on_tax_roll: firstYearBuildingOnTaxRoll,
+      monthly_tax_amount: null,
+      period_end_date: null,
+      period_start_date: null,
+      nal_fields: Object.fromEntries(fields.entries()),
+      source_extraction_method: 'lee_certified_roll_nal',
+    },
+  ];
+}
+
+/**
+ * Extract tax/value rows from Lee parcel HTML.
+ *
+ * @param {import('cheerio').CheerioAPI} $ - Loaded Lee parcel HTML document.
+ * @returns {Array<object>} Tax rows derived from the value table or certified-roll fallback.
+ */
 function extractTaxes($) {
   const taxes = [];
   const grid = $('#valueGrid');
-  if (!grid.length) return taxes;
+  if (!grid.length) return extractTaxesFromCertifiedRoll($);
   grid.find('tr').each((i, tr) => {
     if (i === 0) return; // header
     const tds = $(tr).find('td');
@@ -2374,7 +2514,7 @@ function extractTaxes($) {
     };
     taxes.push(obj);
   });
-  return taxes;
+  return taxes.length > 0 ? taxes : extractTaxesFromCertifiedRoll($);
 }
 
 function extractSales($) {
