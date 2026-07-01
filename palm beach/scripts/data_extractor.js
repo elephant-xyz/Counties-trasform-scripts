@@ -516,6 +516,14 @@ const propertyTypeMapping = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "1301 - SMALL DISCOUNT STORE < 25000 SF",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "RetailStore",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "1304 - DEPT STORE CONDO",
     "ownership_estate_type": "Condominium",
     "build_status": "Improved",
@@ -628,6 +636,14 @@ const propertyTypeMapping = [
     "property_type": "Unit"
   },
   {
+    "property_usecode": "3942 - HOTEL TIMESHARE",
+    "ownership_estate_type": "Timeshare",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Hotel",
+    "property_type": "Unit"
+  },
+  {
     "property_usecode": "2400 - INSURANCE",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -657,6 +673,14 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "HomesForAged",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0630 - REHAB-DETOX",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "SanitariumConvalescentHome",
     "property_type": "Building"
   },
   {
@@ -1356,6 +1380,14 @@ const propertyTypeMapping = [
     "property_type": "LandParcel"
   },
   {
+    "property_usecode": "0051 - VACANT SFR RES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
     "property_usecode": "0010 - VACANT TOWNHOUSE",
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
@@ -1365,6 +1397,14 @@ const propertyTypeMapping = [
   },
   {
     "property_usecode": "0030 - VACANT ZERO LOT LINE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0031 - VACANT ZERO LOT LINE RES",
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
@@ -1386,6 +1426,14 @@ const propertyTypeMapping = [
     "structure_form": null,
     "property_usage_type": "Warehouse",
     "property_type": "Unit"
+  },
+  {
+    "property_usecode": "4805 - SELF STORAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
   },
   {
     "property_usecode": "2900 - WHOLESALER",
