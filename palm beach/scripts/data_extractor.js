@@ -209,6 +209,54 @@ function combineStructuralElements(elements) {
 
 const propertyTypeMapping = [
   {
+    "property_usecode": "1301 - SMALL DISCOUNT STORE < 25000 SF",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "RetailStore",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4805 - SELF STORAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0630 - REHAB-DETOX",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "SanitariumConvalescentHome",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3942 - HOTEL TIMESHARE",
+    "ownership_estate_type": "Timeshare",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Hotel",
+    "property_type": "Unit"
+  },
+  {
+    "property_usecode": "0031 - VACANT ZERO LOT LINE RES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0051 - VACANT SFR RES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
     "property_usecode": "5100 - AG Classification CROP SOIL CLASS 1",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
