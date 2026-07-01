@@ -3109,6 +3109,94 @@ function main() {
     }
   }
 
+  // TAX EXEMPTIONS (from the appraiser "Benefit" section)
+  // Enum-able Miami-Dade benefits map to tax_exemption.exemption_type. Assessment
+  // caps (Save Our Homes Cap, Non-Homestead Cap), classified agricultural value, and
+  // institutional/educational benefits have NO enum home in the tax_exemption schema
+  // and are intentionally left unmapped (class-(c)) rather than forced onto a wrong
+  // enum. Exemptions are wired into the County data group through the required
+  // property -> tax -> tax_jurisdiction -> tax_exemption chain (the schema has no
+  // direct property/tax -> tax_exemption relationship).
+  function mapExemptionType(description) {
+    if (!description) return null;
+    const key = String(description).trim().toLowerCase();
+    if (/\bcap\b/.test(key)) return null; // assessment caps: no enum home (class-c)
+    if (/agricultur/.test(key)) return null; // classified ag value: not an exemption
+    if (/education/.test(key)) return null; // institutional: no enum home (class-c)
+    if (/second homestead|add(itional)?\.? ?homestead/.test(key)) return "Add. Homestead";
+    if (/homestead/.test(key)) return "Homestead";
+    if (/portability/.test(key)) return "Portability";
+    if (/disabled vet|vet disab|veteran|widow/.test(key)) return "Wid/Vet/Dis";
+    if (/senior/.test(key)) return "Senior";
+    if (/affordable/.test(key)) return "Affordable Housing";
+    return null;
+  }
+
+  const benefitInfos =
+    input.Benefit && Array.isArray(input.Benefit.BenefitInfos)
+      ? input.Benefit.BenefitInfos
+      : [];
+  const exemptions = [];
+  for (const b of benefitInfos) {
+    const exemptionType = mapExemptionType(b && b.Description);
+    if (!exemptionType) continue;
+    const value =
+      b && b.Value != null && Number.isFinite(Number(b.Value))
+        ? Number(b.Value)
+        : null;
+    exemptions.push({
+      exemption_type: exemptionType,
+      exemption_value: value,
+      tax_year: null,
+      source_http_request: seed.source_http_request || null,
+      request_identifier: seed.request_identifier || null,
+    });
+  }
+
+  if (exemptions.length) {
+    // tax_jurisdiction: required plumbing so exemptions attach to the property graph.
+    const taxJurisdiction = {
+      jurisdiction_name: "Miami-Dade County",
+      jurisdiction_type: "County",
+      source_http_request: seed.source_http_request || null,
+      request_identifier: seed.request_identifier || null,
+    };
+    writeJson(path.join("data", "tax_jurisdiction_1.json"), taxJurisdiction);
+
+    // Link every emitted tax_<year> to the jurisdiction (tax_has_tax_jurisdiction).
+    const taxYearFiles = fs
+      .readdirSync("data")
+      .filter((f) => /^tax_\d+\.json$/.test(f))
+      .sort();
+    for (const tf of taxYearFiles) {
+      const base = tf.replace(/\.json$/, "");
+      writeJson(
+        path.join("data", `relationship_${base}_to_tax_jurisdiction_1.json`),
+        {
+          from: { "/": `./${tf}` },
+          to: { "/": "./tax_jurisdiction_1.json" },
+        },
+      );
+    }
+
+    // Emit exemptions and link jurisdiction -> exemption (tax_jurisdiction_has_tax_exemption).
+    let exIdx = 1;
+    for (const ex of exemptions) {
+      writeJson(path.join("data", `tax_exemption_${exIdx}.json`), ex);
+      writeJson(
+        path.join(
+          "data",
+          `relationship_tax_jurisdiction_1_to_tax_exemption_${exIdx}.json`,
+        ),
+        {
+          from: { "/": "./tax_jurisdiction_1.json" },
+          to: { "/": `./tax_exemption_${exIdx}.json` },
+        },
+      );
+      exIdx++;
+    }
+  }
+
   // SALES + DEEDS + FILES (create one deed per sale; optionally create file per book/page or instrument)
   if (Array.isArray(input.SalesInfos) && input.SalesInfos.length) {
     let saleIndex = 1;
