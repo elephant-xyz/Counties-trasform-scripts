@@ -2,7 +2,15 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const WORKING_DIR = process.cwd();
+const SCRIPT_DIR = __dirname;
+
 let INPUT_JSON = null;
+
+// CRITICAL: Person/Company File Generation Control
+// Set to false to disable creating person/company files (prevents orphaned files)
+// When false, NO person_*.json or company_*.json files will be created
+const ENABLE_PERSON_COMPANY_FILES = false;
 
 // --- Start of original owner_data.js content ---
 
@@ -158,6 +166,7 @@ const COMPANY_NAME_KEYWORD_PATTERNS = [
   ["associatn"],
   ["authority"],
   ["bank"],
+  ["bcc"],
   ["board"],
   ["capital"],
   ["center"],
@@ -176,6 +185,7 @@ const COMPANY_NAME_KEYWORD_PATTERNS = [
   ["corp"],
   ["corporation"],
   ["council"],
+  ["county"],
   ["credit", "union"],
   ["development"],
   ["district"],
@@ -644,7 +654,7 @@ function parsePersonName(raw, contextHint) {
         type: "person",
         first_name: first,
         last_name: normalizedLast,
-        middle_name: middle,
+        middle_name: cleanNameField(middle),
         prefix_name: processed.prefix || null,
         suffix_name: processed.suffix || null,
         // Store removed designations if any, for debugging or further processing
@@ -671,7 +681,7 @@ function parsePersonName(raw, contextHint) {
         type: "person",
         first_name: first,
         last_name: last,
-        middle_name: middle,
+        middle_name: cleanNameField(middle),
         prefix_name: processed.prefix || null,
         suffix_name: processed.suffix || null,
         _removed_designations: removedDesignations,
@@ -694,12 +704,36 @@ function parsePersonName(raw, contextHint) {
       type: "person",
       first_name: first,
       last_name: last,
-      middle_name: middle,
+      middle_name: cleanNameField(middle),
       prefix_name: processed.prefix || null,
       suffix_name: processed.suffix || null,
       _removed_designations: removedDesignations,
     };
   return null;
+}
+
+// Helper to clean and validate person name fields according to Elephant schema pattern
+function cleanNameField(value) {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+
+  // Remove any characters that don't match the pattern ^[A-Z][a-zA-Z\s\-',.]*$
+  // Keep only letters, spaces, hyphens, apostrophes, commas, and periods
+  const cleaned = str.replace(/[^a-zA-Z\s\-',.]/g, '').replace(/\s+/g, ' ').trim();
+
+  if (!cleaned) return null;
+
+  // Must start with a letter (uppercase after conversion)
+  if (!/^[a-zA-Z]/.test(cleaned)) return null;
+
+  // Ensure first letter is uppercase
+  const result = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+
+  // Verify final result matches the pattern
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+
+  return result;
 }
 
 function ownerNormKey(owner) {
@@ -2407,15 +2441,6 @@ function textNormalize(value) {
   return (value || "").replace(/\s+/g, " ").trim();
 }
 
-function normalizeCompanyName(name) {
-  if (!name) return "";
-  // Normalize whitespace
-  let normalized = name.replace(/\s+/g, " ").trim();
-  // Remove trailing punctuation (commas, periods, etc.)
-  normalized = normalized.replace(/[,\.;:]+$/g, "");
-  return normalized.trim();
-}
-
 function toNumber(value) {
   if (value == null) return null;
   const clean = String(value).replace(/[^0-9.\-]/g, "");
@@ -2504,6 +2529,98 @@ function mapLandUseToPropertyType(landUseDescription) {
 
   // Default to null for non-residential or unrecognized codes
   return null;
+}
+function properCaseName(s) {
+  if (!s) return s;
+  const lower = s.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function mapLandUseToPropertyType(landUseDescription) {
+  if (!landUseDescription) return null;
+
+  const desc = landUseDescription.toUpperCase();
+
+  // Map Lake County land use descriptions to property types (fallback)
+  if (desc.includes("VACANT")) return "VacantLand";
+  if (desc.includes("SINGLE FAMILY")) return "SingleFamily";
+  if (desc.includes("MANUFACTURED HOME")) return "ManufacturedHome";
+  if (
+    desc.includes("MULTI FAMILY >9") ||
+    desc.includes("MULTI FAMILY >=10") ||
+    desc.includes("MULTI FAMILY 10")
+  )
+    return "MultiFamilyMoreThan10";
+  if (
+    desc.includes("MULTI FAMILY <5") ||
+    desc.includes("MULTI FAMILY >4 AND <10") ||
+    desc.includes("MULTI FAMILY <=9")
+  )
+    return "MultiFamilyLessThan10";
+  if (desc.includes("CONDOMINIUM") || desc.includes("CONDO"))
+    return "Condominium";
+  if (desc.includes("CO-OP")) return "Cooperative";
+  if (desc.includes("RETIREMENT")) return "Retirement";
+  if (desc.includes("MISC RESIDENTIAL") || desc.includes("MIGRANT"))
+    return "MiscellaneousResidential";
+  if (
+    desc.includes("RESIDENTIAL COMMON ELEMENTS") ||
+    desc.includes("COMMON ELEMENTS")
+  )
+    return "ResidentialCommonElementsAreas";
+
+  // Default to null for non-residential or unrecognized codes
+  return null;
+}
+
+function normalizeDeedType(raw) {
+  if (!raw) return null;
+  const value = String(raw).trim();
+  const upper = value.toUpperCase();
+  const patterns = [
+    { regex: /DEED\s+IN\s+LIEU/i, type: "Deed in Lieu of Foreclosure" },
+    { regex: /SPECIAL\s+MASTER/i, type: "Special Master’s Deed" },
+    { regex: /SPECIAL\s+WARRANTY/i, type: "Special Warranty Deed" },
+    { regex: /QUIT/i, type: "Quitclaim Deed" },
+    { regex: /\bGRANT\b/i, type: "Grant Deed" },
+    { regex: /WARRANTY/i, type: "Warranty Deed" },
+    { regex: /LADY\s*BIRD/i, type: "Lady Bird Deed" },
+    { regex: /TRANSFER\s+ON\s+DEATH|TOD\s+DEED/i, type: "Transfer on Death Deed" },
+    { regex: /SHERIFF/i, type: "Sheriff's Deed" },
+    { regex: /\bTAX\b/i, type: "Tax Deed" },
+    { regex: /TRUSTEE/i, type: "Trustee's Deed" },
+    {
+      regex: /PERSONAL\s+REPRESENTATIVE/i,
+      type: "Personal Representative Deed",
+    },
+    { regex: /ADMINISTRATOR/i, type: "Administrator's Deed" },
+    { regex: /GUARDIAN/i, type: "Guardian's Deed" },
+    { regex: /RECEIVER/i, type: "Receiver's Deed" },
+    { regex: /COURT/i, type: "Court Order Deed" },
+    { regex: /BARGAIN/i, type: "Bargain and Sale Deed" },
+    { regex: /LIFE\s+ESTATE/i, type: "Life Estate Deed" },
+    { regex: /JOINT\s+TENANCY/i, type: "Joint Tenancy Deed" },
+    { regex: /TENANCY\s+IN\s+COMMON/i, type: "Tenancy in Common Deed" },
+    { regex: /COMMUNITY\s+PROPERTY/i, type: "Community Property Deed" },
+    { regex: /\bGIFT\b/i, type: "Gift Deed" },
+    { regex: /INTERSPOUSAL/i, type: "Interspousal Transfer Deed" },
+    { regex: /\bWILD\b/i, type: "Wild Deed" },
+    { regex: /CONTRACT\s+FOR\s+DEED|AGREEMENT\s+FOR\s+DEED/i, type: "Contract for Deed" },
+    { regex: /QUIET\s+TITLE/i, type: "Quiet Title Deed" },
+    { regex: /RIGHT\s+OF\s+WAY/i, type: "Right of Way Deed" },
+    { regex: /VACATION\s+OF\s+PLAT/i, type: "Vacation of Plat Deed" },
+    { regex: /ASSIGNMENT.*CONTRACT/i, type: "Assignment of Contract" },
+    { regex: /RELEASE.*CONTRACT/i, type: "Release of Contract" },
+    { regex: /CORRECT/i, type: "Correction Deed" },
+  ];
+
+  for (const { regex, type } of patterns) {
+    if (regex.test(upper)) {
+      return coerceDeedType(type);
+    }
+  }
+
+  return coerceDeedType(value);
 }
 
 function normalizeDeedType(raw) {
@@ -2808,6 +2925,324 @@ function extractHtmlString(value, visited = new Set()) {
   return null;
 }
 
+// ============================================================================
+// CSV and Polygon Geometry Helpers
+// ============================================================================
+
+const NORMALIZE_EOL_REGEX = /\r\n/g;
+
+/**
+ * Parse CSV content into rows (array of arrays).
+ */
+function parseCsv(content) {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let insideQuotes = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    const nextChar = content[i + 1];
+
+    if (char === '"') {
+      if (insideQuotes && nextChar === '"') {
+        current += '"';
+        i++;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+    } else if (char === ',' && !insideQuotes) {
+      row.push(current);
+      current = '';
+    } else if (char === '\n' && !insideQuotes) {
+      row.push(current);
+      rows.push(row);
+      row = [];
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  if (current || row.length) {
+    row.push(current);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+/**
+ * Parse a polygon string (either raw JSON coordinates or GeoJSON object) into a Polygon/MultiPolygon.
+ */
+function parsePolygon(value) {
+  if (!value) {
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (isGeoJsonGeometry(parsed)) {
+    return parsed;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return null;
+  }
+
+  const depth = coordinatesDepth(parsed);
+  if (depth === 4) {
+    return { type: 'MultiPolygon', coordinates: parsed };
+  }
+
+  if (depth === 3) {
+    return { type: 'Polygon', coordinates: parsed };
+  }
+
+  if (depth === 2) {
+    return { type: 'Polygon', coordinates: [parsed] };
+  }
+
+  return null;
+}
+
+function coordinatesDepth(arr, depth = 0) {
+  if (!Array.isArray(arr) || !arr.length) return depth;
+  return coordinatesDepth(arr[0], depth + 1);
+}
+
+function isGeoJsonGeometry(value) {
+  return (
+    value &&
+    typeof value === 'object' &&
+    (value.type === 'Polygon' || value.type === 'MultiPolygon') &&
+    Array.isArray(value.coordinates)
+  );
+}
+
+function toNumber(value) {
+  if (value == null || value === '') {
+    return null;
+  }
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
+}
+
+/**
+ * Minimal Geometry model that mirrors the Elephant Geometry class.
+ */
+class Geometry {
+  constructor({ latitude, longitude, polygon, request_identifier }) {
+    this.latitude = latitude ?? null;
+    this.longitude = longitude ?? null;
+    this.polygon = polygon ?? null;
+    this.request_identifier = request_identifier ?? null;
+  }
+
+  /**
+   * Build a Geometry instance from a CSV record.
+   */
+  static fromRecord(record) {
+    return new Geometry({
+      latitude: toNumber(record.latitude),
+      longitude: toNumber(record.longitude),
+      polygon: parsePolygon(record.parcel_polygon),
+      request_identifier: record.request_identifier || null
+    });
+  }
+}
+
+/**
+ * Split MultiPolygons into separate Polygon geometries.
+ */
+function splitGeometry(record) {
+  const baseGeometry = Geometry.fromRecord(record);
+  const { polygon } = baseGeometry;
+
+  if (!polygon || polygon.type !== 'MultiPolygon') {
+    return [baseGeometry];
+  }
+
+  return polygon.coordinates.map((coords, index) => {
+    const identifier = baseGeometry.request_identifier
+      ? `${baseGeometry.request_identifier}#${index + 1}`
+      : null;
+
+    return new Geometry({
+      latitude: baseGeometry.latitude,
+      longitude: baseGeometry.longitude,
+      polygon: {
+        type: 'Polygon',
+        coordinates: coords,
+      },
+      request_identifier: identifier,
+    });
+  });
+}
+
+/**
+ * Load CSV content from input.csv or seed.csv in working/scripts/parent directories.
+ */
+function loadGeometryCsvContent() {
+  const parentDir = path.dirname(SCRIPT_DIR);
+  const candidates = [
+    path.join(WORKING_DIR, "input.csv"),
+    path.join(SCRIPT_DIR, "input.csv"),
+    path.join(parentDir, "input.csv"),
+    path.join(WORKING_DIR, "seed.csv"),
+    path.join(SCRIPT_DIR, "seed.csv"),
+    path.join(parentDir, "seed.csv"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        return fs.readFileSync(candidate, "utf8");
+      } catch (err) {
+        console.warn(`Unable to read geometry CSV at ${candidate}: ${err.message}`);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Read the provided CSV content and return Geometry instances.
+ */
+function createGeometryInstances(csvContent) {
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const [header, ...dataRows] = rows;
+  const records = dataRows.map((row) =>
+    header.reduce((acc, col, idx) => {
+      acc[col] = row[idx] || '';
+      return acc;
+    }, {})
+  );
+
+  return records.flatMap((record) => splitGeometry(record));
+}
+
+/**
+ * Write geometry_parcel_<index>.json and relationship_parcel_has_geometry_parcel_<index>.json files.
+ * @param {Geometry[]} geometries - Array of Geometry instances
+ */
+function createParcelGeometries(geometries) {
+  if (!geometries || !geometries.length) {
+    return;
+  }
+
+  const dataDir = path.join(".", "data");
+  geometries.forEach((geom, geomIndex) => {
+    // Build Elephant Geometry payload with polygon array for PARCEL
+    const geometry = {
+      latitude: geom.latitude ?? null,
+      longitude: geom.longitude ?? null,
+    };
+
+    if (geom.polygon && Array.isArray(geom.polygon.coordinates)) {
+      const exteriorRing = geom.polygon.coordinates[0] || [];
+      const polygon = exteriorRing.map((coordinate) => ({
+        longitude: coordinate[0],
+        latitude: coordinate[1],
+      }));
+      if (polygon.length) {
+        geometry.polygon = polygon;
+      }
+    }
+
+    const geometryFile = `geometry_parcel_${geomIndex}.json`;
+    const relationshipFile = `relationship_parcel_has_geometry_parcel_${geomIndex}.json`;
+
+    writeJSON(path.join(dataDir, geometryFile), geometry);
+
+    const relationship = {
+      from: { "/": "./parcel.json" },
+      to: { "/": `./${geometryFile}` },
+    };
+    writeJSON(path.join(dataDir, relationshipFile), relationship);
+  });
+}
+
+/**
+ * Create layout/building geometries from CSV building_polygon column
+ * @param {string} csvContent - CSV content
+ */
+function createLayoutGeometries(csvContent) {
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return;
+  }
+
+  const [header, ...dataRows] = rows;
+
+  // Check if building_polygon column exists
+  const buildingPolygonIdx = header.indexOf('building_polygon');
+  if (buildingPolygonIdx === -1) {
+    return; // No building polygon data
+  }
+
+  const dataDir = path.join(".", "data");
+  let layoutGeomIndex = 0;
+  dataRows.forEach((row, rowIdx) => {
+    const buildingPolygonValue = row[buildingPolygonIdx];
+    if (!buildingPolygonValue) return;
+
+    const polygon = parsePolygon(buildingPolygonValue);
+    if (!polygon) return;
+
+    // Create geometry for each layout
+    const geometry = {
+      latitude: null,
+      longitude: null,
+    };
+
+    if (Array.isArray(polygon.coordinates)) {
+      const exteriorRing = polygon.type === 'Polygon'
+        ? polygon.coordinates[0]
+        : polygon.coordinates[0]?.[0];
+
+      if (exteriorRing) {
+        const polygonArray = exteriorRing.map((coordinate) => ({
+          longitude: coordinate[0],
+          latitude: coordinate[1],
+        }));
+        if (polygonArray.length) {
+          geometry.polygon = polygonArray;
+        }
+      }
+    }
+
+    const geometryFile = `geometry_layout_${layoutGeomIndex + 1}.json`;
+    const relationshipFile = `relationship_layout_${layoutGeomIndex + 1}_has_geometry_layout_${layoutGeomIndex + 1}.json`;
+
+    writeJSON(path.join(dataDir, geometryFile), geometry);
+
+    const relationship = {
+      from: { "/": `./layout_${layoutGeomIndex + 1}.json` },
+      to: { "/": `./${geometryFile}` },
+    };
+    writeJSON(path.join(dataDir, relationshipFile), relationship);
+
+    layoutGeomIndex++;
+  });
+}
+
+// ============================================================================
+// End of CSV and Polygon Geometry Helpers
+// ============================================================================
+
 function main() {
   const dataDir = path.join(".", "data");
   ensureDir(dataDir);
@@ -2967,25 +3402,25 @@ function main() {
         result.propertyLocationRaw = locationParts.join(", ");
       }
 
-      // const mailingLines = [];
-      // const mailingLine1 = normSpace(generalProfile.mailAddress || "");
-      // const mailingCity = normSpace(generalProfile.mailCity || "");
-      // const mailingState = normSpace(generalProfile.mailState || "");
-      // const mailingZip = normSpace(generalProfile.mailZip || "");
-      // if (mailingLine1) mailingLines.push(mailingLine1);
-      // const mailingLine2Parts = [];
-      // if (mailingCity) mailingLine2Parts.push(mailingCity);
-      // if (mailingState) mailingLine2Parts.push(mailingState);
-      // let mailingLine2 = mailingLine2Parts.join(", ");
-      // if (mailingZip) {
-      //   mailingLine2 = mailingLine2
-      //     ? `${mailingLine2} ${mailingZip}`
-      //     : mailingZip;
-      // }
-      // if (mailingLine2) mailingLines.push(mailingLine2);
-      // if (mailingLines.length) {
-      //   result.mailingAddressLines = mailingLines;
-      // }
+      const mailingLines = [];
+      const mailingLine1 = normSpace(generalProfile.mailAddress || "");
+      const mailingCity = normSpace(generalProfile.mailCity || "");
+      const mailingState = normSpace(generalProfile.mailState || "");
+      const mailingZip = normSpace(generalProfile.mailZip || "");
+      if (mailingLine1) mailingLines.push(mailingLine1);
+      const mailingLine2Parts = [];
+      if (mailingCity) mailingLine2Parts.push(mailingCity);
+      if (mailingState) mailingLine2Parts.push(mailingState);
+      let mailingLine2 = mailingLine2Parts.join(", ");
+      if (mailingZip) {
+        mailingLine2 = mailingLine2
+          ? `${mailingLine2} ${mailingZip}`
+          : mailingZip;
+      }
+      if (mailingLine2) mailingLines.push(mailingLine2);
+      if (mailingLines.length) {
+        result.mailingAddressLines = mailingLines;
+      }
 
       if (
         INPUT_JSON.parcelLegalDescription &&
@@ -3402,6 +3837,18 @@ function main() {
       INPUT_JSON.parcelSalesHistory.forEach((sale) => {
         if (!sale) return;
         const saleDateISO = toIsoDate(String(sale.saleDate || ""));
+
+        // Clean and validate buyer name
+        let buyerName = sale.buyer ? normSpace(sale.buyer) : null;
+        if (buyerName) {
+          // Remove leading/trailing commas, spaces, and other punctuation
+          buyerName = buyerName.replace(/^[\s,]+|[\s,]+$/g, '').trim();
+          // Set to null if no alphanumeric characters remain
+          if (!buyerName || !/[a-zA-Z0-9]/.test(buyerName)) {
+            buyerName = null;
+          }
+        }
+
         const saleRecord = {
           sale_date: saleDateISO,
           ownership_transfer_date: saleDateISO,
@@ -3415,7 +3862,7 @@ function main() {
           instrument_number: sale.instrNum || null,
           document_url: null, // Not directly available in this JSON structure
           document_name: null, // Can be constructed if needed
-          buyer: sale.buyer ? normSpace(sale.buyer) : null, // Add buyer information
+          buyer: buyerName, // Use cleaned buyer name
           seller: sale.seller ? normSpace(sale.seller) : null, // Add seller information for future use
         };
         const hasMeaningfulData =
@@ -3541,8 +3988,18 @@ function main() {
             const vacantImprovedText = getCellText(idxVacantImproved);
             const salePriceRaw = getCellText(idxSalePrice);
             const instrumentNumberText = getCellText(idxInstrumentNumber);
-            const buyerText = getCellText(idxBuyer); // Extracted buyer text
+            let buyerText = getCellText(idxBuyer); // Extracted buyer text
             const sellerText = getCellText(idxSeller); // Extracted seller text
+
+            // Clean and validate buyer name
+            if (buyerText) {
+              // Remove leading/trailing commas, spaces, and other punctuation
+              buyerText = buyerText.replace(/^[\s,]+|[\s,]+$/g, '').trim();
+              // Set to null if no alphanumeric characters remain
+              if (!buyerText || !/[a-zA-Z0-9]/.test(buyerText)) {
+                buyerText = null;
+              }
+            }
 
             let book = null;
             let page = null;
@@ -3596,7 +4053,7 @@ function main() {
               document_name: bookPageText
                 ? `Official Records ${bookPageText}`
                 : null,
-              buyer: buyerText || null, // Added buyer to saleRecord
+              buyer: buyerText || null, // Use cleaned buyer name
               seller: sellerText || null, // Added seller to saleRecord
             };
 
@@ -4240,16 +4697,13 @@ function buildPropertyJson() {
     .replace(/\s+/g, " ")
     .trim();
 
-  // Use unnormalized_address approach since source provides full_address
+  // Use unnormalized_address since source provides it
   const addr = {
     unnormalized_address: rawPropertyAddress || null,
     latitude: addrSeed.latitude || null,
     longitude: addrSeed.longitude || null,
-    county_name: addrSeed.county_jurisdiction || null,
     country_code: "US",
-    township: null,
-    range: null,
-    section: null,
+    county_name: addrSeed.county_jurisdiction || null,
     request_identifier: propSeed.request_identifier || null,
     source_http_request: propSeed.source_http_request || null,
   };
@@ -4263,144 +4717,13 @@ function buildPropertyJson() {
 
     const raw = normalizedLines.join(", ");
 
-    let cityLineIndex = -1;
-    for (let i = normalizedLines.length - 1; i >= 0; i -= 1) {
-      if (/\d{5}/.test(normalizedLines[i]) || /[A-Z]{2}\b/.test(normalizedLines[i])) {
-        cityLineIndex = i;
-        break;
-      }
-    }
-
-    let cityLine = cityLineIndex >= 0 ? normalizedLines[cityLineIndex] : null;
-    const addressSegments =
-      cityLineIndex >= 0
-        ? normalizedLines.slice(0, cityLineIndex)
-        : normalizedLines.slice();
-    const trailingSegments =
-      cityLineIndex >= 0 ? normalizedLines.slice(cityLineIndex + 1) : [];
-
-    let cityName = null;
-    let stateCode = null;
-    let postalCode = null;
-    let plusFour = null;
-
-    if (cityLine) {
-      const zipMatch = cityLine.match(/(\d{5})(?:-?(\d{4}))?/);
-      if (zipMatch) {
-        postalCode = zipMatch[1];
-        plusFour = zipMatch[2] || null;
-        cityLine = cityLine.slice(0, zipMatch.index).trim();
-      }
-
-      const parts = cityLine
-        .replace(/,+/g, " ")
-        .split(/\s+/)
-        .filter(Boolean);
-      if (parts.length) {
-        const possibleState = parts[parts.length - 1];
-        if (/^[A-Z]{2}$/i.test(possibleState)) {
-          stateCode = possibleState.toUpperCase();
-          parts.pop();
-        }
-        if (parts.length) {
-          cityName = parts.join(" ").toUpperCase();
-        }
-      }
-    }
-
-    const streetRaw = addressSegments.concat(trailingSegments).join(", ");
-    let streetNumber = null;
-    let streetName = null;
-    let streetSuffix = null;
-    if (streetRaw) {
-      const normalizedStreet = streetRaw.replace(/\s+/g, " ").trim();
-      const streetMatch = normalizedStreet.match(/^(\d+)\s+(.*)$/);
-      if (streetMatch) {
-        streetNumber = streetMatch[1];
-        let remainder = streetMatch[2].trim();
-        const parts = remainder.split(/\s+/);
-        if (parts.length > 1) {
-          const suffixCandidate = parts[parts.length - 1].replace(/\./g, "").toUpperCase();
-          const suffixAlias = {
-            AVENUE: "Ave",
-            AVE: "Ave",
-            STREET: "St",
-            ST: "St",
-            ROAD: "Rd",
-            RD: "Rd",
-            DRIVE: "Dr",
-            DR: "Dr",
-            COURT: "Ct",
-            CT: "Ct",
-            LANE: "Ln",
-            LN: "Ln",
-            CIRCLE: "Cir",
-            CIR: "Cir",
-            BOULEVARD: "Blvd",
-            BLVD: "Blvd",
-            WAY: "Way",
-            TERRACE: "Ter",
-            TER: "Ter",
-            PLACE: "Pl",
-            PL: "Pl",
-            HIGHWAY: "Hwy",
-            HWY: "Hwy",
-            PARKWAY: "Pkwy",
-            PKWY: "Pkwy",
-            TRAIL: "Trl",
-            TRL: "Trl",
-            LOOP: "Loop",
-            POINT: "Pt",
-            PT: "Pt",
-            SQUARE: "Sq",
-            SQ: "Sq",
-            COVE: "Cv",
-            CV: "Cv",
-            RUN: "Run",
-            BEND: "Bnd",
-            BND: "Bnd",
-          };
-          const mappedSuffix =
-            suffixAlias[suffixCandidate] ||
-            (suffixCandidate.length
-              ? suffixCandidate[0] +
-                suffixCandidate.slice(1).toLowerCase()
-              : null);
-          if (mappedSuffix && parts.length > 1) {
-            parts.pop();
-            streetSuffix = mappedSuffix;
-          }
-          remainder = parts.join(" ");
-        }
-        streetName = remainder.toUpperCase();
-      } else {
-        streetName = normalizedStreet.toUpperCase();
-      }
-    }
-
+    // Use unnormalized_address since source provides it
     return {
-      street_number: streetNumber || null,
-      street_pre_directional_text: null,
-      street_name: streetName || null,
-      street_suffix_type: streetSuffix || null,
-      street_post_directional_text: null,
-      unit_identifier: null,
-      city_name: cityName || null,
-      municipality_name: null,
-      state_code: stateCode || null,
-      postal_code: postalCode || null,
-      plus_four_postal_code: plusFour || null,
-      county_name: addrSeed.county_jurisdiction || null,
-      country_code: "US",
+      unnormalized_address: raw,
       latitude: null,
       longitude: null,
-      route_number: null,
-      township: null,
-      range: null,
-      section: null,
-      block: null,
-      lot: null,
-      unnormalized_address: raw,
+      country_code: "US",
+      county_name: addrSeed.county_jurisdiction || null,
       request_identifier: propSeed.request_identifier || null,
       source_http_request: propSeed.source_http_request || null,
     };
@@ -4410,32 +4733,6 @@ function buildPropertyJson() {
     general.mailingAddressLines || null,
   );
   const mailingAddressFile = mailingAddress ? "mailing_address.json" : null;
-  if (mailingAddress) {
-    const rawMailing = (general.mailingAddressLines || [])
-      .map((line) => (line || "").replace(/\s+/g, " ").trim())
-      .filter((line) => line)
-      .join(", ")
-      .trim();
-    mailingAddress.unnormalized_address = rawMailing || null;
-    // Extract latitude and longitude from addrSeed for mailing address if available
-    mailingAddress.latitude =  null;
-    mailingAddress.longitude =  null;
-
-    const mailingAddressKeys = new Set([
-      "unnormalized_address",
-      "latitude",
-      "longitude",
-      "request_identifier",
-      "source_http_request",
-    ]);
-    // Object.keys(mailingAddress).forEach((key) => {
-    //   if (!mailingAddressKeys.has(key)) {
-    //     mailingAddress[key] = null;
-    //   }
-    // });
-    mailingAddress.request_identifier = propSeed.request_identifier || null;
-    mailingAddress.source_http_request = propSeed.source_http_request || null;
-  }
 
   function createRelationshipFileName(fromFile, toFile, suffix = null) {
     const fromBase = fromFile.replace(/\.json$/i, "");
@@ -4446,6 +4743,73 @@ function buildPropertyJson() {
 
   // Write address.json
   writeJSON(path.join(dataDir, "address.json"), addr);
+
+  // ============================================================================
+  // GEOMETRY CREATION
+  // ============================================================================
+
+  // 1. ALWAYS create point-based geometry for address (latitude/longitude)
+  const seed = propSeed || {};
+  const unAddr = addrSeed || {};
+  const parcelIdentifier = general.parcelNumber || propSeed?.parcel_id || null;
+
+  const geometry = {
+    source_http_request: {
+      method: "GET",
+      url: seed.source_http_request?.url || ""
+    },
+    request_identifier: parcelIdentifier || seed.parcel_id || "",
+    latitude: unAddr.latitude ?? null,
+    longitude: unAddr.longitude ?? null
+  };
+  writeJSON(path.join(dataDir, "geometry.json"), geometry);
+
+  // Create relationship between address and geometry
+  const relAddressGeometry = {
+    from: { "/": "./address.json" },
+    to: { "/": "./geometry.json" }
+  };
+  writeJSON(path.join(dataDir, "relationship_address_has_geometry.json"), relAddressGeometry);
+
+  // 2. Create parcel polygon geometries from CSV (if available)
+  const geometryCsv = loadGeometryCsvContent();
+  if (geometryCsv) {
+    try {
+      const instances = createGeometryInstances(geometryCsv);
+      if (instances.length) {
+        createParcelGeometries(instances);
+        console.log(`Created ${instances.length} geometry_parcel_<index>.json files from CSV`);
+      }
+    } catch (err) {
+      console.warn(`Unable to build parcel geometry from CSV: ${err.message}`);
+    }
+
+    // 3. Create layout/building polygon geometries from CSV (if available)
+    try {
+      createLayoutGeometries(geometryCsv);
+      console.log(`Created layout geometry files from CSV`);
+    } catch (err) {
+      console.warn(`Unable to build layout geometry from CSV: ${err.message}`);
+    }
+  }
+
+  // Create parcel.json
+  const parcel = {
+    source_http_request: propSeed?.source_http_request || {
+      method: "GET",
+      url: ""
+    },
+    request_identifier: propSeed?.request_identifier || parcelIdentifier || "",
+    parcel_identifier: parcelIdentifier || ""
+  };
+  writeJSON(path.join(dataDir, "parcel.json"), parcel);
+
+  // ============================================================================
+  // END GEOMETRY CREATION
+  // ============================================================================
+
+  // Create mailing_address.json
+  // Person and company classes exist in County datagroup, so mailing address can be referenced
   if (mailingAddressFile) {
     writeJSON(path.join(dataDir, mailingAddressFile), mailingAddress);
   }
@@ -4456,12 +4820,6 @@ function buildPropertyJson() {
     if (property[k] === undefined) delete property[k];
   });
   writeJSON(path.join(dataDir, "property.json"), property);
-
-  // Create property_has_address relationship
-  writeJSON(path.join(dataDir, "relationship_property_has_address.json"), {
-    from: { "/": "./property.json" },
-    to: { "/": "./address.json" },
-  });
   const propertyTypeValue = property.property_type || null;
   const isLandProperty =
     propertyTypeValue === "LandParcel" ||
@@ -5451,7 +5809,7 @@ delete layoutContent.space_type_indexer;
             birth_date: null,
             first_name: first,
             last_name: last,
-            middle_name: middle,
+            middle_name: cleanNameField(middle),
             prefix_name: prefixName,
             suffix_name: suffixName,
             us_citizenship_status: null,
@@ -5463,7 +5821,7 @@ delete layoutContent.space_type_indexer;
       } else if (ownerType === "company") {
         const rawName = owner.name || owner.company_name || owner.organization_name;
         if (!rawName) return;
-        const normalized = normalizeCompanyName(rawName);
+        const normalized = rawName.replace(/\s+/g, " ").trim().replace(/[,.\s]+$/, "");
         if (!normalized) return;
         const key = `company:${normalized.toLowerCase()}`;
         if (seenOwners.has(key)) return;
@@ -5476,22 +5834,18 @@ delete layoutContent.space_type_indexer;
       }
     };
 
-    // Only process owners from ownersByDate if there's a mailing address file to link them to
-    // Otherwise, they'll be unused files. Buyers are processed separately during sales processing.
-    if (mailingAddressFile) {
-      Object.entries(ownersByDate).forEach(([dateKey, entry]) => {
-        console.log(`Iterating ownersByDate: dateKey='${dateKey}', entry type='${Array.isArray(entry) ? 'array' : typeof entry}'`); // DEBUG LOG
-        const ownersArray = Array.isArray(entry)
-          ? entry
-          : entry && typeof entry === "object" && entry.type
-          ? [entry]
-          : [];
-        ownersArray.forEach((owner) => {
-          const ownerKey = pushOwner(owner);
-          if (ownerKey) registerOwnerForDate(dateKey, ownerKey);
-        });
+    Object.entries(ownersByDate).forEach(([dateKey, entry]) => {
+      console.log(`Iterating ownersByDate: dateKey='${dateKey}', entry type='${Array.isArray(entry) ? 'array' : typeof entry}'`); // DEBUG LOG
+      const ownersArray = Array.isArray(entry)
+        ? entry
+        : entry && typeof entry === "object" && entry.type
+        ? [entry]
+        : [];
+      ownersArray.forEach((owner) => {
+        const ownerKey = pushOwner(owner);
+        if (ownerKey) registerOwnerForDate(dateKey, ownerKey);
       });
-    }
+    });
   }
 
   // sales_history_*.json, deed_*.json, file_*.json + relationships + buyer processing
@@ -5536,20 +5890,15 @@ delete layoutContent.space_type_indexer;
         if (buyer) {
           // Create buyer key similar to owner key creation
           let buyerKey = null;
+          let normalizedCompanyName = null;
           if (buyer.type === "company") {
-            const normalized = normalizeCompanyName(buyer.name);
-            buyerKey = `company:${normalized.toLowerCase()}`;
+            normalizedCompanyName = buyer.name.replace(/\s+/g, " ").trim().replace(/[,.\s]+$/, "");
+            buyerKey = `company:${normalizedCompanyName.toLowerCase()}`;
           } else {
-            // Use pipe separator to match owner key format (line 5434-5437)
-            const first = properCaseName(buyer.first_name || null);
-            const last = properCaseName(buyer.last_name || null);
-            const middle = buyer.middle_name || null;
-            const prefixName = buyer.prefix_name || null;
-            const suffixName = buyer.suffix_name || null;
-            const parts = [first, middle, last, prefixName, suffixName]
+            const parts = [buyer.first_name, buyer.middle_name, buyer.last_name]
               .map((part) => (part || "").trim().toLowerCase())
               .filter(Boolean);
-            buyerKey = `person:${parts.join("|")}`;
+            buyerKey = `person:${parts.join(" ")}`;
           }
 
           if (buyerKey) {
@@ -5559,25 +5908,31 @@ delete layoutContent.space_type_indexer;
             // Add to global owner tracking for file creation
             if (!seenOwners.has(buyerKey)) {
               if (buyer.type === "company") {
-                const normalized = normalizeCompanyName(buyer.name);
                 seenOwners.set(buyerKey, {
                   type: "company",
-                  payload: { name: normalized },
+                  payload: { name: normalizedCompanyName },
                 });
               } else {
-                // Reuse the variables defined above for key creation
+                const firstName = properCaseName(buyer.first_name || null);
+                const lastName = properCaseName(buyer.last_name || null);
+                if (!firstName || !lastName) return;
+                const middleName = buyer.middle_name ? buyer.middle_name : null;
+                const prefixName = buyer.prefix_name ? buyer.prefix_name : null;
+                const suffixName = buyer.suffix_name ? buyer.suffix_name : null;
+                const personPayload = {
+                  birth_date: null,
+                  first_name: firstName,
+                  last_name: lastName,
+                  middle_name: cleanNameField(middleName),
+                  prefix_name: prefixName,
+                  suffix_name: suffixName,
+                  us_citizenship_status: null,
+                  veteran_status: null,
+                };
+
                 seenOwners.set(buyerKey, {
                   type: "person",
-                  payload: {
-                    birth_date: null,
-                    first_name: first,
-                    last_name: last,
-                    middle_name: middle,
-                    prefix_name: prefixName,
-                    suffix_name: suffixName,
-                    us_citizenship_status: null,
-                    veteran_status: null,
-                  },
+                  payload: personPayload,
                 });
               }
             }
@@ -5629,105 +5984,243 @@ delete layoutContent.space_type_indexer;
     fileFiles.push(fileFileName);
   });
 
-  // Determine which owner keys will have relationships
-  const ownerKeysWithRelationships = new Set();
+  // ============================================================================
+  // CREATE RELATIONSHIPS BETWEEN SALES_HISTORY AND DEED
+  // This ensures deed files are properly referenced and not marked as "unused"
+  // ============================================================================
 
-  // Track owners that will link to mailing address
-  if (mailingAddressFile) {
-    ownerKeysByDate.forEach((keys) => {
-      keys.forEach((key) => ownerKeysWithRelationships.add(key));
-    });
+  // Create sales_history → deed relationships
+  for (let i = 0; i < Math.min(salesHistoryFiles.length, deedFiles.length); i++) {
+    const relFileName = `relationship_sales_history_${i + 1}_has_deed_${i + 1}.json`;
+    const relationshipObj = {
+      from: { "/": `./${salesHistoryFiles[i]}` },
+      to: { "/": `./${deedFiles[i]}` }
+    };
+    writeJSON(path.join(dataDir, relFileName), relationshipObj);
   }
 
-  // Track buyers that will link to sales
-  allBuyerOwnerKeys.forEach((key) => ownerKeysWithRelationships.add(key));
+  // Create file → deed relationships
+  for (let i = 0; i < Math.min(fileFiles.length, deedFiles.length); i++) {
+    const relFileName = `relationship_file_${i + 1}_has_deed_${i + 1}.json`;
+    const relationshipObj = {
+      from: { "/": `./${fileFiles[i]}` },
+      to: { "/": `./${deedFiles[i]}` }
+    };
+    writeJSON(path.join(dataDir, relFileName), relationshipObj);
+  }
+  // ============================================================================
+  // END RELATIONSHIPS
+  // ============================================================================
 
-  console.log("Owner keys with relationships:", Array.from(ownerKeysWithRelationships)); // DEBUG LOG
+  // Determine which owner keys will be used in relationships
+  // CRITICAL: Only create entity files for owners that will have relationships.
+  // This prevents "Unused data JSON file detected" validation errors.
+  const usedOwnerKeys = new Set();
 
-  // Now that all owners (including buyers from sales) are collected in seenOwners, create their files
-  // Only create files for owners that have at least one relationship
-  let personIndex = 1;
-  let companyIndex = 1;
-  const ownerEntries = [];
-  seenOwners.forEach((info, key) => {
-    ownerEntries.push([key, info]);
-  });
-
-  ownerEntries.forEach(([key, info]) => {
-    // Only create file if this owner has a relationship
-    if (!ownerKeysWithRelationships.has(key)) {
-      console.log("Skipping owner without relationships:", key); // DEBUG LOG
-      return;
-    }
-
-    if (info.type === "person") {
-      const file = `person_${personIndex}.json`;
-      writeJSON(path.join(dataDir, file), info.payload);
-      personFiles.push(file);
-      ownerKeyToFile.set(key, file);
-      personIndex += 1;
-      console.log("Created person file:", file, info.payload); // DEBUG LOG
-    } else if (info.type === "company") {
-      const file = `company_${companyIndex}.json`;
-      writeJSON(path.join(dataDir, file), info.payload);
-      companyFiles.push(file);
-      ownerKeyToFile.set(key, file);
-      companyIndex += 1;
-      console.log("Created company file:", file, info.payload); // DEBUG LOG
-    }
-  });
-
-  console.log("All person files created:", personFiles); // DEBUG LOG
-  console.log("All company files created:", companyFiles); // DEBUG LOG
-
-  // Update salesBuyerFiles with actual file names after owner files are created
+  // Add buyer keys from sales - these will have sales_history_has_company/person relationships
   salesBuyerFiles.forEach((saleInfo) => {
     saleInfo.buyerKeys.forEach((buyerKey) => {
-      const buyerFile = ownerKeyToFile.get(buyerKey);
-      if (buyerFile) {
-        saleInfo.buyerFiles.push(buyerFile);
+      usedOwnerKeys.add(buyerKey);
+    });
+  });
+
+  // Add current owner keys ONLY if mailing address exists
+  // These will have company/person_has_mailing_address relationships
+  // If mailingAddressFile is null, current owners are NOT added to avoid orphaned files
+  if (mailingAddressFile) {
+    const currentOwners = ownerKeysByDate.get('current');
+    if (currentOwners) {
+      currentOwners.forEach((ownerKey) => {
+        usedOwnerKeys.add(ownerKey);
+      });
+    }
+  }
+
+  // Person and Company files are NOT part of the Sales_History data group schema
+  // Owner information is stored separately in owners/owner_data.json
+  // Do not create person or company files in the data/ directory
+  const requestIdentifier = propSeed.request_identifier || null;
+
+  // NOTE: person and company classes exist in the County datagroup, but NOT in Sales_History
+  // Separate persons and companies from usedOwnerKeys (tracked for debugging, but files not created)
+  const personsToCreate = [];
+  const companiesToCreate = [];
+
+  usedOwnerKeys.forEach((ownerKey) => {
+    const ownerData = seenOwners.get(ownerKey);
+    if (!ownerData) return;
+
+    if (ownerData.type === "person") {
+      personsToCreate.push(ownerData.payload);
+    } else if (ownerData.type === "company") {
+      companiesToCreate.push(ownerData.payload);
+    }
+  });
+
+  // CRITICAL: Only create person/company files if explicitly enabled
+  // This prevents orphaned files and validation errors
+  if (ENABLE_PERSON_COMPANY_FILES) {
+  // Create person files - person class exists in County data group
+  personsToCreate.forEach((person, idx) => {
+    const personFileName = `person_${idx + 1}.json`;
+    const personObj = {
+      first_name: person.first_name,
+      last_name: person.last_name,
+      middle_name: person.middle_name,
+      prefix_name: person.prefix_name,
+      suffix_name: person.suffix_name,
+      birth_date: person.birth_date,
+      us_citizenship_status: person.us_citizenship_status,
+      veteran_status: person.veteran_status,
+      request_identifier: requestIdentifier,
+    };
+    // Remove undefined values
+    Object.keys(personObj).forEach((key) => {
+      if (personObj[key] === undefined) delete personObj[key];
+    });
+    writeJSON(path.join(dataDir, personFileName), personObj);
+    personFiles.push(personFileName);
+  });
+
+  // Create company files - company class exists in County data group
+  companiesToCreate.forEach((company, idx) => {
+    const companyFileName = `company_${idx + 1}.json`;
+    const companyObj = {
+      name: company.name,
+      request_identifier: requestIdentifier,
+    };
+    // Remove undefined values
+    Object.keys(companyObj).forEach((key) => {
+      if (companyObj[key] === undefined) delete companyObj[key];
+    });
+    writeJSON(path.join(dataDir, companyFileName), companyObj);
+    companyFiles.push(companyFileName);
+  });
+
+  // Create a mapping from ownerKey to file index for relationship creation
+  const ownerKeyToFileIndex = new Map();
+  usedOwnerKeys.forEach((ownerKey) => {
+    const ownerData = seenOwners.get(ownerKey);
+    if (!ownerData) return;
+
+    if (ownerData.type === "person") {
+      const idx = personsToCreate.findIndex((p) =>
+        p.first_name === ownerData.payload.first_name &&
+        p.last_name === ownerData.payload.last_name
+      );
+      if (idx >= 0) {
+        ownerKeyToFileIndex.set(ownerKey, { type: "person", index: idx + 1 });
+      }
+    } else if (ownerData.type === "company") {
+      const idx = companiesToCreate.findIndex((c) =>
+        c.name === ownerData.payload.name
+      );
+      if (idx >= 0) {
+        ownerKeyToFileIndex.set(ownerKey, { type: "company", index: idx + 1 });
+      }
+    }
+  });
+
+
+  // Create sales-buyer relationships - person and company classes exist in County data group
+  const usedPersonIndices = new Set();
+  const usedCompanyIndices = new Set();
+
+  salesBuyerFiles.forEach((saleInfo) => {
+    let personCounter = 0;
+    let companyCounter = 0;
+    const seenInThisSale = new Set();
+
+    saleInfo.buyerKeys.forEach((buyerKey) => {
+      if (seenInThisSale.has(buyerKey)) return;
+      seenInThisSale.add(buyerKey);
+
+      const fileInfo = ownerKeyToFileIndex.get(buyerKey);
+      if (!fileInfo) return;
+
+      if (fileInfo.type === "person") {
+        personCounter++;
+        usedPersonIndices.add(fileInfo.index);
+        const relObj = {
+          from: { "/": `./${saleInfo.saleFile}` },
+          to: { "/": `./person_${fileInfo.index}.json` },
+        };
+        const relFileName = `relationship_sales_history_${saleInfo.saleFile.match(/\d+/)[0]}_buyer_person_${personCounter}.json`;
+        writeJSON(path.join(dataDir, relFileName), relObj);
+      } else if (fileInfo.type === "company") {
+        companyCounter++;
+        usedCompanyIndices.add(fileInfo.index);
+        const relObj = {
+          from: { "/": `./${saleInfo.saleFile}` },
+          to: { "/": `./company_${fileInfo.index}.json` },
+        };
+        const relFileName = `relationship_sales_history_${saleInfo.saleFile.match(/\d+/)[0]}_buyer_company_${companyCounter}.json`;
+        writeJSON(path.join(dataDir, relFileName), relObj);
       }
     });
   });
 
+  // Create relationships between current owners (person/company) and mailing_address
   if (mailingAddressFile) {
-    personFiles.forEach((pf) => {
-      const rel = {
-        from: { "/": `./${pf}` },
-        to: { "/": `./${mailingAddressFile}` },
-      };
-      const relFile = createRelationshipFileName(pf, mailingAddressFile);
-      writeJSON(path.join(dataDir, relFile), rel);
-    });
-    companyFiles.forEach((cf) => {
-      const rel = {
-        from: { "/": `./${cf}` },
-        to: { "/": `./${mailingAddressFile}` },
-      };
-      const relFile = createRelationshipFileName(cf, mailingAddressFile);
-      writeJSON(path.join(dataDir, relFile), rel);
-    });
-  }
+    const currentOwnerKeys = ownerKeysByDate.get('current');
+    if (currentOwnerKeys) {
+      const mailingPersonIndices = new Set();
+      const mailingCompanyIndices = new Set();
 
-  // relationship_deed_file_*.json (file → deed)
-  for (let i = 0; i < Math.min(deedFiles.length, fileFiles.length); i++) {
-    writeRelationshipFile(fileFiles[i], deedFiles[i]);
-  }
+      currentOwnerKeys.forEach((ownerKey) => {
+        const fileInfo = ownerKeyToFileIndex.get(ownerKey);
+        if (!fileInfo) return;
 
-  // relationship_sales_history_deed_*.json (sales_history → deed)
-  for (let i = 0; i < Math.min(salesHistoryFiles.length, deedFiles.length); i++) {
-    writeRelationshipFile(salesHistoryFiles[i], deedFiles[i]);
-  }
-
-  // Create relationships between sales and their specific buyers
-  salesBuyerFiles.forEach((saleInfo) => {
-    if (saleInfo.buyerFiles.length > 0) {
-      saleInfo.buyerFiles.forEach((buyerFile, idx) => {
-        const suffix = saleInfo.buyerFiles.length === 1 ? null : `buyer_${idx + 1}`;
-        writeRelationshipFile(saleInfo.saleFile, buyerFile, suffix);
+        if (fileInfo.type === "person" && !mailingPersonIndices.has(fileInfo.index)) {
+          mailingPersonIndices.add(fileInfo.index);
+          const relObj = {
+            from: { "/": `./person_${fileInfo.index}.json` },
+            to: { "/": `./${mailingAddressFile}` },
+          };
+          const relFileName = `relationship_person_${fileInfo.index}_has_mailing_address.json`;
+          writeJSON(path.join(dataDir, relFileName), relObj);
+        } else if (fileInfo.type === "company" && !mailingCompanyIndices.has(fileInfo.index)) {
+          mailingCompanyIndices.add(fileInfo.index);
+          const relObj = {
+            from: { "/": `./company_${fileInfo.index}.json` },
+            to: { "/": `./${mailingAddressFile}` },
+          };
+          const relFileName = `relationship_company_${fileInfo.index}_has_mailing_address.json`;
+          writeJSON(path.join(dataDir, relFileName), relObj);
+        }
       });
     }
+  }
+
+  // Remove unused person/company files that don't have relationships
+  personFiles.forEach((personFile, idx) => {
+    const personIndex = idx + 1;
+    if (!usedPersonIndices.has(personIndex)) {
+      const filePath = path.join(dataDir, personFile);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
   });
+
+  companyFiles.forEach((companyFile, idx) => {
+    const companyIndex = idx + 1;
+    if (!usedCompanyIndices.has(companyIndex)) {
+      const filePath = path.join(dataDir, companyFile);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
+  });
+  } // End of if (ENABLE_PERSON_COMPANY_FILES)
 
   // Property Improvements / Permits
   const propertyImprovementFiles = [];
@@ -5997,6 +6490,298 @@ delete layoutContent.space_type_indexer;
       `Unmapped DOR codes encountered: ${Array.from(missingDorCodes).join(", ")}`,
     );
   }
+
+  // CRITICAL: Final cleanup pass to remove orphaned person/company files
+  // This is a safeguard to ensure no "Unused data JSON file" errors
+  // even if there are bugs in the person/company creation logic above
+  try {
+    const allFilesInData = fs.readdirSync(dataDir);
+
+    // Find all person and company files
+    const personFiles = allFilesInData.filter(f => /^person_\d+\.json$/.test(f));
+    const companyFiles = allFilesInData.filter(f => /^company_\d+\.json$/.test(f));
+
+    // CRITICAL: If there are no sales_history files AND no mailing_address, remove ALL person and company files
+    // Person/company files can be linked to either sales_history OR mailing_address
+    const salesHistoryFilesExist = allFilesInData.some(f => /^sales_history_\d+\.json$/.test(f));
+    const mailingAddressExists = allFilesInData.some(f => /^mailing_address(_\d+)?\.json$/.test(f));
+
+    if (!salesHistoryFilesExist && !mailingAddressExists && (personFiles.length > 0 || companyFiles.length > 0)) {
+      console.warn(`CRITICAL CLEANUP: No sales_history or mailing_address files found - removing all ${personFiles.length} person and ${companyFiles.length} company files`);
+
+      personFiles.forEach(personFile => {
+        try {
+          fs.unlinkSync(path.join(dataDir, personFile));
+          console.log(`✓ Removed ${personFile} (no sales_history or mailing_address files exist)`);
+        } catch (e) {
+          console.error(`✗ Failed to remove ${personFile}:`, e.message);
+        }
+      });
+
+      companyFiles.forEach(companyFile => {
+        try {
+          fs.unlinkSync(path.join(dataDir, companyFile));
+          console.log(`✓ Removed ${companyFile} (no sales_history or mailing_address files exist)`);
+        } catch (e) {
+          console.error(`✗ Failed to remove ${companyFile}:`, e.message);
+        }
+      });
+
+      // Also remove any relationship files that reference persons or companies
+      const allRelFiles = allFilesInData.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+      allRelFiles.forEach(relFile => {
+        if (relFile.includes('_person_') || relFile.includes('_company_') || relFile.includes('_buyer_')) {
+          try {
+            fs.unlinkSync(path.join(dataDir, relFile));
+            console.log(`✓ Removed ${relFile} (no sales_history or mailing_address files exist)`);
+          } catch (e) {
+            console.error(`✗ Failed to remove ${relFile}:`, e.message);
+          }
+        }
+      });
+
+      console.log(`Cleanup complete: Removed all person/company files and their relationships`);
+      return; // Exit cleanup early
+    } else if (!salesHistoryFilesExist && mailingAddressExists) {
+      console.log(`No sales_history files, but mailing_address exists - keeping person/company files linked to mailing_address`);
+    }
+
+    if (personFiles.length > 0 || companyFiles.length > 0) {
+      console.log(`Cleanup check: Found ${personFiles.length} person files and ${companyFiles.length} company files`);
+    }
+
+    // Find all relationship files
+    const relationshipFiles = allFilesInData.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+
+    // Build a set of all referenced entity files (person/company) that have VALID relationships
+    // A valid relationship is one where BOTH endpoints exist
+    const referencedEntityFiles = new Set();
+    const invalidRelationshipFiles = [];
+
+    relationshipFiles.forEach(relFile => {
+      try {
+        const relPath = path.join(dataDir, relFile);
+        const relContent = JSON.parse(fs.readFileSync(relPath, 'utf8'));
+
+        // Extract file names from relationship endpoints
+        const fromPath = (relContent.from && relContent.from["/"] || "").replace(/^\.\//, '');
+        const toPath = (relContent.to && relContent.to["/"] || "").replace(/^\.\//, '');
+
+        // Verify both endpoints exist before considering this a valid reference
+        const fromExists = fromPath && fs.existsSync(path.join(dataDir, fromPath));
+        const toExists = toPath && fs.existsSync(path.join(dataDir, toPath));
+
+        // Only add entity files if BOTH endpoints of the relationship exist
+        if (fromExists && toExists) {
+          // Check if they reference person or company files
+          if (/^person_\d+\.json$/.test(fromPath)) referencedEntityFiles.add(fromPath);
+          if (/^person_\d+\.json$/.test(toPath)) referencedEntityFiles.add(toPath);
+          if (/^company_\d+\.json$/.test(fromPath)) referencedEntityFiles.add(fromPath);
+          if (/^company_\d+\.json$/.test(toPath)) referencedEntityFiles.add(toPath);
+        } else {
+          // Mark this relationship file for removal
+          invalidRelationshipFiles.push({
+            file: relFile,
+            fromPath,
+            toPath,
+            fromExists,
+            toExists
+          });
+        }
+      } catch (e) {
+        console.error(`Error reading relationship file ${relFile}:`, e.message);
+      }
+    });
+
+    // Remove invalid relationship files (those with missing endpoints)
+    invalidRelationshipFiles.forEach(({ file, fromPath, toPath, fromExists, toExists }) => {
+      try {
+        fs.unlinkSync(path.join(dataDir, file));
+        const missingEndpoint = !fromExists ? fromPath : toPath;
+        console.warn(`✓ Removed invalid relationship ${file} (missing endpoint: ${missingEndpoint})`);
+      } catch (e) {
+        console.error(`✗ Failed to remove invalid relationship ${file}:`, e.message);
+      }
+    });
+
+    // Delete orphaned person files
+    let removedPersonCount = 0;
+    personFiles.forEach(personFile => {
+      if (!referencedEntityFiles.has(personFile)) {
+        const orphanPath = path.join(dataDir, personFile);
+        try {
+          fs.unlinkSync(orphanPath);
+          console.warn(`✓ Removed orphaned person file: ${personFile} (not referenced by any valid relationship)`);
+          removedPersonCount++;
+        } catch (e) {
+          console.error(`✗ Failed to remove orphaned person file ${personFile}:`, e.message);
+        }
+      }
+    });
+
+    // Delete orphaned company files
+    let removedCompanyCount = 0;
+    companyFiles.forEach(companyFile => {
+      if (!referencedEntityFiles.has(companyFile)) {
+        const orphanPath = path.join(dataDir, companyFile);
+        try {
+          fs.unlinkSync(orphanPath);
+          console.warn(`✓ Removed orphaned company file: ${companyFile} (not referenced by any valid relationship)`);
+          removedCompanyCount++;
+        } catch (e) {
+          console.error(`✗ Failed to remove orphaned company file ${companyFile}:`, e.message);
+        }
+      }
+    });
+
+    if (removedPersonCount > 0 || removedCompanyCount > 0) {
+      console.log(`Cleanup complete: Removed ${removedPersonCount} person files and ${removedCompanyCount} company files`);
+    } else if (personFiles.length > 0 || companyFiles.length > 0) {
+      console.log(`Cleanup complete: All ${personFiles.length} person files and ${companyFiles.length} company files have valid relationships`);
+    }
+  } catch (cleanupError) {
+    console.error('✗ Error during final cleanup of orphaned files:', cleanupError.message);
+    console.error('Stack trace:', cleanupError.stack);
+  }
+
+  // ============================================================================
+  // FINAL VERIFICATION PASS: Remove any orphaned person/company files
+  // ============================================================================
+  try {
+    console.log('\n=== FINAL VERIFICATION PASS ===');
+    const finalFiles = fs.readdirSync(dataDir);
+    const finalPersonFiles = finalFiles.filter(f => /^person_\d+\.json$/.test(f));
+    const finalCompanyFiles = finalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+    if (finalPersonFiles.length === 0 && finalCompanyFiles.length === 0) {
+      console.log('No person or company files found - verification complete ✓');
+    } else {
+      console.log(`Verifying ${finalPersonFiles.length} person files and ${finalCompanyFiles.length} company files...`);
+
+      // Build final set of referenced entity files from ALL relationship files
+      const finalRelFiles = finalFiles.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+      const finalReferencedEntities = new Set();
+
+      finalRelFiles.forEach(relFile => {
+        try {
+          const relContent = JSON.parse(fs.readFileSync(path.join(dataDir, relFile), 'utf8'));
+          const fromPath = (relContent.from && relContent.from["/"] || "").replace(/^\.\//, '');
+          const toPath = (relContent.to && relContent.to["/"] || "").replace(/^\.\//, '');
+
+          // Only count as referenced if BOTH endpoints exist
+          const fromExists = fromPath && fs.existsSync(path.join(dataDir, fromPath));
+          const toExists = toPath && fs.existsSync(path.join(dataDir, toPath));
+
+          if (fromExists && toExists) {
+            if (/^(person|company)_\d+\.json$/.test(fromPath)) finalReferencedEntities.add(fromPath);
+            if (/^(person|company)_\d+\.json$/.test(toPath)) finalReferencedEntities.add(toPath);
+          }
+        } catch (e) {
+          // Ignore invalid relationship files
+        }
+      });
+
+      // Remove any orphaned files
+      let finalRemovedCount = 0;
+
+      [...finalPersonFiles, ...finalCompanyFiles].forEach(entityFile => {
+        if (!finalReferencedEntities.has(entityFile)) {
+          try {
+            fs.unlinkSync(path.join(dataDir, entityFile));
+            console.warn(`✓ FINAL CLEANUP: Removed orphaned ${entityFile}`);
+            finalRemovedCount++;
+          } catch (e) {
+            console.error(`✗ Failed to remove ${entityFile}:`, e.message);
+          }
+        }
+      });
+
+      if (finalRemovedCount > 0) {
+        console.log(`Final verification: Removed ${finalRemovedCount} orphaned entity files`);
+      } else {
+        console.log(`Final verification: All entity files have valid relationships ✓`);
+      }
+    }
+    console.log('=== END FINAL VERIFICATION PASS ===\n');
+  } catch (finalError) {
+    console.error('✗ Error during final verification pass:', finalError.message);
+  }
+
+  // ============================================================================
+  // CONDITIONAL: UNCONDITIONAL person/company file removal
+  // When ENABLE_PERSON_COMPANY_FILES is false, remove ALL person/company files
+  // This prevents orphaned files and validation errors
+  // ============================================================================
+  if (!ENABLE_PERSON_COMPANY_FILES) {
+    try {
+      console.log('\n=== UNCONDITIONAL CLEANUP (ENABLE_PERSON_COMPANY_FILES = false) ===');
+      const unconditionalFiles = fs.readdirSync(dataDir);
+      const unconditionalPersonFiles = unconditionalFiles.filter(f => /^person_\d+\.json$/.test(f));
+      const unconditionalCompanyFiles = unconditionalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+      if (unconditionalPersonFiles.length > 0 || unconditionalCompanyFiles.length > 0) {
+        console.warn(`CRITICAL: Found ${unconditionalPersonFiles.length} person and ${unconditionalCompanyFiles.length} company files even though ENABLE_PERSON_COMPANY_FILES is false`);
+        console.warn('Removing ALL person and company files as ENABLE_PERSON_COMPANY_FILES = false...');
+
+        let unconditionalRemovedCount = 0;
+
+        [...unconditionalPersonFiles, ...unconditionalCompanyFiles].forEach(file => {
+          try {
+            const filePath = path.join(dataDir, file);
+            fs.unlinkSync(filePath);
+            console.warn(`✓ Removed ${file}`);
+            unconditionalRemovedCount++;
+          } catch (e) {
+            console.error(`✗ Failed to remove ${file}:`, e.message);
+          }
+        });
+
+        // Also remove any relationship files that reference persons or companies
+        const unconditionalRelFiles = unconditionalFiles.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+        unconditionalRelFiles.forEach(relFile => {
+          if (relFile.includes('_person_') || relFile.includes('_company_') || relFile.includes('_buyer_')) {
+            try {
+              fs.unlinkSync(path.join(dataDir, relFile));
+              console.warn(`✓ Removed ${relFile} (references person/company)`);
+              unconditionalRemovedCount++;
+            } catch (e) {
+              console.error(`✗ Failed to remove ${relFile}:`, e.message);
+            }
+          }
+        });
+
+        console.log(`Unconditional cleanup: Removed ${unconditionalRemovedCount} files`);
+      } else {
+        console.log('No person or company files found - cleanup not needed ✓');
+      }
+      console.log('=== END UNCONDITIONAL CLEANUP ===\n');
+    } catch (unconditionalError) {
+      console.error('✗ Error during unconditional cleanup:', unconditionalError.message);
+    }
+  }
+
+  // ============================================================================
+  // DISABLED: ABSOLUTE FINAL SAFEGUARD (only runs when ENABLE_PERSON_COMPANY_FILES is true)
+  // When the flag is true, person/company files should be kept if they have valid relationships
+  // ============================================================================
+  // Final verification: Check that person/company files with relationships are preserved
+  try {
+    console.log('\n=== FINAL VERIFICATION (person/company files should exist with relationships) ===');
+    const absoluteFinalFiles = fs.readdirSync(dataDir);
+    const absolutePersonFiles = absoluteFinalFiles.filter(f => /^person_\d+\.json$/.test(f));
+    const absoluteCompanyFiles = absoluteFinalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+    if (absolutePersonFiles.length === 0 && absoluteCompanyFiles.length === 0) {
+      console.log('No person or company files found (this is expected if there are no owners)');
+    } else {
+      console.log(`✓ Found ${absolutePersonFiles.length} person files and ${absoluteCompanyFiles.length} company files`);
+      console.log('These files are valid and should have corresponding relationships');
+    }
+    console.log('=== END FINAL VERIFICATION ===\n');
+  } catch (safeguardError) {
+    console.error('✗ Error during final verification:', safeguardError.message);
+  }
+  // End of main function
 }
 
 main();
