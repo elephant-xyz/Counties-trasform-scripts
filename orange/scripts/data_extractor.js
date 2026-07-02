@@ -10,7 +10,7 @@ let INPUT_JSON = null;
 // CRITICAL: Person/Company File Generation Control
 // Set to false to disable creating person/company files (prevents orphaned files)
 // When false, NO person_*.json or company_*.json files will be created
-const ENABLE_PERSON_COMPANY_FILES = false;
+const ENABLE_PERSON_COMPANY_FILES = true;
 
 // --- Start of original owner_data.js content ---
 
@@ -568,7 +568,11 @@ function toIsoDate(s) {
 function splitOwnerCandidates(text) {
   const cleaned = (text || "")
     .replace(/\u00A0/g, " ")
-    .replace(/[|;]+/g, "\n")
+    // OCPA owner/buyer strings separate multiple owners with commas, and each
+    // owner is a single "LASTNAME(S) FIRSTNAME [MIDDLE]" token group (no internal
+    // commas). Treat commas as owner separators so multi-owner parcels split into
+    // distinct person/company records instead of collapsing into one.
+    .replace(/[|;,]+/g, "\n")
     .replace(/\s*\n+\s*/g, "\n")
     .trim();
   const parts = cleaned.split(/\n+/).filter(Boolean);
@@ -5802,7 +5806,10 @@ delete layoutContent.space_type_indexer;
           .map((part) => (part || "").trim().toLowerCase())
           .filter(Boolean) // Filter out empty parts for a cleaner key
           .join("|")}`;
-        if (seenOwners.has(key)) return;
+        // Return the key even when already seen so the caller can still register
+        // this owner for the current date. An owner that also appears under a
+        // historical sale date would otherwise never be registered as "current".
+        if (seenOwners.has(key)) return key;
         seenOwners.set(key, {
           type: "person",
           payload: {
@@ -5824,7 +5831,9 @@ delete layoutContent.space_type_indexer;
         const normalized = rawName.replace(/\s+/g, " ").trim().replace(/[,.\s]+$/, "");
         if (!normalized) return;
         const key = `company:${normalized.toLowerCase()}`;
-        if (seenOwners.has(key)) return;
+        // See person branch: return the key on dedupe so the current-date
+        // registration still happens for owners seen under a prior sale date.
+        if (seenOwners.has(key)) return key;
         seenOwners.set(key, {
           type: "company",
           payload: { name: normalized },
@@ -6017,12 +6026,11 @@ delete layoutContent.space_type_indexer;
   // This prevents "Unused data JSON file detected" validation errors.
   const usedOwnerKeys = new Set();
 
-  // Add buyer keys from sales - these will have sales_history_has_company/person relationships
-  salesBuyerFiles.forEach((saleInfo) => {
-    saleInfo.buyerKeys.forEach((buyerKey) => {
-      usedOwnerKeys.add(buyerKey);
-    });
-  });
+  // Emit owner entities for the CURRENT owner(s) only (mirrors the Lee transform,
+  // which records the current owner rather than every historical sale buyer).
+  // Historical buyers are still captured in sales_history/deed records, but are
+  // not materialized as person/company owner entities so the loader's derived
+  // ownership edges reflect current ownership, not past transfers.
 
   // Add current owner keys ONLY if mailing address exists
   // These will have company/person_has_mailing_address relationships
@@ -6173,6 +6181,11 @@ delete layoutContent.space_type_indexer;
 
         if (fileInfo.type === "person" && !mailingPersonIndices.has(fileInfo.index)) {
           mailingPersonIndices.add(fileInfo.index);
+          // Mark this current-owner person as used so the intermediate cleanup
+          // below does not delete it. Current owners are anchored to the data
+          // group via this mailing-address relationship; without this the owner
+          // (and its loader-derived ownership edge) would be dropped.
+          usedPersonIndices.add(fileInfo.index);
           const relObj = {
             from: { "/": `./person_${fileInfo.index}.json` },
             to: { "/": `./${mailingAddressFile}` },
@@ -6181,6 +6194,8 @@ delete layoutContent.space_type_indexer;
           writeJSON(path.join(dataDir, relFileName), relObj);
         } else if (fileInfo.type === "company" && !mailingCompanyIndices.has(fileInfo.index)) {
           mailingCompanyIndices.add(fileInfo.index);
+          // Mark this current-owner company as used (see person note above).
+          usedCompanyIndices.add(fileInfo.index);
           const relObj = {
             from: { "/": `./company_${fileInfo.index}.json` },
             to: { "/": `./${mailingAddressFile}` },
