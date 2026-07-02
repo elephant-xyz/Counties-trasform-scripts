@@ -5,6 +5,64 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+class MultiCounter {
+  constructor() {
+    // Use a Map to store counts for different keys.
+    // Map keys can be any data type (strings, numbers, objects).
+    this.counts = new Map();
+  }
+
+  /**
+   * Increments the count for a given key.
+   * If the key doesn't exist, it initializes its count to 0 before incrementing.
+   * @param {any} key - The key whose count should be incremented.
+   * @param {number} [step=1] - The amount to increment by.
+   */
+  increment(key, step = 1) {
+    if (typeof step !== 'number' || step <= 0) {
+      throw new Error("Increment step must be a positive number.");
+    }
+    const currentCount = this.counts.get(key) || 0;
+    this.counts.set(key, currentCount + step);
+  }
+
+  /**
+   * Decrements the count for a given key.
+   * If the key doesn't exist, it initializes its count to 0 before decrementing.
+   * @param {any} key - The key whose count should be decremented.
+   * @param {number} [step=1] - The amount to decrement by.
+   */
+  decrement(key, step = 1) {
+    if (typeof step !== 'number' || step <= 0) {
+      throw new Error("Decrement step must be a positive number.");
+    }
+    const currentCount = this.counts.get(key) || 0;
+    this.counts.set(key, currentCount - step);
+  }
+
+  /**
+   * Sets the count for a given key to a specific value.
+   * @param {any} key - The key whose count should be set.
+   * @param {number} value - The new count value.
+   */
+  set(key, value) {
+    if (typeof value !== 'number') {
+      throw new Error("Count value must be a number.");
+    }
+    this.counts.set(key, value);
+  }
+
+  /**
+   * Gets the current count for a given key.
+   * Returns 0 if the key does not exist.
+   * @param {any} key - The key to retrieve the count for.
+   * @returns {number} The count for the key, or 0 if not found.
+   */
+  get(key) {
+    return this.counts.get(key) || 0;
+  }
+}
+
 function loadInput() {
   const jsonFilePath = path.join(process.cwd(), 'input.json');
   const htmlFilePath = path.join(process.cwd(), 'input.html');
@@ -43,7 +101,7 @@ function loadInput() {
 function defaultLayout(spaceType, index, floorLevel) {
   return {
     space_type: spaceType,
-    space_index: index,
+    space_type_index: String(index),
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: floorLevel,
@@ -95,20 +153,25 @@ function mapLayouts(data) {
     typeof pi.BedroomCount === "number" ? pi.BedroomCount : 0;
   const bathroomCount =
     typeof pi.BathroomCount === "number" ? pi.BathroomCount : 0;
-  const floorLevel =
-    pi.FloorCount === 1
-      ? "1st Floor"
-      : pi.FloorCount === 2
-        ? "2nd Floor"
-        : null;
+  const floorLevel = typeof pi.FloorCount === "number" ? pi.FloorCount : 0;
+  //   pi.FloorCount === 1
+  //     ? "1st Floor"
+  //     : pi.FloorCount === 2
+  //       ? "2nd Floor"
+  //       : null;
 
   const layouts = [];
   for (let i = 1; i <= bedroomCount; i++) {
-    layouts.push(defaultLayout("Bedroom", i, floorLevel));
+    layouts.push(defaultLayout("Bedroom", i, null));
   }
   for (let j = 1; j <= bathroomCount; j++) {
     layouts.push(
-      defaultLayout("Full Bathroom", layouts.length + 1, floorLevel),
+      defaultLayout("Full Bathroom", j, null),
+    );
+  }
+  for (let k = 1; k <= floorLevel; k++) {
+    layouts.push(
+      defaultLayout("Floor", k, null),
     );
   }
 
@@ -122,23 +185,6 @@ function mapLayouts(data) {
   const efi = data && data.ExtraFeature && Array.isArray(data.ExtraFeature.ExtraFeatureInfos)
     ? data.ExtraFeature.ExtraFeatureInfos
     : [];
-  function parseBuildingNumber(obj) {
-    if (!obj || typeof obj !== "object") return null;
-    const candidates = [
-      obj.BuildingNo,
-      obj.BuildingNumber,
-      obj.BldgNo,
-      obj.Bldg,
-      obj.Building,
-      obj.BldgNumber,
-    ];
-    for (const c of candidates) {
-      if (c == null) continue;
-      const n = Number(String(c).replace(/[^0-9]/g, ""));
-      if (Number.isFinite(n)) return n;
-    }
-    return null;
-  }
   function extractSpaData(description) {
     if (!description) return {};
     const d = String(description).toUpperCase();
@@ -250,6 +296,7 @@ function mapLayouts(data) {
     return null;
   }
   // Deduplicate ExtraFeatureInfos by description to avoid multiple years creating duplicate layouts
+  const spaceTypeCounter = new MultiCounter();
   const seenDescriptions = new Set();
   for (const ef of efi) {
     const desc = ef && ef.Description ? String(ef.Description).trim() : null;
@@ -268,12 +315,13 @@ function mapLayouts(data) {
       // Skip unmapped features (like fences) instead of throwing error
       continue;
     }
+    spaceTypeCounter.increment(m.spaceType);
+    const spaceTypeIndex = spaceTypeCounter.get(m.spaceType);
     const size = parseIntLike(ef && (ef.Units || ef.SquareFeet || ef.Size));
-    const idx = layouts.length + 1;
+    const idx = spaceTypeIndex;
     const lay = defaultLayout(m.spaceType, idx, null);
     lay.is_exterior = m.isExterior;
     lay.size_square_feet = size;
-    lay.building_number = parseBuildingNumber(ef);
     
     // Add pool-specific data if available
     if (m.poolData) {
@@ -288,20 +336,32 @@ function mapLayouts(data) {
     layouts.push(lay);
   }
 
-  // Living Area summary from PropertyInfo
-  const heated = parseIntLike(pi.BuildingHeatedArea);
-  const total = parseIntLike(pi.BuildingGrossArea);
-  const adjusted = parseIntLike(pi.BuildingEffectiveArea);
-  if (heated != null || total != null || adjusted != null) {
-    const idx = layouts.length + 1;
-    const lay = defaultLayout("Living Area", idx, null);
-    lay.is_exterior = false;
-    lay.size_square_feet = heated != null ? heated : null;
-    lay.heated_area_sq_ft = heated;
-    lay.total_area_sq_ft = total;
-    lay.adjustable_area_sq_ft = adjusted;
-    layouts.push(lay);
+  const buildings = data && data.Building && Array.isArray(data.Building.BuildingInfos)
+    ? data.Building.BuildingInfos
+    : [];
+  let buildIndex = 1;
+  for (const building of buildings) {
+    layouts.push(
+      defaultLayout("Building", buildIndex, null),
+    );
+    buildIndex++;
   }
+  
+
+  // Living Area summary from PropertyInfo
+  // const heated = parseIntLike(pi.BuildingHeatedArea);
+  // const total = parseIntLike(pi.BuildingGrossArea);
+  // const adjusted = parseIntLike(pi.BuildingEffectiveArea);
+  // if (heated != null || total != null || adjusted != null) {
+  //   const idx = layouts.length + 1;
+  //   const lay = defaultLayout("Living Area", idx, null);
+  //   lay.is_exterior = false;
+  //   lay.size_square_feet = heated != null ? heated : null;
+  //   lay.heated_area_sq_ft = heated;
+  //   lay.total_area_sq_ft = total;
+  //   lay.adjustable_area_sq_ft = adjusted;
+  //   layouts.push(lay);
+  // }
 
   return { [`property_${id}`]: { layouts } };
 }

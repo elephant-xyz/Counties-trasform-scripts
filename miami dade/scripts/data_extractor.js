@@ -2,7 +2,20 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const SCRIPT_DIR = __dirname;
+const WORKING_DIR = process.cwd();
+
+
+// 0000 REFERENCE FOLIO
 const propertyTypeMapping  = [
+  {
+    "property_usecode": "0000 - REFERENCE FOLIO",
+    "ownership_estate_type": null,
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": null,
+    "property_type": "LandParcel"
+  },
   {
     "property_usecode": "0004 - VACANT RESIDENTIAL : RESIDENTIAL - TOTAL VALUE",
     "ownership_estate_type": "FeeSimple",
@@ -76,6 +89,14 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "0104 - RESIDENTIAL - SINGLE FAMILY : RESIDENTIAL - TOTAL VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "0105 - RESIDENTIAL - SINGLE FAMILY : CLUSTER HOME",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -101,6 +122,14 @@ const propertyTypeMapping  = [
   },
   {
     "property_usecode": "0303 - MULTIFAMILY 10 UNITS PLUS : MULTIFAMILY 3 OR MORE UNI",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0303 - MULTIFAMILY 10 UNITS PLUS : MULTIFAMILY 3 OR MORE UNITS",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": "MultiFamilyMoreThan10",
@@ -178,6 +207,14 @@ const propertyTypeMapping  = [
     "structure_form": null,
     "property_usage_type": "Residential",
     "property_type": "Building"
+  },
+  {
+    "property_usecode": "0724 - MISCELLANEOUS - RESIDENTIAL : CAMPSITE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Recreational",
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0802 - MULTIFAMILY 2-9 UNITS : 2 LIVING UNITS",
@@ -524,6 +561,14 @@ const propertyTypeMapping  = [
     "property_type": "LandParcel"
   },
   {
+    "property_usecode": "2807 - PARKING GARAGE - RESIDENTIAL CONDO",
+    "ownership_estate_type": "Condominium",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Unit"
+  },
+  {
     "property_usecode": "2817 - PARKING LOT/MOBILE HOME PARK : COMMERCIAL - TOTAL VAL",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -561,6 +606,14 @@ const propertyTypeMapping  = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "NurseryGreenhouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3115 - DRIVE-IN THEATER OR STADIUM : ENTERTAINMENT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Entertainment",
     "property_type": "Building"
   },
   {
@@ -674,6 +727,14 @@ const propertyTypeMapping  = [
     "structure_form": null,
     "property_usage_type": "Hotel",
     "property_type": "Unit"
+  },
+  {
+    "property_usecode": "4018 - VACANT INDUSTRIAL - CONDO",
+    "ownership_estate_type": "Condominium",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "4066 - VACANT LAND - INDUSTRIAL : EXTRA FEA OTHER THAN PARKI",
@@ -820,7 +881,55 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "5006 - IMPR AGRI - NOT HOMESITES : MOBILE HOME",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MobileHome",
+    "property_usage_type": "Agricultural",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "5009 - IMPR AGRI - NOT HOMESITES : MIXED USE - RESIDENTIAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "5011 - IMPR AGRI - NOT HOMESITES : RETAIL OUTLET",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "5013 - IMPR AGRI - NOT HOMESITES : OFFICE BUILDING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "5014 - IMPR AGRI - NOT HOMESITES : WHOLESALE OUTLET",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "5015 - IMPR AGRI - NOT HOMESITES : ENTERTAINMENT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "5019 - IMPR AGRI - NOT HOMESITES : AUTOMOTIVE OR MARINE",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
@@ -868,6 +977,14 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "5042 - IMPR AGRI - NOT HOMESITES : CLUB OR HALL - PRIVATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "5063 - IMPR AGRI - NOT HOMESITES : UTILITY",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -892,11 +1009,35 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "5181 - CROPLAND - SOIL CLASS I : VACANT LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5379 - VEG CROPLANDS MIXED/ROTATED : MIXED USE - AGRICULTURAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
     "property_usecode": "5381 - VEG CROPLANDS MIXED/ROTATED : VACANT LAND",
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6081 - GRAZING LAND - CLASS I : VACANT LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
     "property_type": "LandParcel"
   },
   {
@@ -925,6 +1066,14 @@ const propertyTypeMapping  = [
   },
   {
     "property_usecode": "6671 - LIME GROVES : GROVE OR ORCHARD",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6679 - ORCHARD GROVES CITRUS ETC : MIXED USE - AGRICULTURAL",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
@@ -996,7 +1145,23 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "7157 - RELIGIOUS - EXEMPT : PARSONAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Church",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "7241 - EDUCATIONAL/SCIENTIFIC - EX : EDUCATIONAL - PRIVATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PrivateSchool",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7256 - EDUCATIONAL/SCIENTIFIC - EX : SCIENTIFIC",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
@@ -1020,6 +1185,22 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "7503 - CHARITABLE - EXEMPT : MULTIFAMILY 3 OR MORE UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "NonProfitCharity",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7513 - CHARITABLE - EXEMPT : OFFICE BUILDING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "NonProfitCharity",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "7543 - CHARITABLE - EXEMPT : HEALTH CARE",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -1036,7 +1217,23 @@ const propertyTypeMapping  = [
     "property_type": "LandParcel"
   },
   {
+    "property_usecode": "7654 - BURIAL GROUND OR VAULT : CEMETERY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MortuaryCemetery",
+    "property_type": "LandParcel"
+  },
+  {
     "property_usecode": "7742 - BENEVOLENT - EXEMPT : CLUB OR HALL - PRIVATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ClubsLodges",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7755 - BENEVOLENT - EXEMPT : BENEVOLENT",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
@@ -1060,6 +1257,22 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "7950 - LITERARY - EXEMPT : CULTURAL - LITERARY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "CulturalOrganization",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8007 - VACANT GOVERNMENTAL : CONDOMINIUM - RESIDENTIAL",
+    "ownership_estate_type": "Condominium",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
     "property_usecode": "8040 - VACANT GOVERNMENTAL : MUNICIPAL",
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
@@ -1069,6 +1282,30 @@ const propertyTypeMapping  = [
   },
   {
     "property_usecode": "8047 - VACANT GOVERNMENTAL : DADE COUNTY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8048 - VACANT GOVERNMENTAL : SCHOOL BOARD",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8063 - VACANT GOVERNMENTAL : UTILITY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8065 - VACANT GOVERNMENTAL : PARKING LOT",
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
@@ -1092,6 +1329,46 @@ const propertyTypeMapping  = [
     "property_type": "LandParcel"
   },
   {
+    "property_usecode": "8081 - VACANT GOVERNMENTAL : VACANT LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8085 - VACANT GOVERNMENTAL : SO FLORIDA WATER MGNT DIST",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8098 - VACANT GOVERNMENTAL : FEDERAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8099 - VACANT GOVERNMENTAL : STATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8198 - MILITARY : FEDERAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Military",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "8240 - PRIVATE PARK",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -1100,11 +1377,67 @@ const propertyTypeMapping  = [
     "property_type": "LandParcel"
   },
   {
+    "property_usecode": "8247 - FOREST/PARK OR REC AREA : DADE COUNTY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ForestParkRecreation",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8252 - FOREST/PARK OR REC AREA : PLAYGROUND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ForestParkRecreation",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8348 - BOARD OF PUBLIC INSTRUCTION : BOARD OF PUBLIC INSTRUCTION",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PublicSchool",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "8441 - UNIVERSITY OR COLLEGE : EDUCATIONAL - PRIVATE",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "PrivateSchool",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8499 - UNIVERSITY OR COLLEGE : STATE OF FLORIDA",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PublicSchool",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8543 - HOSPITAL - GOVERNMENTAL : HEALTH CARE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PublicHospital",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8601 - COUNTY : RESIDENTIAL - SINGLE FAMILY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8602 - COUNTY : 2 LIVING UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "Duplex",
+    "property_usage_type": "GovernmentProperty",
     "property_type": "Building"
   },
   {
@@ -1117,6 +1450,134 @@ const propertyTypeMapping  = [
   },
   {
     "property_usecode": "8613 - COUNTY : OFFICE BUILDING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8619 - COUNTY : AUTOMOTIVE OR MARINE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8637 - COUNTY : WAREHOUSE OR STORAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8642 - COUNTY : CLUB OR HALL - PRIVATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8647 - COUNTY : DADE COUNTY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8663 - COUNTY : UTILITY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8713 - STATE : OFFICE BUILDING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8786 - STATE : TRUSTEE II FUND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8799 - STATE : STATE OF FLORIDA",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8807 - FEDERAL : CONDOMINIUM - RESIDENTIAL",
+    "ownership_estate_type": "Condominium",
+    "build_status": "Improved",
+    "structure_form": "ApartmentUnit",
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Unit"
+  },
+  {
+    "property_usecode": "8813 - FEDERAL : OFFICE BUILDING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8845 - FEDERAL : PUBLIC ADMINISTRATION",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8898 - FEDERAL : FEDERAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8903 - MUNICIPAL : MULTIFAMILY 3 OR MORE UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8911 - MUNICIPAL : RETAIL OUTLET",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8913 - MUNICIPAL : OFFICE BUILDING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8915 - MUNICIPAL : ENTERTAINMENT",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
@@ -1138,6 +1599,38 @@ const propertyTypeMapping  = [
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
     "property_type": "Building"
+  },
+  {
+    "property_usecode": "8942 - MUNICIPAL : CLUB OR HALL - PRIVATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8949 - MUNICIPAL : MIXED USE - GOVERNMENTAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8950 - MUNICIPAL : CULTURAL - LITERARY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8965 - MUNICIPAL : PARKING LOT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "9015 - LEASEHOLD INTEREST : ENTERTAINMENT",
@@ -1188,6 +1681,14 @@ const propertyTypeMapping  = [
     "property_type": "LandParcel"
   },
   {
+    "property_usecode": "9099 - LEASEHOLD INTEREST : STATE OF FLORIDA",
+    "ownership_estate_type": "Leasehold",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "9113 - UTILITY : OFFICE BUILDING",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -1204,11 +1705,91 @@ const propertyTypeMapping  = [
     "property_type": "Building"
   },
   {
+    "property_usecode": "9388 - OIL GAS OR MINERAL RTS : O/G/M RIGHTS",
+    "ownership_estate_type": "SubsurfaceRights",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9464 - RIGHT-OF-WAY : RIGHT-OF-WAY",
+    "ownership_estate_type": "RightOfWay",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "TransitionalProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9581 - RIVER LAKE OR SUBMERGED LAND : VACANT LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9585 - RIVER LAKE OR SUBMERGED LAND : SO FLORIDA WATER MGMT DIST",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9591 - RIVER LAKE OR SUBMERGED LAND : RIVER",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9592 - RIVER LAKE OR SUBMERGED LAND : LAKE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9593 - RIVER LAKE OR SUBMERGED LAND : SUBMERGED LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9701 - IMP EEL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Conservation",
+    "property_type": "LandParcel"
+  },
+  {
     "property_usecode": "9751 - PVT PARK -REC AREA -ROADWAY : COMMON AREA",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "ResidentialCommonElementsAreas",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9784 - RECREATIONAL OR ENDANGERED : RECREATIONAL OR ENDANGERED",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Conservation",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9862 - CENTRALLY ASSESSED : RAILROAD ASSESSMENT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Railroad",
     "property_type": "LandParcel"
   },
   {
@@ -1234,8 +1815,25 @@ const propertyTypeMapping  = [
     "structure_form": null,
     "property_usage_type": "Agricultural",
     "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9985 - ACREAGE NOT CLASSIFIED AG : SO FLORIDA WATER MGMT DIST",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0000 - REFERENCE FOLIO",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Unknown",
+    "property_type": "LandParcel"
   }
-]
+];
+
 
 
 function ensureDir(p) {
@@ -1339,14 +1937,14 @@ function mapDorToPropertyType(dorCode, dorDescription) {
   if (!dorCode || typeof dorCode !== "string" || dorCode.length < 2)
     return null;
   
-  // Check for invalid 0000 REFERENCE FOLIO case
-  if (dorCode === "0000" && dorDescription === "REFERENCE FOLIO") {
-    return { 
-      error: true, 
-      message: `Invalid 0000 REFERENCE FOLIO - skipping transformation`,
-      value: dorCode 
-    };
-  }
+  // // Check for invalid 0000 REFERENCE FOLIO case
+  // if (dorCode === "0000" && dorDescription === "REFERENCE FOLIO") {
+  //   return { 
+  //     error: true, 
+  //     message: `Invalid 0000 REFERENCE FOLIO - skipping transformation`,
+  //     value: dorCode 
+  //   };
+  // }
   const propertyMapping = mapPropertyTypeFromUseCode(dorCode);
   if (!propertyMapping) {
     throw {
@@ -1915,7 +2513,7 @@ function loadInput() {
   } catch (jsonError) {
     // If input.json doesn't exist or is unreadable, try input.html
     if (jsonError.code === 'ENOENT' || jsonError instanceof SyntaxError) {
-      console.warn(`Could not read or parse input.json: ${jsonError.message}. Attempting to read from input.html.`);
+      console.log(`Could not read or parse input.json: ${jsonError.message}. Attempting to read from input.html.`);
       try {
         // 2. Read input.html synchronously
         const htmlData = fs.readFileSync(htmlFilePath, 'utf8');
@@ -1936,6 +2534,226 @@ function loadInput() {
       // Re-throw other errors from input.json
       throw new Error(`An unexpected error occurred while processing input.json: ${jsonError.message}`);
     }
+  }
+}
+
+//Geometry class and related functions
+class Geometry {
+  constructor({ latitude, longitude, polygon }) {
+    this.latitude = latitude ?? null;
+    this.longitude = longitude ?? null;
+    this.polygon = polygon ?? null;
+  }
+
+  /**
+   * Build a Geometry instance from a CSV record.
+   */
+  static fromRecord(record) {
+    return new Geometry({
+      latitude: toNumber(record.latitude),
+      longitude: toNumber(record.longitude),
+      polygon: parsePolygon(
+        record.parcel_polygon
+      )
+    });
+  }
+}
+
+const NORMALIZE_EOL_REGEX = /\r\n/g;
+
+function writeJSON(p, obj) {
+  ensureDir(path.dirname(p));
+  fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8");
+}
+
+function coordinatesDepth(value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    return 0;
+  }
+
+  return 1 + coordinatesDepth(value[0]);
+}
+
+function isGeoJsonGeometry(value) {
+  return (
+    value &&
+    typeof value === 'object' &&
+    (value.type === 'Polygon' || value.type === 'MultiPolygon') &&
+    Array.isArray(value.coordinates)
+  );
+}
+
+function toNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
+}
+
+function splitGeometry(record) {
+  const baseGeometry = Geometry.fromRecord(record);
+  const { polygon } = baseGeometry;
+
+  if (!polygon || polygon.type !== 'MultiPolygon') {
+    return [baseGeometry];
+  }
+
+  return polygon.coordinates.map((coords, index) => {
+    const identifier = baseGeometry.request_identifier
+      ? `${baseGeometry.request_identifier}#${index + 1}`
+      : null;
+
+    return new Geometry({
+      latitude: baseGeometry.latitude,
+      longitude: baseGeometry.longitude,
+      polygon: {
+        type: 'Polygon',
+        coordinates: coords,
+      },
+      request_identifier: identifier,
+    });
+  });
+}
+
+
+function parseCsv(content) {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let insideQuotes = false;
+
+  for (let i = 0; i < content.length; i += 1) {
+    const char = content[i];
+
+    if (char === '"') {
+      if (insideQuotes && content[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !insideQuotes) {
+      row.push(current);
+      current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !insideQuotes) {
+      if (char === '\r' && content[i + 1] === '\n') {
+        i += 1;
+      }
+      row.push(current);
+      if (row.some((value) => value.length > 0)) {
+        rows.push(row);
+      }
+      row = [];
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0 || row.length > 0) {
+    row.push(current);
+    if (row.some((value) => value.length > 0)) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
+}
+
+function parsePolygon(value) {
+  if (!value) {
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (isGeoJsonGeometry(parsed)) {
+    return parsed;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return null;
+  }
+
+  const depth = coordinatesDepth(parsed);
+  if (depth === 4) {
+    return { type: 'MultiPolygon', coordinates: parsed };
+  }
+
+  if (depth === 3) {
+    return { type: 'Polygon', coordinates: parsed };
+  }
+
+  if (depth === 2) {
+    return { type: 'Polygon', coordinates: [parsed] };
+  }
+
+  return null;
+}
+
+function writeOut(filePath, obj) {
+  const outPath = path.join("data", filePath);
+  ensureDir(path.dirname(outPath));
+  fs.writeFileSync(outPath, JSON.stringify(obj, null, 2), "utf8");
+}
+
+
+/**
+ * Read the provided CSV file (defaults to ./input.csv) and return Geometry instances.
+ */
+function createGeometryInstances(csvContent) {
+
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const headers = rows[0].map((header) => header.trim());
+  const records = rows.slice(1).map((values) =>
+    headers.reduce((acc, header, index) => {
+      acc[header] = values[index] ?? '';
+      return acc;
+    }, {})
+  );
+
+  return records.flatMap((record) => splitGeometry(record));
+}
+
+function createGeometryClass(geometryInstances) {
+  let geomIndex = 1;
+  for(let geom of geometryInstances) {
+    let polygon = [];
+    let geometry = {
+      "latitude": geom.latitude,
+      "longitude": geom.longitude,
+    }
+    if (geom && geom.polygon) {
+      for (const coordinate of geom.polygon.coordinates[0]) {
+        polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
+      }
+      geometry.polygon = polygon;
+    }
+    writeJSON(path.join("data", `geometry_${geomIndex}.json`), geometry);
+    writeJSON(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
+        from: { "/": `./parcel.json` },
+        to: { "/": `./geometry_${geomIndex}.json` },
+    });
+    geomIndex++;
   }
 }
 
@@ -1976,10 +2794,20 @@ function main() {
   const dorDescription = pInfo.DORDescription || null;
   
   const propertyMapping = mapDorToPropertyType(dorCode, dorDescription);
+    if (!propertyMapping) {
+    const err = {
+      type: "error",
+      message: "Property mapping returned null - invalid or missing DOR code",
+      path: "property.property_type",
+      dorCode: dorCode,
+      dorDescription: dorDescription
+    };
+    process.exit(1);
+  }
   if (propertyMapping && propertyMapping.error) {
     const err = {
       type: "error",
-      message: mappedType.message,
+      message: propertyMapping.message,
       path: "property.property_type",
       dorCode: dorCode,
       dorDescription: dorDescription
@@ -1987,6 +2815,26 @@ function main() {
     console.error(JSON.stringify(err));
     process.exit(1);
   }
+
+   //Geometry
+   const geometryCsvCandidates = [
+      path.join(SCRIPT_DIR, "input.csv"),
+      path.join(SCRIPT_DIR, "..", "input.csv"),
+      path.join(WORKING_DIR, "input.csv"),
+      path.join(SCRIPT_DIR, "seed.csv"),
+      path.join(SCRIPT_DIR, "..", "seed.csv"),
+      path.join(WORKING_DIR, "seed.csv"),
+    ];
+    const seedCsvPath = geometryCsvCandidates.find((candidate) =>
+      fs.existsSync(candidate)
+    );
+    if (!seedCsvPath) {
+      throw new Error("Unable to locate input.csv or seed.csv for geometry creation.");
+    }
+    const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
+    const instance = createGeometryInstances(seedCsv);
+    createGeometryClass(instance);
+
 
   // Determine built years from BuildingInfos
   let builtYear = null;
@@ -2015,21 +2863,27 @@ function main() {
     parcel_identifier: pInfo.FolioNumber || null,
     property_legal_description_text: legal.Description || null,
     property_structure_built_year: builtYear || null,
-    property_effective_built_year: effYear || null,
     property_type: propertyMapping.property_type,
     ownership_estate_type: propertyMapping.ownership_estate_type,
     build_status: propertyMapping.build_status,
     structure_form: propertyMapping.structure_form,
     property_usage_type: propertyMapping.property_usage_type,
     number_of_units: pInfo.UnitCount != null ? Number(pInfo.UnitCount) : null,
-    livable_floor_area: areaStringOrNull(pInfo.BuildingHeatedArea),
-    area_under_air: validateAreaUnderAir(pInfo.BuildingHeatedArea),
-    total_area: areaStringOrNull(pInfo.BuildingGrossArea),
     subdivision: pInfo.SubdivisionDescription || null,
     zoning: pInfo.PrimaryZoneDescription || null,
   };
 
   writeJson(path.join("data", "property.json"), property);
+
+  
+  // PARCEL
+  const parcel = {
+    parcel_identifier: pInfo.FolioNumber || null,
+    source_http_request: seed.source_http_request || null,
+    request_identifier: seed.request_identifier || null
+  };
+
+  writeJson(path.join("data", "parcel.json"), parcel);
 
   // ADDRESS
   const mailing = input.MailingAddress || {};
@@ -2049,59 +2903,55 @@ function main() {
     postal = /(\d{5})/.exec(unAddr.full_address)[1];
   }
 
+  // Build full address string from components
+  let fullAddressStr = "";
+  if (siteAddr.StreetNumber) fullAddressStr += String(siteAddr.StreetNumber) + " ";
+  if (siteAddr.StreetPrefix) fullAddressStr += siteAddr.StreetPrefix + " ";
+  if (siteAddr.StreetName) fullAddressStr += String(siteAddr.StreetName) + " ";
+  if (siteAddr.StreetSuffix) fullAddressStr += siteAddr.StreetSuffix + " ";
+  if (siteAddr.StreetSuffixDirection) fullAddressStr += siteAddr.StreetSuffixDirection + " ";
+  if (siteAddr.Unit) fullAddressStr += "Unit " + String(siteAddr.Unit) + " ";
+  fullAddressStr = fullAddressStr.trim();
+
+  // Add city, state, zip
+  const cityName = (
+    siteAddr.City ||
+    pInfo.Municipality ||
+    (unAddr.full_address ? unAddr.full_address.split(",")[1] : null) ||
+    ""
+  ).toString().trim().toUpperCase();
+
+  if (cityName) fullAddressStr += ", " + cityName;
+  if (mailing.State || "FL") fullAddressStr += ", " + (mailing.State || "FL");
+  if (postal) {
+    fullAddressStr += " " + postal;
+    if (plus4) fullAddressStr += "-" + plus4;
+  }
+
+  // Use unnormalized_address approach as per verified examples
   const address = {
-    street_number:
-      siteAddr.StreetNumber != null ? String(siteAddr.StreetNumber) : null,
-    street_pre_directional_text: siteAddr.StreetPrefix || null,
-    street_name:
-      siteAddr.StreetName != null && String(siteAddr.StreetName).trim().length > 0 
-        ? String(siteAddr.StreetName).trim() 
-        : null,
-    street_suffix_type: normalizeSuffix(siteAddr.StreetSuffix) || null,
-    street_post_directional_text: siteAddr.StreetSuffixDirection
-      ? siteAddr.StreetSuffixDirection
-      : null,
-    unit_identifier: siteAddr.Unit ? String(siteAddr.Unit) : null,
-    city_name:
-      (
-        siteAddr.City ||
-        pInfo.Municipality ||
-        (unAddr.full_address ? unAddr.full_address.split(",")[1] : null) ||
-        ""
-      )
-        .toString()
-        .trim()
-        .toUpperCase() || null,
-    state_code: mailing.State || "FL",
-    postal_code: postal || null,
-    plus_four_postal_code: plus4 || null,
-    country_code: "US",
     county_name: unAddr.county_jurisdiction || "Miami Dade",
-    latitude: null,
-    longitude: null,
-    route_number: null,
-    township: null,
-    range: null,
-    section: null,
-    block: null,
-    lot: null,
-    municipality_name: pInfo.Municipality || null,
+    unnormalized_address: fullAddressStr || unAddr.full_address || null,
   };
 
-  // Check if street name is extractable - throw error if not
-  if (!address.street_name || address.street_name.trim().length === 0) {
-    const err = {
-      type: "error",
-      message: "Street name is not extractable from property data",
-      path: "address.street_name",
-      value: siteAddr.StreetName || "null",
-      folio: pInfo.FolioNumber || "unknown"
-    };
-    console.error(JSON.stringify(err));
-    process.exit(1);
+  // Check if address is extractable - throw error if not
+  // Address must have meaningful content, not just commas and city/state
+  const addressContent = address.unnormalized_address || "";
+  const addressWithoutCityState = addressContent.split(",")[0].trim();
+
+  if (!addressContent || addressContent.trim().length === 0 || addressWithoutCityState.length === 0) {
+    // Fallback: use parcel identifier if no valid street address
+    address.unnormalized_address = `Parcel ${pInfo.FolioNumber || "Unknown"}`;
   }
 
   writeJson(path.join("data", "address.json"), address);
+
+  // Create property_has_address relationship
+  const relPropertyAddress = {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" },
+  };
+  writeJson(path.join("data", "relationship_property_has_address.json"), relPropertyAddress);
 
   // LOT
   const lotSizeRaw = pInfo.LotSize;
@@ -2199,8 +3049,8 @@ function main() {
 
   const lot = {
     lot_type: lotTypeFromSqft(lotSize),
-    lot_length_feet: lotLength != null ? lotLength : null,
-    lot_width_feet: lotWidth != null ? lotWidth : null,
+    lot_length_feet: lotLength != null && lotLength >= 1 ? lotLength : null,
+    lot_width_feet: lotWidth != null && lotWidth >= 1 ? lotWidth : null,
     lot_area_sqft: lotSize != null ? Math.round(lotSize) : null,
     landscaping_features: null,
     view: null,
@@ -2213,6 +3063,13 @@ function main() {
     lot_size_acre: lotSize != null ? lotSize / 43560 : null,
   };
   writeJson(path.join("data", "lot.json"), lot);
+
+  // Create property_has_lot relationship
+  const relPropertyLot = {
+    from: { "/": "./property.json" },
+    to: { "/": "./lot.json" },
+  };
+  writeJson(path.join("data", "relationship_property_has_lot.json"), relPropertyLot);
 
   // TAX
   if (input.Assessment && Array.isArray(input.Assessment.AssessmentInfos)) {
@@ -2249,6 +3106,107 @@ function main() {
         first_year_building_on_tax_roll: null,
       };
       writeJson(path.join("data", `tax_${year}.json`), tax);
+    }
+  }
+
+  // TAX EXEMPTIONS (from the appraiser "Benefit" section)
+  // Enum-able Miami-Dade benefits map to tax_exemption.exemption_type. Assessment
+  // caps (Save Our Homes Cap, Non-Homestead Cap), classified agricultural value, and
+  // institutional/educational benefits have NO enum home in the tax_exemption schema
+  // and are intentionally left unmapped (class-(c)) rather than forced onto a wrong
+  // enum. Exemptions are wired into the County data group through the required
+  // property -> tax -> tax_jurisdiction -> tax_exemption chain (the schema has no
+  // direct property/tax -> tax_exemption relationship).
+  function mapExemptionType(description) {
+    if (!description) return null;
+    const key = String(description).trim().toLowerCase();
+    if (/\bcap\b/.test(key)) return null; // assessment caps: no enum home (class-c)
+    if (/agricultur/.test(key)) return null; // classified ag value: not an exemption
+    if (/education/.test(key)) return null; // institutional: no enum home (class-c)
+    if (/second homestead|add(itional)?\.? ?homestead/.test(key)) return "Add. Homestead";
+    if (/homestead/.test(key)) return "Homestead";
+    if (/portability/.test(key)) return "Portability";
+    if (/disabled vet|vet disab|veteran|widow/.test(key)) return "Wid/Vet/Dis";
+    if (/senior/.test(key)) return "Senior";
+    if (/affordable/.test(key)) return "Affordable Housing";
+    return null;
+  }
+
+  const benefitInfos =
+    input.Benefit && Array.isArray(input.Benefit.BenefitInfos)
+      ? input.Benefit.BenefitInfos
+      : [];
+  const exemptions = [];
+  const seenExemptions = new Set();
+  for (const b of benefitInfos) {
+    const exemptionType = mapExemptionType(b && b.Description);
+    if (!exemptionType) continue;
+    const value =
+      b && b.Value != null && Number.isFinite(Number(b.Value))
+        ? Number(b.Value)
+        : null;
+    // Collapse only entries identical in BOTH exemption_type AND exemption_value
+    // (true duplicates the source repeats with no authority/year to distinguish
+    // them). Distinct values for the same type (e.g. several "Second Homestead"
+    // amounts) are DIFFERENT exemptions and must be kept.
+    const dedupeKey = exemptionType + "|" + String(value);
+    if (seenExemptions.has(dedupeKey)) continue;
+    seenExemptions.add(dedupeKey);
+    exemptions.push({
+      exemption_type: exemptionType,
+      exemption_value: value,
+      tax_year: null,
+      source_http_request: seed.source_http_request || null,
+      request_identifier: seed.request_identifier || null,
+    });
+  }
+
+  // The County data group has no direct property/tax -> tax_exemption relationship,
+  // so exemptions must attach via property -> tax -> tax_jurisdiction -> tax_exemption.
+  // Only emit the jurisdiction/exemption subgraph when there is at least one
+  // tax_<year>.json to link the jurisdiction back to; otherwise the jurisdiction node
+  // would be orphaned (unreachable from property), so skip it entirely.
+  const taxYearFiles = fs
+    .readdirSync("data")
+    .filter((f) => /^tax_\d+\.json$/.test(f))
+    .sort();
+  if (exemptions.length && taxYearFiles.length) {
+    // tax_jurisdiction: required plumbing so exemptions attach to the property graph.
+    const taxJurisdiction = {
+      jurisdiction_name: "Miami-Dade County",
+      jurisdiction_type: "County",
+      source_http_request: seed.source_http_request || null,
+      request_identifier: seed.request_identifier || null,
+    };
+    writeJson(path.join("data", "tax_jurisdiction_1.json"), taxJurisdiction);
+
+    // Link every emitted tax_<year> to the jurisdiction (tax_has_tax_jurisdiction).
+    for (const tf of taxYearFiles) {
+      const base = tf.replace(/\.json$/, "");
+      writeJson(
+        path.join("data", `relationship_${base}_to_tax_jurisdiction_1.json`),
+        {
+          from: { "/": `./${tf}` },
+          to: { "/": "./tax_jurisdiction_1.json" },
+        },
+      );
+    }
+
+    // Emit exemptions and link jurisdiction -> exemption (tax_jurisdiction_has_tax_exemption).
+    let exIdx = 1;
+    for (const ex of exemptions) {
+      writeJson(path.join("data", `tax_exemption_${exIdx}.json`), ex);
+      writeJson(
+        path.join(
+          "data",
+          `relationship_tax_jurisdiction_1_to_tax_exemption_${exIdx}.json`,
+        ),
+        {
+          from: { "/": "./tax_jurisdiction_1.json" },
+          to: { "/": `./tax_exemption_${exIdx}.json` },
+        },
+      );
+      exIdx++;
     }
   }
 
@@ -2377,7 +3335,7 @@ function main() {
         ownership_transfer_date: parseISODate(s.DateOfSale) || null,
         purchase_price_amount: s.SalePrice != null ? Number(s.SalePrice) : null,
       };
-      writeJson(path.join("data", `sales_${saleIndex}.json`), sales);
+      writeJson(path.join("data", `sales_history_${saleIndex}.json`), sales);
 
       // Common Miami-Dade fields we might encounter
       const book =
@@ -2455,22 +3413,22 @@ function main() {
       writeJson(path.join("data", `deed_${deedIdx}.json`), deed);
       deedMap.set(s.index, deedIdx);
       // relationship_property_deed (property → deed)
-      const relPD = {
-        to: { "/": `./deed_${deedIdx}.json` },
-        from: { "/": "./property.json" },
-      };
-      writeJson(path.join("data", `relationship_property_deed_${deedIdx}.json`), relPD);
+      // const relPD = {
+      //   to: { "/": `./deed_${deedIdx}.json` },
+      //   from: { "/": "./property.json" },
+      // };
+      // writeJson(path.join("data", `relationship_property_deed_${deedIdx}.json`), relPD);
       deedIdx++;
     }
 
-    // relationship_sales_deed (deed → sale)
+    // relationship_sales_history_deed (deed → sale)
     let relSDIdx = 1;
     for (const [sIndex, dIndex] of deedMap.entries()) {
       const relSD = {
-        to: { "/": `./sales_${sIndex}.json` },
-        from: { "/": `./deed_${dIndex}.json` },
+        from: { "/": `./sales_history_${sIndex}.json` },
+        to: { "/": `./deed_${dIndex}.json` },
       };
-      writeJson(path.join("data", `relationship_sales_deed_${relSDIdx}.json`), relSD);
+      writeJson(path.join("data", `relationship_sales_history_${relSDIdx}_has_deed.json`), relSD);
       relSDIdx++;
     }
 
@@ -2486,9 +3444,37 @@ function main() {
       writeJson(path.join("data", `relationship_deed_file_${rdfIdx}.json`), relDF);
       rdfIdx++;
     }
+
+    // relationship_property_file (property → file) - create relationships from property to all files
+    let rpfIdx = 1;
+    for (let fIdx = 1; fIdx < fileIdx; fIdx++) {
+      const relPF = {
+        from: { "/": "./property.json" },
+        to: { "/": `./file_${fIdx}.json` },
+      };
+      writeJson(path.join("data", `relationship_property_has_file_${rpfIdx}.json`), relPF);
+      rpfIdx++;
+    }
   }
 
   // PERSON/COMPANY (owners)
+  // Only create person/company entities if there are sales to link them to
+  // Otherwise they become orphaned files with no relationships
+
+  // First check if SalesInfos exist in input data
+  const hasSalesInInput = Array.isArray(input.SalesInfos) && input.SalesInfos.length > 0;
+
+  // Check if there are sales files generated
+  const salesFiles = fs.existsSync("data")
+    ? fs.readdirSync("data")
+        .filter((f) => /^sales_history_\d+\.json$/.test(f))
+        .sort((a, b) => {
+          const ai = parseInt(a.match(/(\d+)/)[1], 10);
+          const bi = parseInt(b.match(/(\d+)/)[1], 10);
+          return ai - bi;
+        })
+    : [];
+
   const ownersKey = `property_${(pInfo.FolioNumber || "").replace(/[^0-9\-]/g, "")}`; // expect 01-4103-033-0491
   const ownersPkg =
     owners[ownersKey] ||
@@ -2496,7 +3482,12 @@ function main() {
       `property_${(seed.parcel_id || "").replace(/(.{2})(.{4})(.{3})(.{4})/, "$1-$2-$3-$4")}`
     ] ||
     null;
+
+  // CRITICAL: Only create person/company entities if there are sales to link them to
+  // If there are no sales, DO NOT create person/company entities as they would be orphaned
   if (
+    hasSalesInInput &&
+    salesFiles.length > 0 &&
     ownersPkg &&
     ownersPkg.owners_by_date &&
     Array.isArray(ownersPkg.owners_by_date.current)
@@ -2514,15 +3505,36 @@ function main() {
     let companyIdx = 1;
     for (const o of currentOwners) {
       if (o.type === "person") {
+        const firstName = formatNameForValidation(o.first_name);
+        const lastName = formatNameForValidation(o.last_name);
+        const middleName = formatNameForValidation(o.middle_name);
+
+        // Skip person if first_name or last_name are invalid (null)
+        // These are required fields and validation will fail without them
+        if (!firstName || !lastName) {
+          console.warn(`Skipping invalid person: first="${o.first_name}", last="${o.last_name}"`);
+          continue;
+        }
+
         const person = {
+          first_name: firstName,
+          last_name: lastName,
           birth_date: null,
-          first_name: formatNameForValidation(o.first_name),
-          last_name: formatNameForValidation(o.last_name),
-          middle_name: formatNameForValidation(o.middle_name),
+          middle_name: middleName,
           prefix_name: null,
           suffix_name: null,
           us_citizenship_status: null,
           veteran_status: null,
+          request_identifier: pInfo.FolioNumber || null,
+          source_http_request: {
+            url: "https://apps.miamidadepa.gov/PApublicServiceProxy/PaServicesProxy.ashx",
+            method: "GET",
+            multiValueQueryString: {
+              Operation: ["GetPropertySearchByFolio"],
+              clientAppName: ["PropertySearch"],
+              folioNumber: [pInfo.FolioNumber || "unknown"]
+            }
+          }
         };
         writeJson(path.join("data", `person_${personIdx}.json`), person);
         personIdx++;
@@ -2533,49 +3545,81 @@ function main() {
       }
     }
 
-    // relationships for sales → owners (use latest sales_1.json if exists)
-    const salesFiles = fs
-      .readdirSync("data")
-      .filter((f) => /^sales_\d+\.json$/.test(f))
-      .sort((a, b) => {
-        const ai = parseInt(a.match(/(\d+)/)[1], 10);
-        const bi = parseInt(b.match(/(\d+)/)[1], 10);
-        return ai - bi;
-      });
-    if (salesFiles.length) {
-      const lastSales = salesFiles[0]; // if only last is desired; spec does not define matching by date; link available sale
-      let relIdx = 1;
+    // relationships for sales → owners (use latest sales_history_1.json if exists)
+    const lastSales = salesFiles[0]; // if only last is desired; spec does not define matching by date; link available sale
+
+    // Track which entities are used in relationships
+    const usedPersonIdx = new Set();
+    const usedCompanyIdx = new Set();
+
+    if (lastSales) {
+      let relPersonCounter = 0;
+      let relCompanyCounter = 0;
       let p = 1;
       while (fs.existsSync(path.join("data", `person_${p}.json`))) {
+        relPersonCounter++;
         const rel = {
-          to: { "/": `./person_${p}.json` },
           from: { "/": `./${lastSales}` },
+          to: { "/": `./person_${p}.json` },
         };
         writeJson(
           path.join(
             "data",
-            `relationship_sales_person${p > 1 ? `_${p}` : ""}.json`,
+            `relationship_sales_history_has_person_${relPersonCounter}.json`,
           ),
           rel,
         );
+        usedPersonIdx.add(p);
         p++;
-        relIdx++;
       }
       let c = 1;
       while (fs.existsSync(path.join("data", `company_${c}.json`))) {
+        relCompanyCounter++;
         const rel = {
-          to: { "/": `./company_${c}.json` },
           from: { "/": `./${lastSales}` },
+          to: { "/": `./company_${c}.json` },
         };
         writeJson(
           path.join(
             "data",
-            `relationship_sales_company${c > 1 ? `_${c}` : ""}.json`,
+            `relationship_sales_history_has_company_${relCompanyCounter}.json`,
           ),
           rel,
         );
+        usedCompanyIdx.add(c);
         c++;
-        relIdx++;
+      }
+    }
+
+    // Remove unused person and company files that have no relationships
+    let checkPersonIdx = 1;
+    while (fs.existsSync(path.join("data", `person_${checkPersonIdx}.json`))) {
+      if (!usedPersonIdx.has(checkPersonIdx)) {
+        fs.unlinkSync(path.join("data", `person_${checkPersonIdx}.json`));
+      }
+      checkPersonIdx++;
+    }
+
+    let checkCompanyIdx = 1;
+    while (fs.existsSync(path.join("data", `company_${checkCompanyIdx}.json`))) {
+      if (!usedCompanyIdx.has(checkCompanyIdx)) {
+        fs.unlinkSync(path.join("data", `company_${checkCompanyIdx}.json`));
+      }
+      checkCompanyIdx++;
+    }
+  } else {
+    // If the condition is false, clean up ALL person and company files
+    // These would be orphaned from previous runs since we're not creating new ones
+    if (fs.existsSync("data")) {
+      let idx = 1;
+      while (fs.existsSync(path.join("data", `person_${idx}.json`))) {
+        fs.unlinkSync(path.join("data", `person_${idx}.json`));
+        idx++;
+      }
+      idx = 1;
+      while (fs.existsSync(path.join("data", `company_${idx}.json`))) {
+        fs.unlinkSync(path.join("data", `company_${idx}.json`));
+        idx++;
       }
     }
   }
@@ -2633,7 +3677,7 @@ function main() {
       water_heater_model: utilPkg.water_heater_model,
       well_installation_date: utilPkg.well_installation_date,
     };
-    writeJson(path.join("data", "utility.json"), utility);
+    // writeJson(path.join("data", "utility.json"), utility);
   }
 
   // LAYOUTS from owners/layout_data.json only (layout synthesis moved to layoutMapping.js)
@@ -2643,7 +3687,7 @@ function main() {
     for (const l of layoutPkg.layouts) {
       const layoutObj = {
         space_type: l.space_type ?? null,
-        space_index: l.space_index ?? null,
+        space_type_index: l.space_type_index ?? null,
         flooring_material_type: l.flooring_material_type ?? null,
         size_square_feet: l.size_square_feet ?? null,
         floor_level: l.floor_level ?? null,
@@ -2759,7 +3803,7 @@ function main() {
       pInfo && pInfo.FloorCount != null ? Number(pInfo.FloorCount) : null,
     number_of_buildings: numberOfBuildings,
   };
-  writeJson(path.join("data", "structure.json"), structure);
+  // writeJson(path.join("data", "structure.json"), structure);
 }
 
 try {
