@@ -3137,6 +3137,7 @@ function main() {
       ? input.Benefit.BenefitInfos
       : [];
   const exemptions = [];
+  const seenExemptions = new Set();
   for (const b of benefitInfos) {
     const exemptionType = mapExemptionType(b && b.Description);
     if (!exemptionType) continue;
@@ -3144,6 +3145,13 @@ function main() {
       b && b.Value != null && Number.isFinite(Number(b.Value))
         ? Number(b.Value)
         : null;
+    // Collapse only entries identical in BOTH exemption_type AND exemption_value
+    // (true duplicates the source repeats with no authority/year to distinguish
+    // them). Distinct values for the same type (e.g. several "Second Homestead"
+    // amounts) are DIFFERENT exemptions and must be kept.
+    const dedupeKey = exemptionType + "|" + String(value);
+    if (seenExemptions.has(dedupeKey)) continue;
+    seenExemptions.add(dedupeKey);
     exemptions.push({
       exemption_type: exemptionType,
       exemption_value: value,
@@ -3153,7 +3161,16 @@ function main() {
     });
   }
 
-  if (exemptions.length) {
+  // The County data group has no direct property/tax -> tax_exemption relationship,
+  // so exemptions must attach via property -> tax -> tax_jurisdiction -> tax_exemption.
+  // Only emit the jurisdiction/exemption subgraph when there is at least one
+  // tax_<year>.json to link the jurisdiction back to; otherwise the jurisdiction node
+  // would be orphaned (unreachable from property), so skip it entirely.
+  const taxYearFiles = fs
+    .readdirSync("data")
+    .filter((f) => /^tax_\d+\.json$/.test(f))
+    .sort();
+  if (exemptions.length && taxYearFiles.length) {
     // tax_jurisdiction: required plumbing so exemptions attach to the property graph.
     const taxJurisdiction = {
       jurisdiction_name: "Miami-Dade County",
@@ -3164,10 +3181,6 @@ function main() {
     writeJson(path.join("data", "tax_jurisdiction_1.json"), taxJurisdiction);
 
     // Link every emitted tax_<year> to the jurisdiction (tax_has_tax_jurisdiction).
-    const taxYearFiles = fs
-      .readdirSync("data")
-      .filter((f) => /^tax_\d+\.json$/.test(f))
-      .sort();
     for (const tf of taxYearFiles) {
       const base = tf.replace(/\.json$/, "");
       writeJson(
