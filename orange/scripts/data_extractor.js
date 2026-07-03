@@ -3387,8 +3387,12 @@ function main() {
       const propertyAddress = normSpace(
         generalProfile.propertyAddress || generalProfile.streetName || "",
       );
+      // OCPA's propertyAddress already includes the house number (e.g.
+      // "5034 LOYOLA LN"); only prepend streetNumber when it is missing (e.g.
+      // propertyAddress fell back to streetName), otherwise the number gets
+      // doubled ("5034 5034 LOYOLA LN").
       let locationLine = propertyAddress;
-      if (streetNumber) {
+      if (streetNumber && !propertyAddress.startsWith(`${streetNumber} `)) {
         locationLine = `${streetNumber} ${propertyAddress}`.trim();
       }
       if (!locationLine && generalProfile.streetName) {
