@@ -251,26 +251,47 @@ function parseParcelPolygon(polygonStr) {
 
 // USPS suffix map (subset copied from
 // transform/brevard/scripts/data_extractor.js:60-385; extend as needed).
+//
+// NB: Santa Clara's Socrata layer uses ITS OWN 2-letter situs_street_type codes,
+// NOT USPS abbreviations. E.g. SCC "TR"=Terrace (verified: "999 EVELYN TR" is the
+// real "999 W Evelyn Terrace, Sunnyvale 94086"), "CL"=Circle (verified: "FOUR OAKS
+// CL"/"CRIBARI CL" are the real Four Oaks Circle / Cribari Circle, San Jose), and
+// "CM"=Common (verified: "DE ALTURA CM" is the real "De Altura Commons"). All
+// right-hand values below are members of the Lexicon street_suffix_type enum
+// (proven in production by transform/brevard). Codes we could NOT confidently
+// resolve to an enum member are DELIBERATELY OMITTED so they degrade to null
+// (schema-valid) rather than risk a wrong mapping — see the note after the map.
 const STREET_SUFFIX_MAP = {
   STREET: "St", ST: "St",
   AVENUE: "Ave", AVE: "Ave", AV: "Ave",
-  BOULEVARD: "Blvd", BLVD: "Blvd",
+  BOULEVARD: "Blvd", BLVD: "Blvd", BL: "Blvd", // SCC "BL" = Boulevard (Airport/Almaden Blvd)
   ROAD: "Rd", RD: "Rd",
   LANE: "Ln", LN: "Ln",
   DRIVE: "Dr", DR: "Dr",
   COURT: "Ct", CT: "Ct",
   PLACE: "Pl", PL: "Pl",
-  TERRACE: "Ter", TER: "Ter",
-  CIRCLE: "Cir", CIR: "Cir",
+  TERRACE: "Ter", TER: "Ter", TR: "Ter", // SCC "TR" = Terrace (999 W Evelyn Terrace)
+  CIRCLE: "Cir", CIR: "Cir", CL: "Cir", // SCC "CL" = Circle (Four Oaks/Cribari Circle)
   WAY: "Way", WY: "Way",
-  LOOP: "Loop",
-  PARKWAY: "Pkwy", PKWY: "Pkwy",
+  LOOP: "Loop", LP: "Loop", // SCC "LP" = Loop
+  PARKWAY: "Pkwy", PKWY: "Pkwy", PY: "Pkwy", // SCC "PY" = Parkway (Amphitheatre/Bayshore Pkwy)
   PLAZA: "Plz", PLZ: "Plz",
   TRAIL: "Trl", TRL: "Trl",
-  HIGHWAY: "Hwy", HWY: "Hwy",
+  HIGHWAY: "Hwy", HWY: "Hwy", HY: "Hwy", // SCC "HY" = Highway (Monterey/Hecker Pass Hwy)
+  EXPRESSWAY: "Expy", EXPY: "Expy", EX: "Expy", // SCC "EX" = Expressway (Lawrence/Montague/Central Expy)
+  FREEWAY: "Fwy", FWY: "Fwy", FY: "Fwy", // SCC "FY" = Freeway (Nimitz/Junipero Serra Fwy)
+  COMMON: "Cmn", CMN: "Cmn", CM: "Cmn", // SCC "CM" = Common (De Altura Commons)
+  ALLEY: "Aly", ALY: "Aly", AL: "Aly", // SCC "AL" = Alley (Allegado Alley)
   SQUARE: "Sq", SQ: "Sq",
   REAL: "Real", // e.g. "EL CAMINO REAL" — keep as-is (see open questions)
 };
+
+// DELIBERATELY LEFT UNMAPPED (degrade to null — schema-valid, data-lossy but safe):
+//   WW / WK — both are "Walkway" in SCC (verified: "GILCHRIST WW"=Gilchrist Walkway,
+//     "TRADEWINDS WK"=Tradewinds Walkway). The correct USPS suffix is "Wkwy", which
+//     is NOT a member of the Lexicon street_suffix_type enum used by brevard, so a
+//     mapping would risk validate rejection. A wrong/invalid mapping is worse than
+//     null. Flagged for human decision (needs confirmation Wkwy is enum-legal).
 
 // Socrata situs_street_direction values are single letters (e.g. "W").
 const VALID_DIRECTIONALS = new Set(["N", "S", "E", "W", "NE", "NW", "SE", "SW"]);
