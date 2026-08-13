@@ -1,0 +1,76 @@
+schema_version: 1
+
+source:
+  key: overture-places
+  name: Overture Maps places
+  authority: Overture Maps Foundation
+  stac_catalog: "https://stac.overturemaps.org/catalog.json"
+  public_s3_prefix: "s3://overturemaps-us-west-2/release/<release>/theme=places/type=place/"
+  azure_mirror: "https://overturemapswestus2.blob.core.windows.net/release/"
+  access:
+    mode: public-s3-geoparquet
+    authentication: none
+    region: us-west-2
+  cadence: monthly
+  identity: GERS UUID
+  county_scope: Census TIGER/Line boundary clip after bounding-box pruning
+  category_fields:
+    hierarchy: taxonomy.hierarchy
+    primary: taxonomy.primary
+    alternate: taxonomy.alternate
+    basic: basic_category
+    deprecated: categories.primary
+
+licensing:
+  theme_license: CDLA-Permissive-2.0 and Apache-2.0 per record
+  publication: open-with-attribution
+  verified_at: "2026-08-12"
+  counsel_reviewed: false
+  approved_datasets:
+    - dataset: meta
+      license: CDLA-Permissive-2.0
+    - dataset: microsoft
+      license: CDLA-Permissive-2.0
+    - dataset: foursquare
+      license: Apache-2.0
+      attribution: "Copyright 2024 Foursquare Labs, Inc. All rights reserved."
+    - dataset: pinmeto
+      license: CDLA-Permissive-2.0
+    - dataset: krick
+      license: CDLA-Permissive-2.0
+    - dataset: rendersEO
+      license: CDLA-Permissive-2.0
+    - dataset: dac
+      license: CDLA-Permissive-2.0
+    - dataset: brightquery
+      license: CDLA-Permissive-2.0
+    - dataset: alltheplaces
+      license: CDLA-Permissive-2.0
+    - dataset: Overture
+      license: CDLA-Permissive-2.0 and Apache-2.0
+      approval: human-decision-2026-08-12-overture-lineage
+    - dataset: Overture-signals
+      license: CDLA-Permissive-2.0 and Apache-2.0
+      approval: human-decision-2026-08-12-overture-lineage
+  gate:
+    comparison: case-insensitive
+    osm: hard-stop
+    unknown_dataset: hard-stop
+    decision: Do not publish if OSM or any dataset outside the approved list appears.
+  human_decision:
+    date: "2026-08-12"
+    statement: Overture and Overture-signals are Overture lineage, not OSM or unknown third-party sources, and are approved.
+  attribution_requirements:
+    - Preserve the Overture citation and accessed date.
+    - Preserve licences for every provider dataset present.
+    - Preserve the Foursquare copyright line when Foursquare is present.
+    - Record Elephant's transformation and change date.
+    - Ship NOTICE.txt with the published artifact.
+  caveat: Joining CDLA-Permissive data to OpenStreetMap can make the resulting derivative database ODbL and requires licence review.
+
+publication_decisions:
+  lee:
+    decided_at: "2026-08-12"
+    decision: approved
+    pii: Publish public business emails and phones as-is.
+    gate: Licence assertion passes, row count reconciles, and duplicate GERS IDs and null geometries are zero.

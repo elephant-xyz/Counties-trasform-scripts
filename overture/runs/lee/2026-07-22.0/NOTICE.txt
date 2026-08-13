@@ -1,0 +1,33 @@
+Overture Maps Foundation Places
+Release: 2026-07-22.0
+Accessed: 2026-08-13
+
+This dataset is derived from Overture Maps places data published at
+s3://overturemaps-us-west-2/release/2026-07-22.0/theme=places/type=place/.
+Overture theme licence: CDLA-Permissive-2.0 and Apache-2.0 per record, with no
+OpenStreetMap lineage in the places theme. These terms were read from Overture's
+published documentation on 2026-08-12 and have not been reviewed by counsel.
+
+Per-provider licences for datasets present in this extract (AllThePlaces, BrightQuery, DAC, Foursquare, meta, Microsoft, Overture, Overture-signals, PinMeTo, RenderSEO):
+- AllThePlaces: CDLA-Permissive-2.0
+- BrightQuery: CDLA-Permissive-2.0
+- DAC: CDLA-Permissive-2.0
+- Foursquare: Apache-2.0
+- meta: CDLA-Permissive-2.0
+- Microsoft: CDLA-Permissive-2.0
+- Overture: CDLA-Permissive-2.0 and Apache-2.0 (Overture theme lineage)
+- Overture-signals: CDLA-Permissive-2.0 and Apache-2.0 (Overture theme lineage)
+- PinMeTo: CDLA-Permissive-2.0
+- RenderSEO: CDLA-Permissive-2.0
+
+Copyright 2024 Foursquare Labs, Inc. All rights reserved.
+
+Changed by Elephant: 2026-08-13
+Elephant clipped the global places theme to a Census TIGER/Line county boundary,
+serialized taxonomy.hierarchy as a /-delimited string in the published parquet,
+and added an advisory is_hosted_service flag. This change statement describes
+Elephant's transformation, not Overture's.
+
+Joining CDLA-Permissive data to OpenStreetMap can make the resulting derivative
+database ODbL. Do not combine this artifact with an ODbL source without a
+licence review.
