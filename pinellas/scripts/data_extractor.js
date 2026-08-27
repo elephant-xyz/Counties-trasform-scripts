@@ -1,6 +1,12 @@
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
+const {
+  extractStrap,
+  firstDataRows,
+  getLabeledValue,
+  getLabeledMultiline,
+} = require("./printHtml");
 
 // ============================================================================
 // Constants
@@ -45,7 +51,10 @@ const extraFeaturesDescriptionMappings = [
 
 
 function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) {
-  const rows = $("#tblExtraFeatures tbody tr");
+  const rows = firstDataRows($, [
+    "#tblExtraFeatures tbody tr",
+    "#extra_features tr",
+  ]);
   if (!rows || rows.length === 0) {
     ["propertyLot.json", "propertyUtility.json", "propertyStructure.json", "utility.json"].forEach((filename) => {
       const filePath = path.join(dataDir, filename);
@@ -2292,7 +2301,11 @@ function dedupeOwners(arr) {
 
 function extractSalesHistoryFiles($, dataDir, requestIdentifier, sourceHttpRequest) {
   const links = [];
-  $("#tblSalesHistory tbody tr").each((idx, row) => {
+  firstDataRows($, [
+    "#tblSalesHistory tbody tr",
+    "#sale_history tbody tr",
+    "#sale_history tr",
+  ]).each((idx, row) => {
     const $row = $(row);
     const $link = $row.find("td").eq(6).find("a");
     const url = ($link.attr("href") || "").trim();
@@ -2516,7 +2529,10 @@ function extractPropertyImprovements(
   requestIdentifier,
   sourceHttpRequest,
 ) {
-  const rows = $("#tblPermit tbody tr");
+  const rows = firstDataRows($, [
+    "#tblPermit tbody tr",
+    "#permit_data table tr",
+  ]);
   if (!rows.length) return;
 
   rows.each((idx, row) => {
@@ -2563,8 +2579,12 @@ function extractPropertyImprovements(
 
 function gatherRawOwnerStrings($) {
   const rawList = [];
+  const printOwners = getLabeledMultiline($, "Owner Name");
   const $details = $("#owner_details");
-  if (!$details.length) return rawList;
+  if (!$details.length) {
+    if (printOwners) rawList.push(printOwners);
+    return rawList;
+  }
 
   const seenPieces = new Set();
   const $detailsClone = $details.clone();
@@ -3290,10 +3310,14 @@ function extract() {
 
 
   // Keys & frequently used fields
+  const htmlForStrap = typeof html === "string" ? html : "";
   const parcelIdFromHtml = getTextOrNull($("#pacel_no"));
+  const parcelIdFromPrint = extractStrap($, htmlForStrap);
   // CRITICAL: parcel_identifier is REQUIRED and must be a string with minLength: 1
-  // Use parcel_id from seed file, or request_identifier as fallback
-  const parcelId = parcelIdFromHtml ||
+  // Use STRAP from print `s=` / seed, never a dashed PARCELID stripped of punctuation.
+  const parcelId =
+                   (parcelIdFromPrint && parcelIdFromPrint !== "unknown_id" ? parcelIdFromPrint : null) ||
+                   (parcelIdFromHtml && /^\d{18}$/.test(parcelIdFromHtml) ? parcelIdFromHtml : null) ||
                    (seed && seed.parcel_id) ||
                    (seed && seed.request_identifier) ||
                    "UNKNOWN_PARCEL";
@@ -3353,7 +3377,11 @@ function extract() {
   }
     // LOT file creation
   try {
-    const landAreaTxt = getTextOrNull($("#land_info #sw"));
+    const landAreaTxt =
+      getTextOrNull($("#land_info #sw")) ||
+      getTextOrNull(
+        $("#land_info label").filter((_, el) => /Land Area/i.test($(el).text())).first(),
+      );
     let lot_area_sqft = null;
     let lot_size_acre = null;
 
@@ -3365,7 +3393,14 @@ function extract() {
       if (mAreaAcre) lot_size_acre = parseFloatSafe(mAreaAcre[1]);
     }
 
-    const dimTxt = getTextOrNull($("#tblLandInformation tbody tr:first td").eq(1));
+    let dimTxt = getTextOrNull($("#tblLandInformation tbody tr:first td").eq(1));
+    if (!dimTxt) {
+      $("#land_info td").each((_, el) => {
+        if (dimTxt) return;
+        const text = getTextOrNull($(el));
+        if (text && /\d+\s*[xX]\s*\d+/.test(text)) dimTxt = text;
+      });
+    }
     let lot_length_feet = null;
     let lot_width_feet = null;
     if (dimTxt) {
@@ -3484,11 +3519,13 @@ function extract() {
 
   // console.log(">>>",seed.source_http_request.multiValueQueryString.s[0])        
   // PROPERTY
-  const livableSF = getTextOrNull($("#tls"));
-  const totalSF = getTextOrNull($("#tgs"));
-  const yearBuiltString = getTextOrNull($("#Yrb"));
-  const propertyUseText = getTextOrNull($("#property_use a"));
-  const numberOfUnitsText = getTextOrNull($("#tlu"));
+  const livableSF = getTextOrNull($("#tls")) || getLabeledValue($, "Living SF");
+  const totalSF = getTextOrNull($("#tgs")) || getLabeledValue($, "Gross SF");
+  const yearBuiltString = getTextOrNull($("#Yrb")) || getLabeledValue($, "Year Built");
+  const propertyUseText =
+    getTextOrNull($("#property_use a")) || getLabeledValue($, "Property Use");
+  const numberOfUnitsText =
+    getTextOrNull($("#tlu")) || getLabeledValue($, "Living Units");
 
   const livable_floor_area = (livableSF && livableSF !== 'n/a' && /\d{2,}/.test(livableSF)) ? livableSF.replace(/,/g, '') : null;
   const total_area = (totalSF && totalSF !== 'n/a' && /\d{2,}/.test(totalSF)) ? totalSF.replace(/,/g, '') : null;
@@ -3498,9 +3535,11 @@ function extract() {
 
   const legalDescHidden = getValueOrNull($("#legal_full_desc"));
   const legalDescDiv = getTextOrNull($("#lLegal"));
-  const property_legal_description_text = legalDescHidden || legalDescDiv;
+  const property_legal_description_text =
+    legalDescHidden || legalDescDiv || getLabeledValue($, "Legal Description");
     
-  const mailing_address_text= getTextOrNull($("#mailling_add"));
+  const mailing_address_text=
+    getTextOrNull($("#mailling_add")) || getLabeledValue($, "Mailing Address");
   // console.log(">>",mailing_address_text)
   // Get Building Type from structural elements for fallback
   // const structuralElementsBuilding1 = extractStructuralKeyValues($, 'structural_1');
@@ -3642,7 +3681,10 @@ function extract() {
 
     // const strParts = parseSectionTownshipRangeFromParcel(parcelId);
 
-    const legalDescForBlock = getValueOrNull($("#legal_full_desc")) || getTextOrNull($("#lLegal"));
+    const legalDescForBlock =
+      getValueOrNull($("#legal_full_desc")) ||
+      getTextOrNull($("#lLegal")) ||
+      getLabeledValue($, "Legal Description");
     const block = parseBlockFromLegal(legalDescForBlock);
 
     const country_code = "US";
@@ -3666,7 +3708,11 @@ function extract() {
 
   // SALES AND OWNERS CODE BLOCK--------------
   try {
-    const salesRows = $("#tblSalesHistory tbody tr");
+    const salesRows = firstDataRows($, [
+      "#tblSalesHistory tbody tr",
+      "#sale_history tbody tr",
+      "#sale_history tr",
+    ]);
 
     fs.readdirSync(dataDir).forEach((file) => {
       if (/^sales_history_\d+\.json$/i.test(file) || /^sales_\d+\.json$/i.test(file) || /^relationship_property_has_sales_history_\d+\.json$/i.test(file)) {
@@ -3946,7 +3992,10 @@ function extract() {
   }
 
   try {
-    $("#tblValueHistory tbody tr").each((i, el) => {
+    firstDataRows($, [
+      "#tblValueHistory tbody tr",
+      "#value_history tr",
+    ]).each((i, el) => {
       const tds = $(el).find("td");
       const taxYear = parseIntSafe(getTextOrNull($(tds[0])));
       const market = parseCurrencyToNumber(getTextOrNull($(tds[2])));
@@ -3975,7 +4024,10 @@ function extract() {
     });
 
     // Newer table (#tblLastYearValue) provides the current year tax assessment.
-    const lastYearRow = $("#tblLastYearValue tbody tr").first();
+    let lastYearRow = $("#tblLastYearValue tbody tr").first();
+    if (!lastYearRow.length) {
+      lastYearRow = firstDataRows($, ["#values tr"]).first();
+    }
     if (lastYearRow && lastYearRow.length) {
       const cells = lastYearRow.find("td");
       const currentYear = parseIntSafe(getTextOrNull(cells.eq(0)));
