@@ -121,16 +121,6 @@ function makeNeutralRoom(spaceType, index, sizeSqft, isExterior, builtYear, impr
     spa_installation_date: null,
     pool_installation_date: null,
     built_year: builtYear || null,
-
-    // Highlight feature details from CAD input
-    feature_highlight: improvementDetails ? {
-      type_code: improvementDetails.typeCode || null,
-      description: improvementDetails.description || null,
-      class_code: improvementDetails.classCode || null,
-      year_built: improvementDetails.yearBuilt || null,
-      original_sqft: improvementDetails.sqft || null,
-      is_highlighted: true
-    } : null,
   };
 }
 
