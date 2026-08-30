@@ -2337,10 +2337,370 @@ function extractAddress($, unAddr) {
   return address;
 }
 
+/**
+ * Extract a selected tax year from the Lee page header.
+ *
+ * @param {import('cheerio').CheerioAPI} $ - Loaded Lee parcel HTML document.
+ * @returns {number|null} Selected tax year, or null when the page does not expose one.
+ */
+function extractSelectedTaxYear($) {
+  const selectedOption = $('#selectTaxYear option[selected]').first();
+  const selectedText = selectedOption.length ? cleanText(selectedOption.text()) : cleanText($('#selectTaxYear option').first().text());
+  const selectedYear = selectedText.match(/\b(19|20)\d{2}\b/);
+  if (selectedYear) return parseInt(selectedYear[0], 10);
+
+  const selectedHref = selectedOption.attr('value') || $('#selectTaxYear option').first().attr('value') || '';
+  const hrefYear = selectedHref.match(/[?&]TaxYear=((?:19|20)\d{2})\b/i);
+  return hrefYear ? parseInt(hrefYear[1], 10) : null;
+}
+
+/**
+ * Extract fixed-width NAL field labels from Lee's "Certified Roll Data" block.
+ *
+ * Lee currently renders assessed values in `#TaxRollDiv` as a continuous text
+ * sequence (`F01: ... F02: ...`). Older code only handled the retired
+ * `#valueGrid` table, so all tax rows were skipped even though the source HTML
+ * had the complete certified roll values.
+ *
+ * @param {string} text - Normalized text from `#TaxRollDiv` or another certified-roll container.
+ * @returns {Map<string, string>} Field map keyed as `F04`, `F08`, etc.
+ */
+function extractNalFields(text) {
+  const fields = new Map();
+  const normalized = cleanText(text);
+  const fieldPattern = /F(\d{2}):\s*([\s\S]*?)(?=F\d{2}:|$)/g;
+  for (const match of normalized.matchAll(fieldPattern)) {
+    const fieldNumber = match[1];
+    const rawValue = match[2];
+    if (!fieldNumber || rawValue == null) continue;
+    fields.set(`F${fieldNumber}`, cleanText(rawValue));
+  }
+  return fields;
+}
+
+/**
+ * Read a numeric value from an extracted Lee NAL field.
+ *
+ * @param {Map<string, string>} fields - NAL field map.
+ * @param {string} fieldName - Field name such as `F08`.
+ * @returns {number|null} Parsed number, or null when the field is blank/non-numeric.
+ */
+function readNalNumber(fields, fieldName) {
+  return parseNumber(fields.get(fieldName));
+}
+
+/**
+ * Convert a Cheerio document into non-empty visible text lines.
+ *
+ * @param {import('cheerio').CheerioAPI} $ - Loaded HTML document.
+ * @returns {string[]} Normalized text lines in page order.
+ */
+function extractTextLines($) {
+  return $.root()
+    .text()
+    .split(/\r?\n/)
+    .map((line) => cleanText(line))
+    .filter((line) => line.length > 0);
+}
+
+/**
+ * Test whether text looks like a Lee field-card/cost-card value summary.
+ *
+ * @param {string} text - Normalized document text.
+ * @returns {boolean} True when the page exposes the cost-card summary table.
+ */
+function isLeeCostCardText(text) {
+  return /LEE\s+COUNTY\s+PROPERTY\s+APPRAISER/i.test(text) && /VALUE\s+SUMMARY/i.test(text);
+}
+
+/**
+ * Find the first local auxiliary HTML file that contains a Lee cost-card value summary.
+ *
+ * Detail captures are normalized to `input.html`. When the upstream extractor
+ * also captures the linked field card, that auxiliary HTML is left in the
+ * working directory and used only as a fallback for value/tax rows.
+ *
+ * @returns {{ name: string, html: string, sourceHttpRequest: object | null } | null} Cost-card HTML and provenance, or null.
+ */
+function findAuxiliaryCostCardHtml() {
+  let entries = [];
+  try {
+    entries = fs.readdirSync(WORKING_DIR);
+  } catch {
+    return null;
+  }
+
+  for (const fileName of entries) {
+    if (/\.html?$/i.test(fileName) === false) continue;
+    if (fileName === 'input.html') continue;
+    const filePath = path.join(WORKING_DIR, fileName);
+    let html = '';
+    try {
+      html = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      continue;
+    }
+    if (isLeeCostCardText(cleanText(html))) {
+      return {
+        name: fileName,
+        html,
+        sourceHttpRequest: readAuxiliarySourceHttpRequest(fileName),
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Read an auxiliary source request sidecar for a captured Lee cost card.
+ *
+ * @param {string} htmlFileName - Auxiliary HTML file name.
+ * @returns {object|null} Parsed source request object, or null when unavailable.
+ */
+function readAuxiliarySourceHttpRequest(htmlFileName) {
+  const extension = path.extname(htmlFileName);
+  const baseName = extension ? htmlFileName.slice(0, -extension.length) : htmlFileName;
+  const candidateNames = [
+    `${baseName}_source_http_request.json`,
+    'cost_card_source_http_request.json',
+  ];
+
+  for (const candidateName of candidateNames) {
+    const candidatePath = path.join(WORKING_DIR, candidateName);
+    if (fs.existsSync(candidatePath) === false) continue;
+    try {
+      const parsed = readJSON(candidatePath);
+      if (parsed !== null && typeof parsed === 'object' && Array.isArray(parsed) === false) {
+        return parsed;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/**
+ * Read the last numeric value that follows a cost-card summary label.
+ *
+ * Lee cost cards render the `VALUE SUMMARY` as stacked text lines. Several
+ * labels have two visible value columns; the rightmost/current numeric value is
+ * the one we preserve. Asterisks are skipped because Lee uses them for
+ * incomplete/not-applicable approaches.
+ *
+ * @param {string[]} lines - Visible text lines in page order.
+ * @param {string} label - Summary label such as `MARKET VALUE`.
+ * @returns {number|null} Parsed current value, or null when the label has no numeric value.
+ */
+function readCostCardSummaryNumber(lines, label) {
+  const labelPattern = new RegExp(`^${label.replace(/\s+/g, '\\s+')}$`, 'i');
+  const nextLabelPattern = /^(BUILDING COST VALUE|BUILDING EXTRA FEATURES|LAND EXTRA FEATURES|LAND VALUE|COST APPROACH VALUE|INCOME APPROACH VALUE|SALES APPROACH VALUE|MARKET VALUE)$/i;
+  const startIndex = lines.findIndex((line) => labelPattern.test(line));
+  if (startIndex === -1) return null;
+
+  const values = [];
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (nextLabelPattern.test(line)) break;
+    const parsed = parseNumber(line);
+    if (parsed !== null) values.push(parsed);
+  }
+  return values.length > 0 ? values[values.length - 1] : null;
+}
+
+/**
+ * Extract the tax/value year from a Lee cost-card value summary.
+ *
+ * @param {string[]} lines - Visible text lines in page order.
+ * @returns {number|null} Parsed four-digit year.
+ */
+function extractCostCardTaxYear(lines) {
+  const currentValuesIndex = lines.findIndex((line) => /^Current Values$/i.test(line));
+  if (currentValuesIndex !== -1) {
+    for (let index = currentValuesIndex + 1; index < Math.min(lines.length, currentValuesIndex + 8); index += 1) {
+      const yearMatch = lines[index].match(/^(19|20)\d{2}$/);
+      if (yearMatch) return parseInt(lines[index], 10);
+    }
+  }
+
+  const generatedYearLine = lines.find((line) => /\b(19|20)\d{2}\b/.test(line));
+  const generatedYearMatch = generatedYearLine ? generatedYearLine.match(/\b(19|20)\d{2}\b/) : null;
+  return generatedYearMatch ? parseInt(generatedYearMatch[0], 10) : null;
+}
+
+/**
+ * Build a tax/value row from Lee's linked field-card/cost-card summary.
+ *
+ * Some Lee parcel-detail pages, especially inactive or split parcels, render
+ * `Certified Roll Data not found for this parcel` while the linked field card
+ * still exposes current value summary rows. This fallback promotes the current
+ * market and land values and preserves the raw summary fields in the payload.
+ *
+ * @param {import('cheerio').CheerioAPI} $costCard - Loaded cost-card HTML document.
+ * @param {string} sourceName - Source HTML filename used for provenance.
+ * @param {object|null} [sourceHttpRequest] - Source request descriptor for the cost-card capture.
+ * @returns {Array<object>} One fallback tax/value row, or an empty array.
+ */
+function extractTaxesFromCostCard($costCard, sourceName, sourceHttpRequest = null) {
+  const normalizedText = cleanText($costCard.root().text());
+  if (isLeeCostCardText(normalizedText) === false) return [];
+
+  const lines = extractTextLines($costCard);
+  const taxYear = extractCostCardTaxYear(lines);
+  const buildingCostValue = readCostCardSummaryNumber(lines, 'BUILDING COST VALUE');
+  const landExtraFeaturesValue = readCostCardSummaryNumber(lines, 'LAND EXTRA FEATURES');
+  const landValue = readCostCardSummaryNumber(lines, 'LAND VALUE');
+  const costApproachValue = readCostCardSummaryNumber(lines, 'COST APPROACH VALUE');
+  const incomeApproachValue = readCostCardSummaryNumber(lines, 'INCOME APPROACH VALUE');
+  const salesApproachValue = readCostCardSummaryNumber(lines, 'SALES APPROACH VALUE');
+  const marketValue = readCostCardSummaryNumber(lines, 'MARKET VALUE') ?? incomeApproachValue ?? costApproachValue ?? salesApproachValue;
+  const derivedBuildingValue = marketValue !== null && landValue !== null ? marketValue - landValue : null;
+  const buildingValue = buildingCostValue ?? (derivedBuildingValue !== null && derivedBuildingValue > 0 ? Number(derivedBuildingValue.toFixed(2)) : null);
+
+  if (taxYear === null && marketValue === null && landValue === null && buildingValue === null) {
+    return [];
+  }
+
+  return [
+    {
+      tax_year: taxYear,
+      property_assessed_value_amount: null,
+      property_market_value_amount: marketValue,
+      property_building_amount: buildingValue,
+      property_land_amount: landValue,
+      property_taxable_value_amount: null,
+      land_extra_features_value_amount: landExtraFeaturesValue,
+      cost_approach_value_amount: costApproachValue,
+      income_approach_value_amount: incomeApproachValue,
+      sales_approach_value_amount: salesApproachValue,
+      monthly_tax_amount: null,
+      period_end_date: null,
+      period_start_date: null,
+      cost_card_fields: {
+        building_cost_value: buildingCostValue,
+        land_extra_features_value: landExtraFeaturesValue,
+        land_value: landValue,
+        cost_approach_value: costApproachValue,
+        income_approach_value: incomeApproachValue,
+        sales_approach_value: salesApproachValue,
+        market_value: marketValue,
+      },
+      source_http_request: sourceHttpRequest,
+      source_cost_card_file_name: sourceName,
+      source_extraction_method: 'lee_cost_card_value_summary',
+    },
+  ];
+}
+
+/**
+ * Extract tax/value rows from an auxiliary Lee cost-card capture.
+ *
+ * @returns {Array<object>} Fallback value rows, or an empty array.
+ */
+function extractTaxesFromAuxiliaryCostCard() {
+  const auxiliary = findAuxiliaryCostCardHtml();
+  if (auxiliary === null) return [];
+  return extractTaxesFromCostCard(cheerio.load(auxiliary.html), auxiliary.name, auxiliary.sourceHttpRequest);
+}
+
+/**
+ * Extract the explicit "1st Year Building on Tax Roll" value when present.
+ *
+ * @param {import('cheerio').CheerioAPI} $ - Loaded Lee parcel HTML document.
+ * @returns {number|null} Parsed year, or null when the label is absent.
+ */
+function extractFirstYearBuildingOnTaxRoll($) {
+  let year = null;
+  $('th').each((_, th) => {
+    if (year !== null) return false;
+    if (/1st\s+Year\s+Building\s+on\s+Tax\s+Roll/i.test(cleanText($(th).text())) === false) return;
+    const value = cleanText($(th).closest('tr').find('td').first().text());
+    const parsed = parseNumber(value);
+    if (parsed !== null) year = parsed;
+  });
+  return year;
+}
+
+/**
+ * Build tax rows from Lee's certified-roll NAL fields.
+ *
+ * The field mapping follows the Florida NAL roll layout exposed by Lee:
+ * F04 assessment year, F08 total just value, F11/F12 school/non-school assessed
+ * values, F13/F14 school/non-school taxable values, and F38 land value. The full
+ * extracted field map is preserved on the output payload so fields not promoted
+ * to typed columns are still available downstream in `source_payload`.
+ *
+ * @param {import('cheerio').CheerioAPI} $ - Loaded Lee parcel HTML document.
+ * @returns {Array<object>} Tax rows for the selected certified roll year.
+ */
+function extractTaxesFromCertifiedRoll($) {
+  const rollText = cleanText($('#TaxRollDiv').text() || $('.certifiedRollData').text());
+  if (!rollText) return [];
+
+  const fields = extractNalFields(rollText);
+  if (fields.size === 0) return [];
+
+  const taxYear = readNalNumber(fields, 'F04') || extractSelectedTaxYear($);
+  const justValue = readNalNumber(fields, 'F08');
+  const schoolAssessedValue = readNalNumber(fields, 'F11');
+  const nonSchoolAssessedValue = readNalNumber(fields, 'F12');
+  const schoolTaxableValue = readNalNumber(fields, 'F13');
+  const nonSchoolTaxableValue = readNalNumber(fields, 'F14');
+  const homesteadJustValue = readNalNumber(fields, 'F15');
+  const agriculturalJustValue = readNalNumber(fields, 'F21');
+  const landValue = readNalNumber(fields, 'F38');
+  const firstYearBuildingOnTaxRoll = extractFirstYearBuildingOnTaxRoll($);
+  const buildingValue = justValue !== null && landValue !== null ? justValue - landValue : null;
+
+  if (taxYear === null && justValue === null && nonSchoolAssessedValue === null && schoolAssessedValue === null) {
+    return [];
+  }
+
+  return [
+    {
+      tax_year: taxYear,
+      property_assessed_value_amount: nonSchoolAssessedValue ?? schoolAssessedValue ?? null,
+      property_market_value_amount: justValue,
+      property_homestead_value_amount: homesteadJustValue,
+      property_building_amount:
+        buildingValue !== null && buildingValue > 0
+          ? Number(buildingValue.toFixed(2))
+          : null,
+      property_land_amount: landValue,
+      property_taxable_value_amount: nonSchoolTaxableValue ?? schoolTaxableValue ?? null,
+      county_taxable_value_amount: nonSchoolTaxableValue,
+      school_taxable_value_amount: schoolTaxableValue,
+      agricultural_valuation_amount: agriculturalJustValue,
+      building_depreciated_value_amount:
+        buildingValue !== null && buildingValue > 0
+          ? Number(buildingValue.toFixed(2))
+          : null,
+      first_year_building_on_tax_roll: firstYearBuildingOnTaxRoll,
+      monthly_tax_amount: null,
+      period_end_date: null,
+      period_start_date: null,
+      nal_fields: Object.fromEntries(fields.entries()),
+      source_extraction_method: 'lee_certified_roll_nal',
+    },
+  ];
+}
+
+/**
+ * Extract tax/value rows from Lee parcel HTML.
+ *
+ * @param {import('cheerio').CheerioAPI} $ - Loaded Lee parcel HTML document.
+ * @returns {Array<object>} Tax rows derived from the value table or certified-roll fallback.
+ */
 function extractTaxes($) {
   const taxes = [];
+  const currentPageCostCardTaxes = extractTaxesFromCostCard($, 'input.html');
+  if (currentPageCostCardTaxes.length > 0) return currentPageCostCardTaxes;
+
   const grid = $('#valueGrid');
-  if (!grid.length) return taxes;
+  if (!grid.length) {
+    const certifiedRollTaxes = extractTaxesFromCertifiedRoll($);
+    return certifiedRollTaxes.length > 0 ? certifiedRollTaxes : extractTaxesFromAuxiliaryCostCard();
+  }
   grid.find('tr').each((i, tr) => {
     if (i === 0) return; // header
     const tds = $(tr).find('td');
@@ -2374,7 +2734,9 @@ function extractTaxes($) {
     };
     taxes.push(obj);
   });
-  return taxes;
+  if (taxes.length > 0) return taxes;
+  const certifiedRollTaxes = extractTaxesFromCertifiedRoll($);
+  return certifiedRollTaxes.length > 0 ? certifiedRollTaxes : extractTaxesFromAuxiliaryCostCard();
 }
 
 function extractSales($) {
