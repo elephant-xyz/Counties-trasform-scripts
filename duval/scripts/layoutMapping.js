@@ -978,6 +978,19 @@ function textTrim($, sel) {
   return ($(sel).text() || "").trim();
 }
 
+function findTableLabelNumber($, labelPattern) {
+  let match = null;
+  $("table:not([id$='gridBuildingAttributes']) tr").each((_, row) => {
+    if (match != null) return;
+    const cells = $(row).children("th,td");
+    if (cells.length < 2) return;
+    const label = $(cells[0]).text().trim();
+    if (!labelPattern.test(label)) return;
+    match = parseNumber($(cells[1]).text());
+  });
+  return match;
+}
+
 function extractExtraFeatures($) {
   const features = [];
   $("#ctl00_cphBody_gridExtraFeatures tr").each((index, row) => {
@@ -1206,6 +1219,7 @@ function main() {
       .slice(1);
     let totalGross = null;
     let totalHeated = null;
+    let totalEffective = null;
     const floorAreas = [];
     areaRows.forEach((row) => {
       const $row = $(row);
@@ -1214,9 +1228,11 @@ function main() {
       const type = $(tds[0]).text().trim();
       const gross = parseNumber($(tds[1]).text());
       const heated = parseNumber($(tds[2]).text());
+      const effective = parseNumber($(tds[3]).text());
       if (/total/i.test(type)) {
         if (gross != null) totalGross = gross;
         if (heated != null) totalHeated = heated;
+        if (effective != null) totalEffective = effective;
         return;
       }
       let floorNumber = null;
@@ -1228,6 +1244,7 @@ function main() {
           floor: floorNumber,
           gross: gross != null ? gross : null,
           heated: heated != null ? heated : null,
+          effective: effective != null ? effective : null,
         });
       }
     });
@@ -1235,6 +1252,8 @@ function main() {
     let bedCount = 0;
     let bathCountRaw = 0;
     let storyCount = null;
+    let hasBedroomAttribute = false;
+    let hasBathAttribute = false;
     buildingNode
       .find("table[id$='gridBuildingAttributes'] tr")
       .each((_, row) => {
@@ -1242,12 +1261,26 @@ function main() {
         if (tds.length < 3) return;
         const label = $(tds[0]).text().trim();
         const value = parseNumber($(tds[1]).text());
-        if (/bedroom/i.test(label) && value != null)
-          bedCount = Math.max(0, Math.round(value));
-        if (/bath/i.test(label) && value != null) bathCountRaw = Number(value);
+        if (/bedroom/i.test(label)) {
+          hasBedroomAttribute = true;
+          if (value != null) bedCount = Math.max(0, Math.round(value));
+        }
+        if (/bath/i.test(label)) {
+          hasBathAttribute = true;
+          if (value != null) bathCountRaw = Number(value);
+        }
         if (/stories/i.test(label) && value != null)
           storyCount = Math.round(value);
       });
+
+    if (buildingSections.length === 1 && !hasBedroomAttribute) {
+      const condoBeds = findTableLabelNumber($, /^Beds$/i);
+      if (condoBeds != null) bedCount = Math.max(0, Math.round(condoBeds));
+    }
+    if (buildingSections.length === 1 && !hasBathAttribute) {
+      const condoBaths = findTableLabelNumber($, /^Baths$/i);
+      if (condoBaths != null) bathCountRaw = Number(condoBaths);
+    }
 
     if (floorAreas.length === 0 && storyCount && storyCount > 0) {
       for (let floor = 1; floor <= storyCount; floor += 1) {
@@ -1267,6 +1300,14 @@ function main() {
         0,
       );
     }
+    if (totalEffective == null && floorAreas.length > 0) {
+      const effectiveAreas = floorAreas
+        .map((fa) => fa.effective)
+        .filter((value) => value != null);
+      if (effectiveAreas.length > 0) {
+        totalEffective = effectiveAreas.reduce((sum, value) => sum + value, 0);
+      }
+    }
 
     const buildingEntry = addLayoutEntry(
       buildingLocalId,
@@ -1281,6 +1322,8 @@ function main() {
           totalHeated != null ? Math.round(totalHeated) : null,
         area_under_air_sq_ft:
           totalHeated != null ? Math.round(totalHeated) : null,
+        adjustable_area_sq_ft:
+          totalEffective != null ? Math.round(totalEffective) : null,
         heated_area_sq_ft:
           totalHeated != null ? Math.round(totalHeated) : null,
         size_square_feet:
@@ -1322,6 +1365,8 @@ function main() {
         heated_area_sq_ft: Math.round(fa.heated),
         livable_area_sq_ft: Math.round(fa.heated),
         area_under_air_sq_ft: Math.round(fa.heated),
+        adjustable_area_sq_ft:
+          fa.effective != null ? Math.round(fa.effective) : null,
       });
     });
 
@@ -1334,6 +1379,8 @@ function main() {
         heated_area_sq_ft: Math.round(totalHeated),
         livable_area_sq_ft: Math.round(totalHeated),
         area_under_air_sq_ft: Math.round(totalHeated),
+        adjustable_area_sq_ft:
+          totalEffective != null ? Math.round(totalEffective) : null,
       });
     }
 
