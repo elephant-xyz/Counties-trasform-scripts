@@ -26,10 +26,76 @@ function readJSON(p) {
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
+/**
+ * Stamped onto every lexicon entity (not relationship files). Address oneOf
+ * "unnormalized format" requires source_http_request + request_identifier +
+ * unnormalized_address; without the first two, AJV falls through to the
+ * structured-address branch and rejects unnormalized_address.
+ * @type {{ source_http_request: { method: string, url: string | null }, request_identifier: string } | null}
+ */
+let lexiconProvenance = null;
+
+function isRelationshipRecord(obj) {
+  return Boolean(
+    obj &&
+      typeof obj === "object" &&
+      obj.from &&
+      obj.to &&
+      typeof obj.from === "object" &&
+      typeof obj.to === "object" &&
+      obj.from["/"] &&
+      obj.to["/"],
+  );
+}
+
+/**
+ * Lexicon `source_http_request.url` forbids `?query`. COJ captures use
+ * `Detail.aspx?RE=`; move that into `multiValueQueryString`.
+ */
+function lexiconSourceHttpRequest(seed, unnormalizedAddress, requestIdentifier) {
+  const raw =
+    (seed && seed.source_http_request) ||
+    (unnormalizedAddress && unnormalizedAddress.source_http_request) ||
+    {};
+  const fallback = "https://paopropertysearch.coj.net/Basic/Detail.aspx";
+  let url = raw.url || fallback;
+  let multiValueQueryString = raw.multiValueQueryString || null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.search) {
+      if (!multiValueQueryString) {
+        const moved = {};
+        for (const [key, value] of parsed.searchParams.entries()) {
+          if (!moved[key]) moved[key] = [];
+          moved[key].push(value);
+        }
+        multiValueQueryString = moved;
+      }
+      url = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+    }
+  } catch {
+    url = fallback;
+  }
+  const request = {
+    method: raw.method || "GET",
+    url,
+  };
+  if (multiValueQueryString && Object.keys(multiValueQueryString).length > 0) {
+    request.multiValueQueryString = multiValueQueryString;
+  } else if (requestIdentifier && /Detail\.aspx$/i.test(url)) {
+    request.multiValueQueryString = { RE: [requestIdentifier] };
+  }
+  return request;
+}
+
 function writeJSON(relPath, obj) {
   const outPath = path.join("data", relPath);
   ensureDir(path.dirname(outPath));
-  fs.writeFileSync(outPath, JSON.stringify(obj, null, 2));
+  const payload =
+    lexiconProvenance && !isRelationshipRecord(obj)
+      ? { ...obj, ...lexiconProvenance }
+      : obj;
+  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
 }
 function unlinkIfExists(relPath) {
   const p = path.join("data", relPath);
@@ -2297,6 +2363,9 @@ function main() {
   const unnormalizedAddress = fs.existsSync(unnormalizedAddressPath)
     ? readJSON(unnormalizedAddressPath)
     : null;
+  const propertySeed = fs.existsSync("property_seed.json")
+    ? readJSON("property_seed.json")
+    : null;
   const ownersData = fs.existsSync(ownersPath) ? readJSON(ownersPath) : null;
   const utilitiesData = fs.existsSync(utilitiesPath)
     ? readJSON(utilitiesPath)
@@ -2330,6 +2399,19 @@ function main() {
   const parcelIdentifier =
     htmlParcelNumber ||
     (unnormalizedAddress ? unnormalizedAddress.request_identifier : null);
+  const requestIdentifier =
+    (propertySeed && propertySeed.request_identifier) ||
+    (unnormalizedAddress && unnormalizedAddress.request_identifier) ||
+    parcelIdentifier ||
+    "";
+  lexiconProvenance = {
+    source_http_request: lexiconSourceHttpRequest(
+      propertySeed,
+      unnormalizedAddress,
+      requestIdentifier,
+    ),
+    request_identifier: requestIdentifier,
+  };
   const propertyKey = parcelIdentifier ? `property_${parcelIdentifier}` : null;
   const propertyUseText = textOrNull($("#ctl00_cphBody_lblPropertyUse").text());
   const subdivision = textOrNull($("#ctl00_cphBody_lblSubdivision").text());
