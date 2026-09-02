@@ -1061,7 +1061,7 @@ function mapExteriorWall(detail) {
   if (/ALUM/.test(upper)) return "Metal Siding";
   if (/BRICK/.test(upper)) return "Brick";
   if (/STUCCO/.test(upper)) return "Stucco";
-  if (/CONCRETE\\s*BLK|C\\.?B\\.?/i.test(detail)) return "Concrete Block";
+  if (/CONCRETE\s*BLK|C\.?B\.?/i.test(detail)) return "Concrete Block";
   if (/FIBER|HARDI|LAP/.test(upper)) return "Fiber Cement Siding";
   if (/CEDAR|REDWOOD|WOOD|VERTICAL SHEET|HORIZONTAL LAP/.test(upper))
     return "Wood Siding";
@@ -1103,20 +1103,20 @@ function mapRoofCovering(detail) {
   if (!detail) return null;
   const upper = detail.toUpperCase();
   if (/ASPH|COMP|SHNG/.test(upper)) return "Architectural Asphalt Shingle";
-  if (/BUILT\\s*UP|BUILT-UP|T&G/.test(upper)) return "Built-Up Roof";
+  if (/BUILT\s*UP|BUILT-UP|T&G/.test(upper)) return "Built-Up Roof";
   if (/METAL/.test(upper)) return "Metal Standing Seam";
   if (/CLAY TILE/.test(upper)) return "Clay Tile";
-  if (/CONC(?:RETE)?\\s*TILE/.test(upper)) return "Concrete Tile";
+  if (/CONC(?:RETE)?\s*TILE/.test(upper)) return "Concrete Tile";
   return null;
 }
 
 function mapRoofStructure(detail) {
   if (!detail) return null;
   const upper = detail.toUpperCase();
-  if (/WOOD\\s*TRUSS/.test(upper)) return "Wood Truss";
-  if (/WOOD\\s*RAFTER/.test(upper)) return "Wood Rafter";
+  if (/WOOD\s*TRUSS/.test(upper)) return "Wood Truss";
+  if (/WOOD\s*RAFTER/.test(upper)) return "Wood Rafter";
   if (/REINF|CONC/.test(upper)) return "Concrete Beam";
-  if (/RIGID|BAR\\s*J/.test(upper)) return "Steel Truss";
+  if (/RIGID|BAR\s*J/.test(upper)) return "Steel Truss";
   if (/STEEL/.test(upper)) return "Steel Truss";
   if (/ENGINEERED/.test(upper)) return "Engineered Lumber";
   return null;

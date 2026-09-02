@@ -1,0 +1,13 @@
+{
+  "name": "@elephant-xyz/duval-transform",
+  "private": true,
+  "engines": {
+    "node": ">=20.18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0"
+  }
+}
