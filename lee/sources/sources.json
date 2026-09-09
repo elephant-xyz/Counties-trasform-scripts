@@ -1,0 +1,119 @@
+{
+  "county": "lee",
+  "state": "FL",
+  "registry_version": 1,
+  "last_verified": "2026-06-12",
+  "sources": [
+    {
+      "id": "lee-appraisal",
+      "category": "property_appraisal",
+      "provider": "Lee County Property Appraiser",
+      "urls": {
+        "portal": "https://www.leepa.org/"
+      },
+      "access_pattern": "browser-flow",
+      "access_details": {
+        "search_key": "STRAP (exact punctuation critical — must match the portal's format)",
+        "browser_flows": ["LeeCurated.json", "LeeCostCard.json"],
+        "browser_flows_status": "referenced by skills; not yet published in oracle-node main"
+      },
+      "batch_available": false,
+      "refresh_method": "repair-mode re-prepare from seed CSV",
+      "refresh_cadence": "quarterly / on-demand",
+      "seed": "s3://counties-seeds/lee.csv",
+      "scale": {
+        "approx_parcels": 516000
+      },
+      "completeness_check": "MVL (mirror-validation) global completeness >= 0.8 per prepared/transformed pair, enforced by oracle-node workflow/lambdas/mvl; plus seed-count vs prepared-count reconciliation",
+      "anti_bot": {
+        "captcha": false,
+        "us_egress_required_for_local_probing": true,
+        "concurrency": "portal tolerates ~3-4 concurrent",
+        "notes": "Lambda from US regions unaffected"
+      },
+      "downstream": ["properties", "addresses", "structures", "sales_histories"]
+    },
+    {
+      "id": "lee-permits",
+      "category": "permits",
+      "provider": "Accela Citizen Access (agency LEECO)",
+      "urls": {
+        "portal": "https://aca-prod.accela.com/LEECO/"
+      },
+      "access_pattern": "scrape",
+      "access_details": {
+        "browser_required": "detail pages require a real browser",
+        "adapter": "lee-accela.mjs (oracle-node permit-harvest worker; referenced by skills, not yet published)",
+        "message_types": ["lee-property-first-permit-parcel", "lee-property-first-seed-feeder"]
+      },
+      "batch_available": false,
+      "refresh_method": "property-first harvest from the seed for permit-eligible parcels (commercial/industrial usage types; env PROPERTY_FIRST_PERMIT_ELIGIBLE_USAGE_TYPES)",
+      "seed": "s3://counties-seeds/lee.csv",
+      "anti_bot": {
+        "captcha": false,
+        "us_egress_required_for_local_probing": true,
+        "concurrency": "start at 2; degrades above ~4"
+      },
+      "gotchas": [
+        "Detail page may display a different parcel than the one searched — permits must be linked via propertyFirstTarget (the requested parcel), never the displayed parcel",
+        "Parcel-id format differs from the appraiser's STRAP; normalization required"
+      ],
+      "downstream": ["permits", "property_improvements"]
+    },
+    {
+      "id": "fl-sunbiz",
+      "category": "business_registry",
+      "provider": "Florida DOS — Sunbiz Data Access",
+      "urls": {
+        "portal": "https://dos.fl.gov/sunbiz/",
+        "bulk": "Data Access portal; exact bulk URL undocumented in skills — Cloudflare-challenged, browser required"
+      },
+      "access_pattern": "bulk-download",
+      "batch_available": true,
+      "refresh_method": "quarterly corporate bulk cordata.zip (~1.7 GB) plus daily incrementals (YYYYMMDDc.txt); county scoping by ZIP-prefix matching (--lee-county-zips convenience flag; ZIP list lives in the not-yet-published enqueue script)",
+      "refresh_cadence": "quarterly bulk + daily incrementals",
+      "scale": {
+        "approx_statewide_records_scanned": 12600000,
+        "approx_lee_matched_records": 379000
+      },
+      "completeness_check": "invalidRecordCount == 0 && transformedRecordCount == sourceRecordCount, from the transform summary",
+      "anti_bot": {
+        "cloudflare_challenge": true,
+        "browser_required_for_download": true
+      },
+      "gotchas": [
+        "cordata.zip is ZIP method 9 (Deflate64) — streaming libs fail in Lambda; expand locally and stage the .txt entries to S3, then run with --source-format text"
+      ],
+      "known_gaps": [
+        "corevent.zip (filing history) not ingested",
+        "party_type_code decoding incomplete"
+      ],
+      "downstream": ["business_registrations", "business_registration_address", "business_registration_party"]
+    },
+    {
+      "id": "bbb",
+      "category": "business_reputation",
+      "provider": "Better Business Bureau (BBB.org)",
+      "urls": {
+        "category_pattern": "https://www.bbb.org/us/category/<category>"
+      },
+      "access_pattern": "scrape",
+      "access_details": {
+        "harvester": "Puppeteer via harvest-bbb-category.mjs (referenced by skills, not yet published)",
+        "delay_tuning": ["--page-delay-ms 2000", "--profile-delay-ms 1500"],
+        "challenge_handling": ["--challenge-attempts", "--challenge-check-interval-ms"],
+        "resume_flags": ["--start-page", "--max-pages", "--max-profiles"]
+      },
+      "batch_available": false,
+      "refresh_method": "category crawl, resumable",
+      "refresh_cadence": "on demand",
+      "anti_bot": {
+        "bot_challenges": true,
+        "us_egress_required_for_local_probing": true,
+        "headless": "default; use --headless false for datacenter-IP challenges"
+      },
+      "matching": "joined to permits by contractor name",
+      "downstream": ["bbb_* tables"]
+    }
+  ]
+}
